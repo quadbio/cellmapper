@@ -191,7 +191,7 @@ class Neighbors:
             logger.info("Using %s to compute %d neighbors.", method, n_neighbors)
 
             if method == "rapids":
-                check_deps("rapids_singlecell")
+                check_deps("rapids")
                 import cuml as cm
                 import cupy as cp
 

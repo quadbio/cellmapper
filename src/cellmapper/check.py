@@ -57,7 +57,7 @@ class Checker:
 
 
 INSTALL_HINTS = types.SimpleNamespace(
-    rapids="To speed up k-NN search on GPU, you may install RAPIDS following the guide from "
+    rapids="To speed up k-NN search on GPU, you may install rapids following the guide from "
     "https://docs.rapids.ai/install/. Note that you will only need cuML.",
     faiss="To speed up k-NN search on GPU, you may install faiss following the guide from "
     "https://github.com/facebookresearch/faiss/blob/main/INSTALL.md",
