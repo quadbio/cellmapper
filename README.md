@@ -1,4 +1,4 @@
-# cellmapper
+# CellMapper
 
 [![Tests][badge-tests]][tests]
 [![Documentation][badge-docs]][documentation]
@@ -6,7 +6,7 @@
 [badge-tests]: https://img.shields.io/github/actions/workflow/status/quadbio/cellmapper/test.yaml?branch=main
 [badge-docs]: https://img.shields.io/readthedocs/cellmapper
 
-k-NN-based mapping of cells across representations
+k-NN-based mapping of cells across representations to tranfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets.
 
 ## Getting started
 
@@ -45,7 +45,7 @@ If you found a bug, please use the [issue tracker][].
 
 ## Citation
 
-> t.b.a
+Please cite this GitHub repo if you find CellMapper useful for your research.
 
 [uv]: https://github.com/astral-sh/uv
 [scverse discourse]: https://discourse.scverse.org/

@@ -27,7 +27,7 @@ from .knn import Neighbors
 
 
 class CellMapper:
-    """KNN transfer class."""
+    """Mapping of labels, embeddings, and expression values between reference and query datasets."""
 
     def __init__(self, ref: AnnData, query: AnnData) -> None:
         """
@@ -84,7 +84,7 @@ class CellMapper:
 
         Parameters
         ----------
-        value : scipy.sparse.spmatrix
+        value
             The new mapping matrix to set.
         """
         if value is not None:
@@ -168,8 +168,9 @@ class CellMapper:
         self.ref.obsm[key_added] = joint.obsm["X_pca"][joint.obs["batch"] == "ref"]
         self.query.obsm[key_added] = joint.obsm["X_pca"][joint.obs["batch"] == "query"]
         logger.info(
-            f"Joint PCA computed and stored as '{key_added}' in both ref.obsm and query.obsm. "
-            "Proceeding to use this as the representation for neighbor search."
+            "Joint PCA computed and stored as '%s' in both ref.obsm and query.obsm. "
+            "Proceeding to use this as the representation for neighbor search.",
+            key_added,
         )
 
     def compute_neighbors(
@@ -421,8 +422,11 @@ class CellMapper:
         else:
             self.query_imputed.X = query_layer
         logger.info(
-            f"Imputed expression for layer '{layer_key}' stored in self.query_imputed.X.\n"
-            f"Note: The feature space now matches the reference (n_vars={self.ref.n_vars}), not the query (n_vars={self.query.n_vars})."
+            "Imputed expression for layer '%s' stored in self.query_imputed.X.\n"
+            "Note: The feature space now matches the reference (n_vars=%s), not the query (n_vars=%s).",
+            layer_key,
+            self.ref.n_vars,
+            self.query.n_vars,
         )
 
     def evaluate_label_transfer(
