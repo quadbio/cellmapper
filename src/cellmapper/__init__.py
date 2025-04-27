@@ -1,7 +1,8 @@
 from importlib.metadata import version
 
-from . import pl, pp, tl
+from .cellmapper import CellMapper
+from .logging import logger
 
-__all__ = ["pl", "pp", "tl"]
+__all__ = ["logger", "CellMapper"]
 
 __version__ = version("cellmapper")
