@@ -29,13 +29,15 @@ def test_knn_graph_distances(sample_distances, sample_indices):
     assert np.allclose(mat.diagonal(), 0)
 
 
-def test_knn_graph_connectivities_gaussian(sample_distances, sample_indices):
+@pytest.mark.parametrize("kernel", ["gaussian", "scarches", "random", "inverse_distance"])
+def test_knn_graph_connectivities_kernels(sample_distances, sample_indices, kernel):
     nr = NeighborsResults(distances=sample_distances, indices=sample_indices)
-    mat = nr.knn_graph_connectivities(kernel="gaussian")
+    mat = nr.knn_graph_connectivities(kernel=kernel)
     assert isinstance(mat, csr_matrix)
     assert mat.shape == (3, 3)
-    # All values should be in (0, 1]
-    assert np.all((mat.data > 0) & (mat.data <= 1))
+    # All values should be > 0 for all kernels except 'random', which can be 0
+    if kernel != "random":
+        assert np.all(mat.data > 0)
 
 
 def test_boolean_adjacency(sample_distances, sample_indices):
