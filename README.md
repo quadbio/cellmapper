@@ -3,7 +3,7 @@
 [![Tests][badge-tests]][tests]
 [![Documentation][badge-docs]][documentation]
 
-[badge-tests]: https://img.shields.io/github/actions/workflow/status/quadbio/cellmapper/test.yaml?branch=main
+[badge-tests]: https://github.com/quadbio/cellmapper/actions/workflows/test.yaml/badge.svg
 [badge-docs]: https://img.shields.io/readthedocs/cellmapper
 
 k-NN-based mapping of cells across representations to tranfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets.
