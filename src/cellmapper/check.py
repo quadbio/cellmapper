@@ -57,10 +57,9 @@ class Checker:
 
 
 INSTALL_HINTS = types.SimpleNamespace(
-    rapids="You may install rapids_singlecell following the guide from "
-    "https://rapids-singlecell.readthedocs.io/en/latest/Installation.html, "
-    "consider using their yaml files.",
-    faiss="You may install faiss following the guide from "
+    rapids="To speed up k-NN search on GPU, you may install RAPIDS following the guide from "
+    "https://docs.rapids.ai/install/. Note that you will only need cuML.",
+    faiss="To speed up k-NN search on GPU, you may install faiss following the guide from "
     "https://github.com/facebookresearch/faiss/blob/main/INSTALL.md",
 )
 
