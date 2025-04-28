@@ -235,14 +235,14 @@ class CellMapper(CellMapperEvaluationMixin):
 
         Parameters
         ----------
-        n_neighbors
-            Number of nearest neighbors.
-        use_rep
-            Data representation based on which to find nearest neighbors.
-        use_rapids
-            Whether to use cuML and cuPy for GPU-accelerated nearest neighbor search.
-        batch_size
-            Batch size for processing rows during Jaccard computation.
+        method
+            Method to use for computing the mapping matrix. Options include:
+            - "jaccard": Jaccard similarity. Inspired by GLUE: Cao et al., Nature Biotechnology, 2022: https://www.nature.com/articles/s41587-022-01284-4
+            - "gaussian": Gaussian kernel with adaptive bandwith. Loosely inspired by MAGIC: Van Dijk et al., Cell, 2018: https://www.sciencedirect.com/science/article/pii/S0092867418307244?via%3Dihub
+            - "scarches": scArches kernel. Inspired by scArches: Lotfollahi et al., Nature Biotechnology, 2021: https://www.nature.com/articles/s41587-021-01001-7
+            - "inverse_distance": Inverse distance kernel.
+            - "random": Random kernel, useful for testing.
+            - "hnoca": HNOCA kernel. Inspired by HNOCA-tools: He et al., Nature 2024: https://www.nature.com/articles/s41586-024-08172-8
 
         Returns
         -------
