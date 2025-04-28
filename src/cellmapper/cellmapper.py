@@ -11,7 +11,7 @@ import pandas as pd
 import scanpy as sc
 from anndata import AnnData
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
     accuracy_score,
@@ -536,7 +536,7 @@ class CellMapper:
     def evaluate_expression_transfer(
         self,
         layer_key: str = "X",
-        method: str = "pearson",
+        method: Literal["pearson", "spearman"] = "pearson",
     ) -> None:
         """
         Evaluate the agreement between imputed and original expression in the query dataset.
@@ -575,23 +575,25 @@ class CellMapper:
         if issparse(original_x):
             original_x = original_x.toarray()
 
-        if method == "pearson":
-            # Compute Pearson correlation for each gene (column-wise)
-            corrs = np.full(imputed_x.shape[1], np.nan)
-            for i in range(imputed_x.shape[1]):
-                x = np.asarray(original_x[:, i]).ravel()
-                y = np.asarray(imputed_x[:, i]).ravel()
-                if np.std(x) == 0 or np.std(y) == 0:
-                    continue  # skip constant genes
-                corrs[i] = pearsonr(x, y)[0]
+        if method == "pearson" or method == "spearman":
+            if method == "pearson":
+                corr_func = pearsonr
+            elif method == "spearman":
+                corr_func = spearmanr
+
+            # Compute per-gene correlation
+            corrs = np.array([corr_func(original_x[:, i], imputed_x[:, i])[0] for i in range(imputed_x.shape[1])])
 
             # Store per-gene correlation in query_imputed.var, only for shared genes
             self.query_imputed.var[f"metric_{method}"] = None
             self.query_imputed.var.loc[shared_genes, f"metric_{method}"] = corrs
+
+            # Compute average correlation, ignoring NaN values
             valid_corrs = corrs[~np.isnan(corrs)]
             if valid_corrs.size == 0:
                 raise ValueError("No valid genes for correlation calculation.")
             avg_corr = float(np.mean(valid_corrs))
+
             # Store metrics in dict
             self.expression_transfer_metrics = {
                 "method": method,
