@@ -1,10 +1,12 @@
 # CellMapper
 
 [![Tests][badge-tests]][tests]
-[![Documentation][badge-docs]][documentation]
+[![Coverage][badge-coverage]][coverage]
+[![Pre-commit.ci][badge-pre-commit]][pre-commit]
 
 [badge-tests]: https://github.com/quadbio/cellmapper/actions/workflows/test.yaml/badge.svg
-[badge-docs]: https://img.shields.io/readthedocs/cellmapper
+[badge-coverage]: https://codecov.io/gh/quadbio/cellmapper/branch/main/graph/badge.svg
+[badge-pre-commit]: https://results.pre-commit.ci/badge/github/quadbio/cellmapper/main.svg
 
 k-NN-based mapping of cells across representations to tranfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets. Using `faiss` to compute k-NN graphs, CellMapper takes about 30 seconds to transfer cell type labels from 1.5M cells to 1.5M cells on a single RTX 4090 with 60 GB CPU memory.
 
@@ -49,7 +51,8 @@ Please cite this GitHub repo if you find CellMapper useful for your research.
 [uv]: https://github.com/astral-sh/uv
 [issue tracker]: https://github.com/quadbio/cellmapper/issues
 [tests]: https://github.com/quadbio/cellmapper/actions/workflows/test.yaml
-[documentation]: https://cellmapper.readthedocs.io
 [changelog]: https://cellmapper.readthedocs.io/en/latest/changelog.html
 [api documentation]: https://cellmapper.readthedocs.io/en/latest/api.html
 [pypi]: https://pypi.org/project/cellmapper
+[coverage]: https://codecov.io/gh/quadbio/cellmapper
+[pre-commit]: https://results.pre-commit.ci/latest/github/quadbio/cellmapper/main
