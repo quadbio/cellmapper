@@ -383,9 +383,9 @@ class CellMapper:
 
             logger.info("Embeddings transferred and stored in query.obsm['%s'].", output_key)
 
-    def transfer_layers(self, layer_key: str) -> None:
+    def transfer_expression(self, layer_key: str) -> None:
         """
-        Transfer layers (e.g., .X or entries from .layers) from reference dataset to a new imputed query AnnData object.
+        Transfer expression values (e.g., .X or entries from .layers) from reference dataset to a new imputed query AnnData object.
 
         Parameters
         ----------
@@ -573,7 +573,7 @@ class CellMapper:
         if obsm_keys is not None:
             self.transfer_embeddings(obsm_keys=obsm_keys, prediction_postfix=prediction_postfix)
         if layer_key is not None:
-            self.transfer_layers(layer_key=layer_key)
+            self.transfer_expression(layer_key=layer_key)
         if obs_keys is None and obsm_keys is None and layer_key is None:
             logger.warning(
                 "Neither ``obs_keys``, ``obsm_keys`` or ``layer_key`` provided. No labels, embeddings or layers were transferred. "
