@@ -54,6 +54,7 @@ class CellMapper:
         self.confidence_postfix: str | None = None
         self.only_yx: bool | None = None
         self.query_imputed: AnnData | None = None
+        self.expression_transfer_metrics: dict[str, Any] | None = None
 
     def __repr__(self):
         """Return a concise string representation of the CellMapper object."""
@@ -447,6 +448,12 @@ class CellMapper:
             Minimum confidence score required to include a cell in the evaluation.
         zero_divisions
             How to handle zero divisions in sklearn metrics comptuation.
+
+        Returns
+        -------
+        Nothing, but updates the following attributes:
+        label_transfer_metrics
+            Dictionary containing accuracy, precision, recall, F1 scores, and excluded fraction.
         """
         # Check if the labels have been transferred
         if self.prediction_postfix is None or self.confidence_postfix is None:
@@ -530,7 +537,7 @@ class CellMapper:
         self,
         layer_key: str = "X",
         method: str = "pearson",
-    ) -> float:
+    ) -> None:
         """
         Evaluate the agreement between imputed and original expression in the query dataset.
 
@@ -543,8 +550,9 @@ class CellMapper:
 
         Returns
         -------
-        score : float
-            The average agreement score across all shared genes.
+        Nothing, but updates the following attributes:
+        expression_transfer_metrics
+            Dictionary containing the average correlation and number of genes used for the evaluation.
         """
         if self.query_imputed is None:
             raise ValueError("Imputed query data not found. Run transfer_expression() first.")
@@ -580,12 +588,24 @@ class CellMapper:
             # Store per-gene correlation in query_imputed.var, only for shared genes
             self.query_imputed.var[f"metric_{method}"] = None
             self.query_imputed.var.loc[shared_genes, f"metric_{method}"] = corrs
-
-            # Return average correlation (ignoring NaNs)
             valid_corrs = corrs[~np.isnan(corrs)]
             if valid_corrs.size == 0:
                 raise ValueError("No valid genes for correlation calculation.")
-            return float(np.mean(valid_corrs))
+            avg_corr = float(np.mean(valid_corrs))
+            # Store metrics in dict
+            self.expression_transfer_metrics = {
+                "method": method,
+                "average_correlation": avg_corr,
+                "n_genes": len(shared_genes),
+                "n_valid_genes": int(valid_corrs.size),
+            }
+            logger.info(
+                "Expression transfer evaluation (%s): average correlation = %.4f (n_genes=%d, n_valid_genes=%d)",
+                method,
+                avg_corr,
+                len(shared_genes),
+                int(valid_corrs.size),
+            )
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
 
