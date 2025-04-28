@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 
 def assert_metrics_close(actual: dict, expected: dict, atol=1e-3):
@@ -25,3 +26,23 @@ class TestCellMapper:
         cmap.transfer_expression(layer_key="X")
         cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
         assert_metrics_close(cmap.expression_transfer_metrics, expected_expression_transfer_metrics)
+
+    @pytest.mark.parametrize("method", ["gaussian", "scarches", "random", "inverse_distance", "jaccard", "hnoca"])
+    def test_compute_mapping_matrix_all_methods(self, cmap, method):
+        cmap.compute_mappping_matrix(method=method)
+        assert cmap.mapping_matrix is not None
+
+    @pytest.mark.parametrize("layer_key", ["X", "counts"])
+    def test_expression_transfer_layers(self, cmap, layer_key):
+        cmap.transfer_expression(layer_key=layer_key)
+        assert cmap.query_imputed is not None
+        assert cmap.query_imputed.X.shape[0] == cmap.query.n_obs
+
+    @pytest.mark.parametrize("eval_layer", ["X", "counts"])
+    @pytest.mark.parametrize("corr_method", ["pearson", "spearman"])
+    def test_evaluate_expression_transfer_layers_and_methods(self, cmap, eval_layer, corr_method):
+        cmap.transfer_expression(layer_key="X")
+        cmap.evaluate_expression_transfer(layer_key=eval_layer, method=corr_method)
+        metrics = cmap.expression_transfer_metrics
+        assert metrics["method"] == corr_method
+        assert metrics["n_valid_genes"] > 0
