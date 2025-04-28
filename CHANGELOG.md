@@ -10,5 +10,13 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.1.1]
+
+### Changed
+- Switched to `vcs`-based versioning.
+
+### Added
+- Added PyPI badge.
+
 ## [v0.1.0]
 Initial package release.
