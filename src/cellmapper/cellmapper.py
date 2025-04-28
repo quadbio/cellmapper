@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
+from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
+from scipy.stats import pearsonr
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
     accuracy_score,
@@ -524,6 +525,69 @@ class CellMapper:
 
         if save:
             plt.savefig(save, bbox_inches="tight")
+
+    def evaluate_expression_transfer(
+        self,
+        layer_key: str = "X",
+        method: str = "pearson",
+    ) -> float:
+        """
+        Evaluate the agreement between imputed and original expression in the query dataset.
+
+        Parameters
+        ----------
+        layer_key
+            Key in `self.query.layers` to use as the original expression. Use "X" to use `self.query.X`.
+        method
+            Method to quantify agreement. Currently supported: "pearson" (average Pearson correlation across shared genes).
+
+        Returns
+        -------
+        score : float
+            The average agreement score across all shared genes.
+        """
+        if self.query_imputed is None:
+            raise ValueError("Imputed query data not found. Run transfer_expression() first.")
+
+        # Find shared genes
+        shared_genes = list(self.query_imputed.var_names.intersection(self.query.var_names))
+        if len(shared_genes) == 0:
+            raise ValueError("No shared genes between query_imputed and query.")
+
+        # Subset to shared genes using adata[:, shared_genes].X
+        imputed_x = self.query_imputed[:, shared_genes].X
+        if layer_key == "X":
+            original_x = self.query[:, shared_genes].X
+        else:
+            original_x = self.query[:, shared_genes].layers[layer_key]
+
+        # Convert to dense if sparse
+        if issparse(imputed_x):
+            imputed_x = imputed_x.toarray()
+        if issparse(original_x):
+            original_x = original_x.toarray()
+
+        if method == "pearson":
+            # Compute Pearson correlation for each gene (column-wise)
+            corrs = np.full(imputed_x.shape[1], np.nan)
+            for i in range(imputed_x.shape[1]):
+                x = np.asarray(original_x[:, i]).ravel()
+                y = np.asarray(imputed_x[:, i]).ravel()
+                if np.std(x) == 0 or np.std(y) == 0:
+                    continue  # skip constant genes
+                corrs[i] = pearsonr(x, y)[0]
+
+            # Store per-gene correlation in query_imputed.var, only for shared genes
+            self.query_imputed.var[f"metric_{method}"] = None
+            self.query_imputed.var.loc[shared_genes, f"metric_{method}"] = corrs
+
+            # Return average correlation (ignoring NaNs)
+            valid_corrs = corrs[~np.isnan(corrs)]
+            if valid_corrs.size == 0:
+                raise ValueError("No valid genes for correlation calculation.")
+            return float(np.mean(valid_corrs))
+        else:
+            raise NotImplementedError(f"Method '{method}' is not implemented.")
 
     def fit(
         self,
