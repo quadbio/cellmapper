@@ -20,14 +20,52 @@ from cellmapper.logging import logger
 
 
 def _jensen_shannon_divergence(p: np.ndarray, q: np.ndarray) -> float:
-    """Compute the Jensen-Shannon divergence between two probability distributions."""
+    """Compute the Jensen-Shannon divergence between two expression vectors.
+
+    Parameters
+    ----------
+    p, q
+        Expression vectors.
+
+    Returns
+    -------
+    The Jensen-Shannon divergence between p and q.
+    """
     p = np.clip(p, 0, None)
     q = np.clip(q, 0, None)
     if p.sum() == 0 or q.sum() == 0:
         return np.nan
     p = p / p.sum()
     q = q / q.sum()
-    return jensenshannon(p, q, base=2)
+    return jensenshannon(p, q, base=10)
+
+
+def _rmse_zscore(a: np.ndarray, b: np.ndarray) -> float:
+    """
+    Compute the RMSE between z-scored versions of two arrays (per gene).
+
+    Both a and b are 1D arrays of the same length (spots/cells for a single gene).
+
+    Parameters
+    ----------
+    a, b
+        Expression vectors (1D arrays) to compare.
+
+    Returns
+    -------
+    The RMSE between the z-scored versions of a and b.
+    """
+
+    def zscore(x):
+        mean = np.mean(x)
+        std = np.std(x, ddof=0)
+        if std == 0:
+            std = 1
+        return (x - mean) / std
+
+    a_z = zscore(a)
+    b_z = zscore(b)
+    return np.sqrt(np.mean((a_z - b_z) ** 2))
 
 
 class CellMapperEvaluationMixin:
@@ -136,7 +174,7 @@ class CellMapperEvaluationMixin:
     def evaluate_expression_transfer(
         self,
         layer_key: str = "X",
-        method: Literal["pearson", "spearman", "js"] = "pearson",
+        method: Literal["pearson", "spearman", "js", "rmse"] = "pearson",
     ) -> None:
         """
         Evaluate the agreement between imputed and original expression in the query dataset.
@@ -184,6 +222,16 @@ class CellMapperEvaluationMixin:
                 "metric_js",
                 "average_jsd",
                 "js",
+                log_msg,
+            )
+        elif method == "rmse":
+            rmses = np.array([_rmse_zscore(imputed_x[:, i], original_x[:, i]) for i in range(imputed_x.shape[1])])
+            self._store_expression_metric(
+                shared_genes,
+                rmses,
+                "metric_rmse",
+                "average_rmse",
+                "rmse",
                 log_msg,
             )
         else:
