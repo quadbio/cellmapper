@@ -46,3 +46,23 @@ class TestCellMapper:
         metrics = cmap.expression_transfer_metrics
         assert metrics["method"] == method
         assert metrics["n_valid_genes"] > 0
+
+    @pytest.mark.parametrize(
+        "joint_pca_key,n_pca_components,pca_kwargs",
+        [
+            ("pca_joint", 10, {}),
+            ("custom_pca", 5, {"svd_solver": "arpack"}),
+        ],
+    )
+    def test_compute_neighbors_joint_pca(self, cmap, joint_pca_key, n_pca_components, pca_kwargs):
+        cmap.compute_neighbors(
+            n_neighbors=3,
+            use_rep=None,
+            joint_pca_key=joint_pca_key,
+            n_pca_components=n_pca_components,
+            pca_kwargs=pca_kwargs,
+        )
+        assert joint_pca_key in cmap.ref.obsm
+        assert joint_pca_key in cmap.query.obsm
+        assert cmap.ref.obsm[joint_pca_key].shape[1] == n_pca_components
+        assert cmap.query.obsm[joint_pca_key].shape[1] == n_pca_components
