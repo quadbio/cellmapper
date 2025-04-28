@@ -179,6 +179,8 @@ class CellMapperEvaluationMixin:
         """
         Evaluate the agreement between imputed and original expression in the query dataset.
 
+        These metrics are inspired by Li et al., Nature Methods 2022 (https://www.nature.com/articles/s41592-022-01480-9).
+
         Parameters
         ----------
         layer_key
