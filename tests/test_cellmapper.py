@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+from cellmapper.cellmapper import CellMapper
+
 
 def assert_metrics_close(actual: dict, expected: dict, atol=1e-3):
     for key, exp in expected.items():
@@ -92,3 +94,22 @@ class TestCellMapper:
         if layer_key is not None:
             assert cmap.query_imputed is not None
             assert cmap.query_imputed.X.shape[0] == cmap.query.n_obs
+
+    def test_transfer_labels_self_mapping(self, query_ref_adata):
+        """Check mapping to self."""
+        _, ref = query_ref_adata
+        cm = CellMapper(ref, ref)
+        cm.fit(
+            knn_method="sklearn",
+            mapping_method="jaccard",
+            obs_keys="leiden",
+            use_rep="X_pca",
+            n_neighbors=1,
+            prediction_postfix="transfer",
+        )
+        assert "leiden_transfer" in ref.obs
+        assert len(ref.obs["leiden_transfer"]) == len(ref.obs["leiden"])
+        # Check that all predicted labels are valid categories
+        assert set(ref.obs["leiden_transfer"].cat.categories) <= set(ref.obs["leiden"].cat.categories)
+        # If mapping to self, labels should match
+        assert ref.obs["leiden_transfer"].equals(ref.obs["leiden"])
