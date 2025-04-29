@@ -66,3 +66,29 @@ class TestCellMapper:
         assert joint_pca_key in cmap.query.obsm
         assert cmap.ref.obsm[joint_pca_key].shape[1] == n_pca_components
         assert cmap.query.obsm[joint_pca_key].shape[1] == n_pca_components
+
+    @pytest.mark.parametrize(
+        "obs_keys,obsm_keys,layer_key",
+        [
+            ("leiden", None, None),
+            (None, "X_pca", None),
+            (None, None, "X"),
+            ("leiden", "X_pca", None),
+            ("leiden", None, "X"),
+            (None, "X_pca", "X"),
+            ("leiden", "X_pca", "X"),
+        ],
+    )
+    def test_fit_various_combinations(self, cmap, obs_keys, obsm_keys, layer_key):
+        cmap.fit(obs_keys=obs_keys, obsm_keys=obsm_keys, layer_key=layer_key)
+        if obs_keys is not None:
+            keys = [obs_keys] if isinstance(obs_keys, str) else obs_keys
+            for key in keys:
+                assert f"{key}_pred" in cmap.query.obs
+        if obsm_keys is not None:
+            keys = [obsm_keys] if isinstance(obsm_keys, str) else obsm_keys
+            for key in keys:
+                assert f"{key}_pred" in cmap.query.obsm
+        if layer_key is not None:
+            assert cmap.query_imputed is not None
+            assert cmap.query_imputed.X.shape[0] == cmap.query.n_obs
