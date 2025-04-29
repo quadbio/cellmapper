@@ -79,4 +79,6 @@ def check_deps(*args) -> None:
         A list of dependencies to check
     """
     for item in args:
+        if item not in CHECKERS:
+            raise RuntimeError(f"Dependency '{item}' is not registered in CHECKERS.")
         CHECKERS[item].check()

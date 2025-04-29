@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+### Added
+- Included tests for the `check` module, and more tests for the main classes.
+
 ## [v0.1.1]
 
 ### Changed
