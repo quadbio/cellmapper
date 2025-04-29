@@ -12,6 +12,8 @@
 
 k-NN-based mapping of cells across representations to tranfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets. Using [faiss][] to compute k-NN graphs, CellMapper takes about 30 seconds to transfer cell type labels from 1.5M cells to 1.5M cells on a single RTX 4090 with 60 GB CPU memory.
 
+Inspired by scanpy's [ingest][] and the [HNOCA-tools][] packages.
+
 ## Installation
 
 You need to have Python 3.10 or newer installed on your system.
@@ -70,6 +72,9 @@ Please cite this GitHub repo if you find CellMapper useful for your research.
 [pre-commit]: https://results.pre-commit.ci/latest/github/quadbio/cellmapper/main
 [pypi]: https://pypi.org/project/cellmapper/
 [faiss]: https://github.com/facebookresearch/faiss
+
+[ingest]: https://scanpy.readthedocs.io/en/stable/generated/scanpy.tl.ingest.html
+[HNOCA-tools]: https://devsystemslab.github.io/HNOCA-tools/
 
 [GimVI]: https://docs.scvi-tools.org/en/stable/api/reference/scvi.external.GIMVI.html#
 [ENVI]: https://scenvi.readthedocs.io/en/latest/#
