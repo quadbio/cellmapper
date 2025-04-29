@@ -39,7 +39,9 @@ With a joint embedding in ``.obsm["X_joint"]`` at hand, the simplest way to use 
 ```
 from cellmapper import CellMapper
 
-cmap = CellMapper(ref, query).fit(use_rep="X_joint", obs_keys="celltype", obsm_keys="X_umap", layer_key="X")
+cmap = CellMapper(ref, query).fit(
+    use_rep="X_joint", obs_keys="celltype", obsm_keys="X_umap", layer_key="X"
+    )
 ```
 
 This will transfer data from the reference to the query dataset, including celltype labels stored in ``ref.obs``, a UMAP embedding stored in ``ref.obsm``, and expression values stored in ``ref.X``.
