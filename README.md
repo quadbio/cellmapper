@@ -10,7 +10,7 @@
 [badge-pre-commit]: https://results.pre-commit.ci/badge/github/quadbio/cellmapper/main.svg
 [badge-pypi]: https://img.shields.io/pypi/v/cellmapper.svg
 
-k-NN-based mapping of cells across representations to tranfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets. Using [`faiss`][] to compute k-NN graphs, CellMapper takes about 30 seconds to transfer cell type labels from 1.5M cells to 1.5M cells on a single RTX 4090 with 60 GB CPU memory.
+k-NN-based mapping of cells across representations to tranfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets. Using [faiss][] to compute k-NN graphs, CellMapper takes about 30 seconds to transfer cell type labels from 1.5M cells to 1.5M cells on a single RTX 4090 with 60 GB CPU memory.
 
 ## Installation
 
