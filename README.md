@@ -36,7 +36,7 @@ There are two alternative options to install ``cellmapper``:
 This package assumes that you have ``ref`` and ``query`` AnnData objects, with a joint embedding computed and stored in ``.obsm``. We explicilty do not compute this joint embedding, but there are plenty of method you can use to get such joint embeddings, e.g. [GimVI][] or [ENVI][] for spatial mapping, [GLUE][], [MIDAS][] and [MOFA+][] for modality translation, and [scVI][], [scANVI][] and [scArches][] for query-to-reference mapping - this is just a small selection!
 
 With a joint embedding in ``.obsm["X_joint"]`` at hand, the simplest way to use ``CellMapper`` is as follows:
-```
+```Python
 from cellmapper import CellMapper
 
 cmap = CellMapper(ref, query).fit(
