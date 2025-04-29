@@ -118,7 +118,9 @@ class NeighborsResults:
             epsilon = kwargs.get("epsilon", 1e-8)
             connectivities = 1.0 / (self.distances + epsilon)
         else:
-            raise ValueError(f"Unknown kernel: {kernel}. Supported kernels are 'gaussian' and 'scarches'.")
+            raise ValueError(
+                f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'scarches', 'random', 'inverse_distance'."
+            )
         rowptr = np.arange(0, self.n_samples * self.n_neighbors + 1, self.n_neighbors)
         return csr_matrix((connectivities.ravel().astype(dtype), self.indices.ravel(), rowptr), shape=self.shape)
 
