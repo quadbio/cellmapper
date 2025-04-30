@@ -175,9 +175,10 @@ class CellMapperEvaluationMixin:
         self,
         layer_key: str = "X",
         method: Literal["pearson", "spearman", "js", "rmse"] = "pearson",
+        groupby: str | None = None,
     ) -> None:
         """
-        Evaluate the agreement between imputed and original expression in the query dataset.
+        Evaluate the agreement between imputed and original expression in the query dataset, optionally per group.
 
         These metrics are inspired by Li et al., Nature Methods 2022 (https://www.nature.com/articles/s41592-022-01480-9).
 
@@ -186,58 +187,82 @@ class CellMapperEvaluationMixin:
         layer_key
             Key in `self.query.layers` to use as the original expression. Use "X" to use `self.query.X`.
         method
-            Method to quantify agreement. Currently supported: "pearson" (average Pearson correlation across shared genes).
+            Method to quantify agreement. Supported: "pearson", "spearman", "js", "rmse".
+        groupby
+            Column in self.query.obs to group query cells by (e.g., cell type, batch). If None, computes a single score for all query cells.
 
         Returns
         -------
         Nothing, but updates the following attributes:
         expression_transfer_metrics
-            Dictionary containing the average correlation and number of genes used for the evaluation.
+            Dictionary containing the average metric and number of genes used for the evaluation.
+        query.var[metric_name]
+            Per-gene metric values (overall, across all cells).
+        query.varm[metric_name]
+            Per-gene, per-group metric values (if groupby is provided).
         """
         imputed_x, original_x, shared_genes = self._get_aligned_expression_arrays(layer_key)
-        log_msg = "Expression transfer evaluation (%s): average value = %.4f (n_genes=%d, n_valid_genes=%d)"
-        if method == "pearson" or method == "spearman":
-            if method == "pearson":
-                corr_func = pearsonr
-            elif method == "spearman":
-                corr_func = spearmanr
 
-            # Compute per-gene correlation
-            corrs = np.array([corr_func(original_x[:, i], imputed_x[:, i])[0] for i in range(imputed_x.shape[1])])
-
-            # Store per-gene correlation in query_imputed.var, only for shared genes
-            self._store_expression_metric(
-                shared_genes,
-                corrs,
-                f"metric_{method}",
-                "average_correlation",
-                method,
-                log_msg,
-            )
+        # Select metric function
+        if method == "pearson":
+            metric_func = lambda a, b: pearsonr(a, b)[0]
+            metric_name = "metric_pearson"
+            summary_key = "average_correlation"
+            method_label = "pearson"
+        elif method == "spearman":
+            metric_func = lambda a, b: spearmanr(a, b)[0]
+            metric_name = "metric_spearman"
+            summary_key = "average_correlation"
+            method_label = "spearman"
         elif method in ("js", "jensen-shannon"):
-            jsds = np.array(
-                [_jensen_shannon_divergence(imputed_x[:, i], original_x[:, i]) for i in range(imputed_x.shape[1])]
-            )
-            self._store_expression_metric(
-                shared_genes,
-                jsds,
-                "metric_js",
-                "average_jsd",
-                "js",
-                log_msg,
-            )
+            metric_func = _jensen_shannon_divergence
+            metric_name = "metric_js"
+            summary_key = "average_jsd"
+            method_label = "js"
         elif method == "rmse":
-            rmses = np.array([_rmse_zscore(imputed_x[:, i], original_x[:, i]) for i in range(imputed_x.shape[1])])
-            self._store_expression_metric(
-                shared_genes,
-                rmses,
-                "metric_rmse",
-                "average_rmse",
-                "rmse",
-                log_msg,
-            )
+            metric_func = _rmse_zscore
+            metric_name = "metric_rmse"
+            summary_key = "average_rmse"
+            method_label = "rmse"
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
+
+        # Helper to compute metrics for a given mask of cells
+        def compute_metrics(mask):
+            return np.array([metric_func(original_x[mask, i], imputed_x[mask, i]) for i in range(imputed_x.shape[1])])
+
+        # Compute metrics for all cells
+        overall_mask = np.ones(original_x.shape[0], dtype=bool)
+        overall_metrics = compute_metrics(overall_mask)
+        self._store_expression_metric(
+            shared_genes,
+            overall_metrics,
+            metric_name,
+            summary_key,
+            method_label,
+        )
+
+        if groupby is not None:
+            # Prepare DataFrame to store per-group metrics
+            group_labels = self.query.obs[groupby]
+            groups = group_labels.unique()
+            metrics_df = pd.DataFrame(
+                np.full((self.query.n_vars, len(groups)), np.nan, dtype=np.float32),
+                index=self.query.var_names,
+                columns=groups,
+            )
+
+            # Compute and store metrics for each group
+            for group in groups:
+                mask = group_labels == group
+                metrics_df.loc[shared_genes, group] = compute_metrics(mask.values)
+            self.query.varm[metric_name] = metrics_df
+
+            logger.info(
+                "Metrics per group defined in `query.obs['%s']` computed and stored in `query.varm['%s']`",
+                groupby,
+                metric_name,
+            )
 
     def _get_aligned_expression_arrays(self, layer_key: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
         """
@@ -274,37 +299,28 @@ class CellMapperEvaluationMixin:
         metric_name: str,
         summary_key: str,
         method_label: str,
-        log_msg: str,
     ) -> None:
         """
-        Store per-gene and summary expression transfer metrics in the query_imputed AnnData object and log the results.
+        Store per-gene and summary expression transfer metrics in the query AnnData object and log the results.
 
         Parameters
         ----------
         shared_genes
             List of shared gene names.
         values
-            Array of per-gene metric values (e.g., correlation, JSD).
+            Array of per-gene metric values (e.g., correlation, JSD) or 2D array (genes x groups).
         metric_name
-            Name of the column to store per-gene values in query_imputed.var.
+            Name of the column to store per-gene values in query.var.
         summary_key
             Key for the average metric in self.expression_transfer_metrics.
         method_label
             Name of the method/metric (for logging and summary dict).
-        log_msg
-            Logging message format string, should accept (avg_value, n_genes, n_valid_genes).
-
-        Returns
-        -------
-        Nothing, but updates the following attributes:
-        query_imputed.var[metric_name]
-            DataFrame column with per-gene metric values.
-        expression_transfer_metrics
-            Dictionary containing the average metric value and number of genes used for the evaluation.
         """
-        self.query_imputed.var[metric_name] = None
-        self.query_imputed.var.loc[shared_genes, metric_name] = values
+        # Store overall metric in .var
+        self.query.var[metric_name] = np.nan
+        self.query.var.loc[shared_genes, metric_name] = values
         valid_values = values[~np.isnan(values)]
+
         if valid_values.size == 0:
             raise ValueError(f"No valid genes for {method_label} calculation.")
         avg_value = float(np.mean(valid_values))
@@ -314,8 +330,9 @@ class CellMapperEvaluationMixin:
             "n_genes": len(shared_genes),
             "n_valid_genes": int(valid_values.size),
         }
+
         logger.info(
-            log_msg,
+            "Expression transfer evaluation (%s): average value = %.4f (n_genes=%d, n_valid_genes=%d)",
             method_label,
             avg_value,
             len(shared_genes),
