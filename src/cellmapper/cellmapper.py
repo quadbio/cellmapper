@@ -237,12 +237,13 @@ class CellMapper(CellMapperEvaluationMixin):
         ----------
         method
             Method to use for computing the mapping matrix. Options include:
-            - "jaccard": Jaccard similarity. Inspired by GLUE: Cao et al., Nature Biotechnology, 2022: https://www.nature.com/articles/s41587-022-01284-4
-            - "gaussian": Gaussian kernel with adaptive bandwidth. Loosely inspired by MAGIC: Van Dijk et al., Cell, 2018: https://www.sciencedirect.com/science/article/pii/S0092867418307244?via%3Dihub
-            - "scarches": scArches kernel. Inspired by scArches: Lotfollahi et al., Nature Biotechnology, 2021: https://www.nature.com/articles/s41587-021-01001-7
+
+            - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
+            - "gaussian": Gaussian kernel with adaptive bandwidth. Loosely inspired by MAGIC :cite:`van2018recovering`
+            - "scarches": scArches kernel. Inspired by scArches :cite:`lotfollahi2022mapping`
             - "inverse_distance": Inverse distance kernel.
             - "random": Random kernel, useful for testing.
-            - "hnoca": HNOCA kernel. Inspired by HNOCA-tools: He et al., Nature 2024: https://www.nature.com/articles/s41586-024-08172-8
+            - "hnoca": HNOCA kernel. Inspired by HNOCA-tools :cite:`he2024integrated`
 
         Returns
         -------

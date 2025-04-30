@@ -126,7 +126,7 @@ class NeighborsResults:
 
     def boolean_adjacency(self, dtype=np.float64) -> csr_matrix:
         """
-        Construct a boolean adjacency matrix from neighbor indices using the same rowptr mechanism as other graph methods.
+        Construct a boolean adjacency matrix from neighbor indices.
 
         Parameters
         ----------

@@ -184,7 +184,7 @@ class CellMapperEvaluationMixin:
         """
         Evaluate the agreement between imputed and original expression in the query dataset, optionally per group.
 
-        These metrics are inspired by Li et al., Nature Methods 2022 (https://www.nature.com/articles/s41592-022-01480-9).
+        These metrics are inspired by :cite:`li2022benchmarking`.
 
         Parameters
         ----------
@@ -335,7 +335,7 @@ class CellMapperEvaluationMixin:
         """
         Estimate raw presence scores for each reference cell based on query-to-reference connectivities.
 
-        Adapted from the HNOCA-tools package: https://github.com/devsystemslab/HNOCA-tools
+        Adapted from the HNOCA-tools package :cite:`he2024integrated`.
 
         Parameters
         ----------
