@@ -196,9 +196,9 @@ class CellMapperEvaluationMixin:
         Nothing, but updates the following attributes:
         expression_transfer_metrics
             Dictionary containing the average metric and number of genes used for the evaluation.
-        query.var[metric_name]
+        query.var[f"metric_{method}"]
             Per-gene metric values (overall, across all cells).
-        query.varm[metric_name]
+        query.varm[f"metric_{method}"]
             Per-gene, per-group metric values (if groupby is provided).
         """
         imputed_x, original_x, shared_genes = self._get_aligned_expression_arrays(layer_key)
@@ -206,24 +206,12 @@ class CellMapperEvaluationMixin:
         # Select metric function
         if method == "pearson":
             metric_func = lambda a, b: pearsonr(a, b)[0]
-            metric_name = "metric_pearson"
-            summary_key = "average_correlation"
-            method_label = "pearson"
         elif method == "spearman":
             metric_func = lambda a, b: spearmanr(a, b)[0]
-            metric_name = "metric_spearman"
-            summary_key = "average_correlation"
-            method_label = "spearman"
         elif method in ("js", "jensen-shannon"):
             metric_func = _jensen_shannon_divergence
-            metric_name = "metric_js"
-            summary_key = "average_jsd"
-            method_label = "js"
         elif method == "rmse":
             metric_func = _rmse_zscore
-            metric_name = "metric_rmse"
-            summary_key = "average_rmse"
-            method_label = "rmse"
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
 
@@ -237,9 +225,7 @@ class CellMapperEvaluationMixin:
         self._store_expression_metric(
             shared_genes,
             overall_metrics,
-            metric_name,
-            summary_key,
-            method_label,
+            method,
         )
 
         if groupby is not None:
@@ -256,12 +242,12 @@ class CellMapperEvaluationMixin:
             for group in groups:
                 mask = group_labels == group
                 metrics_df.loc[shared_genes, group] = compute_metrics(mask.values)
-            self.query.varm[metric_name] = metrics_df
+            self.query.varm[f"metric_{method}"] = metrics_df
 
             logger.info(
                 "Metrics per group defined in `query.obs['%s']` computed and stored in `query.varm['%s']`",
                 groupby,
-                metric_name,
+                f"metric_{method}",
             )
 
     def _get_aligned_expression_arrays(self, layer_key: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
@@ -296,9 +282,7 @@ class CellMapperEvaluationMixin:
         self,
         shared_genes: list[str],
         values: np.ndarray,
-        metric_name: str,
-        summary_key: str,
-        method_label: str,
+        method: str,
     ) -> None:
         """
         Store per-gene and summary expression transfer metrics in the query AnnData object and log the results.
@@ -309,31 +293,27 @@ class CellMapperEvaluationMixin:
             List of shared gene names.
         values
             Array of per-gene metric values (e.g., correlation, JSD) or 2D array (genes x groups).
-        metric_name
-            Name of the column to store per-gene values in query.var.
-        summary_key
-            Key for the average metric in self.expression_transfer_metrics.
-        method_label
+        method
             Name of the method/metric (for logging and summary dict).
         """
         # Store overall metric in .var
-        self.query.var[metric_name] = np.nan
-        self.query.var.loc[shared_genes, metric_name] = values
+        self.query.var[f"metric_{method}"] = np.nan
+        self.query.var.loc[shared_genes, f"metric_{method}"] = values
         valid_values = values[~np.isnan(values)]
 
         if valid_values.size == 0:
-            raise ValueError(f"No valid genes for {method_label} calculation.")
+            raise ValueError(f"No valid genes for {method} calculation.")
         avg_value = float(np.mean(valid_values))
         self.expression_transfer_metrics = {
-            "method": method_label,
-            summary_key: avg_value,
+            "method": method,
+            "average": avg_value,
             "n_genes": len(shared_genes),
             "n_valid_genes": int(valid_values.size),
         }
 
         logger.info(
             "Expression transfer evaluation (%s): average value = %.4f (n_genes=%d, n_valid_genes=%d)",
-            method_label,
+            method,
             avg_value,
             len(shared_genes),
             int(valid_values.size),

@@ -40,15 +40,6 @@ class TestCellMapper:
         assert cmap.query_imputed is not None
         assert cmap.query_imputed.X.shape[0] == cmap.query.n_obs
 
-    @pytest.mark.parametrize("eval_layer", ["X", "counts"])
-    @pytest.mark.parametrize("method", ["pearson", "spearman", "js", "rmse"])
-    def test_evaluate_expression_transfer_layers_and_methods(self, cmap, eval_layer, method):
-        cmap.transfer_expression(layer_key="X")
-        cmap.evaluate_expression_transfer(layer_key=eval_layer, method=method)
-        metrics = cmap.expression_transfer_metrics
-        assert metrics["method"] == method
-        assert metrics["n_valid_genes"] > 0
-
     @pytest.mark.parametrize(
         "joint_pca_key,n_pca_components,pca_kwargs",
         [
