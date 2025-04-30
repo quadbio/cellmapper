@@ -86,14 +86,18 @@ class CellMapperEvaluationMixin:
             Key in .obs storing ground-truth cell type annotations.
         confidence_cutoff
             Minimum confidence score required to include a cell in the evaluation.
-        zero_divisions
-            How to handle zero divisions in sklearn metrics comptuation.
+        zero_division
+            How to handle zero divisions in sklearn metrics computation.
 
         Returns
         -------
-        Nothing, but updates the following attributes:
-        label_transfer_metrics
-            Dictionary containing accuracy, precision, recall, F1 scores, and excluded fraction.
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``label_transfer_metrics``: Dictionary containing accuracy, precision, recall, F1 scores, and excluded fraction.
         """
         if self.prediction_postfix is None or self.confidence_postfix is None:
             raise ValueError("Label transfer has not been performed. Call transfer_labels() first.")
@@ -180,7 +184,7 @@ class CellMapperEvaluationMixin:
         """
         Evaluate the agreement between imputed and original expression in the query dataset, optionally per group.
 
-        These metrics are inspired by Li et al., Nature Methods 2022 (https://www.nature.com/articles/s41592-022-01480-9).
+        These metrics are inspired by :cite:`li2022benchmarking`.
 
         Parameters
         ----------
@@ -193,13 +197,15 @@ class CellMapperEvaluationMixin:
 
         Returns
         -------
-        Nothing, but updates the following attributes:
-        expression_transfer_metrics
-            Dictionary containing the average metric and number of genes used for the evaluation.
-        query.var[f"metric_{method}"]
-            Per-gene metric values (overall, across all cells).
-        query.varm[f"metric_{method}"]
-            Per-gene, per-group metric values (if groupby is provided).
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``expression_transfer_metrics``: Dictionary containing the average metric and number of genes used for the evaluation.
+        - ``query.var[metric_name]``: Per-gene metric values (overall, across all cells).
+        - ``query.varm[metric_name]``: Per-gene, per-group metric values (if groupby is provided).
         """
         imputed_x, original_x, shared_genes = self._get_aligned_expression_arrays(layer_key)
 
@@ -329,7 +335,7 @@ class CellMapperEvaluationMixin:
         """
         Estimate raw presence scores for each reference cell based on query-to-reference connectivities.
 
-        Adapted from the HNOCA-tools package: https://github.com/devsystemslab/HNOCA-tools
+        Adapted from the HNOCA-tools package :cite:`he2024integrated`.
 
         Parameters
         ----------

@@ -186,9 +186,7 @@ class CellMapper(CellMapperEvaluationMixin):
         use_rep
             Data representation based on which to find nearest neighbors. If None, a joint PCA will be computed.
         method
-            Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU, "rapids" and "faiss" run on GPU.
-            Note that all but "pynndescent" perform exact neighbor search. With GPU acceleration, "faiss" is usually
-            fastest and more memory efficient than "rapids".
+            Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU, "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact neighbor search. With GPU acceleration, "faiss" is usually fastest and more memory efficient than "rapids".
         metric
             Distance metric to use for nearest neighbors.
         only_yx
@@ -202,13 +200,15 @@ class CellMapper(CellMapperEvaluationMixin):
 
         Returns
         -------
-        Nothing, but updates the following attributes:
-        knn
-            Nearest neighbors object.
-        n_neighbors
-            Number of nearest neighbors.
-        only_yx
-            Whether only yx neighbors were computed.
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``knn``: Nearest neighbors object.
+        - ``n_neighbors``: Number of nearest neighbors.
+        - ``only_yx``: Whether only yx neighbors were computed.
         """
         self.n_neighbors = n_neighbors
         self.only_yx = only_yx
@@ -237,18 +237,23 @@ class CellMapper(CellMapperEvaluationMixin):
         ----------
         method
             Method to use for computing the mapping matrix. Options include:
-            - "jaccard": Jaccard similarity. Inspired by GLUE: Cao et al., Nature Biotechnology, 2022: https://www.nature.com/articles/s41587-022-01284-4
-            - "gaussian": Gaussian kernel with adaptive bandwith. Loosely inspired by MAGIC: Van Dijk et al., Cell, 2018: https://www.sciencedirect.com/science/article/pii/S0092867418307244?via%3Dihub
-            - "scarches": scArches kernel. Inspired by scArches: Lotfollahi et al., Nature Biotechnology, 2021: https://www.nature.com/articles/s41587-021-01001-7
+
+            - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
+            - "gaussian": Gaussian kernel with adaptive bandwidth. Loosely inspired by MAGIC :cite:`van2018recovering`
+            - "scarches": scArches kernel. Inspired by scArches :cite:`lotfollahi2022mapping`
             - "inverse_distance": Inverse distance kernel.
             - "random": Random kernel, useful for testing.
-            - "hnoca": HNOCA kernel. Inspired by HNOCA-tools: He et al., Nature 2024: https://www.nature.com/articles/s41586-024-08172-8
+            - "hnoca": HNOCA kernel. Inspired by HNOCA-tools :cite:`he2024integrated`
 
         Returns
         -------
-        Nothing, but updates the following attributes:
-        mapping_matrix
-            Mapping matrix for label transfer.
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``mapping_matrix``: Mapping matrix for label transfer.
         """
         if self.knn is None or self.n_neighbors is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
@@ -277,24 +282,26 @@ class CellMapper(CellMapperEvaluationMixin):
         self, obs_keys: str | list[str], prediction_postfix: str = "pred", confidence_postfix: str = "conf"
     ) -> None:
         """
-        Transfer discrete labels from reference dataset to query dataset for one or more keys
+        Transfer discrete labels from reference dataset to query dataset for one or more keys.
 
         Parameters
         ----------
         obs_keys
             One or more keys in ``ref.obs`` to be transferred into ``query.obs`` (must be discrete)
         prediction_postfix
-            New ``query.obs`` key added for the transferred labels,
-            by default ``{obs_key}_pred`` for each obs_key.
+            New ``query.obs`` key added for the transferred labels, by default ``{obs_key}_pred`` for each obs_key.
         confidence_postfix
-            New ``query.obs`` key added for the transferred label confidence,
-            by default ``{obs_key}_conf`` for each obs_key.
+            New ``query.obs`` key added for the transferred label confidence, by default ``{obs_key}_conf`` for each obs_key.
 
         Returns
         -------
-        Nothing, but updates the following attributes:
-        query.obs
-            Contains the transferred labels and their confidence scores.
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``query.obs``: Contains the transferred labels and their confidence scores.
         """
         if self.mapping_matrix is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
@@ -352,9 +359,13 @@ class CellMapper(CellMapperEvaluationMixin):
 
         Returns
         -------
-        Nothing, but updates the following attributes:
-        query.obsm
-            Contains the transferred embeddings.
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``query.obsm``: Contains the transferred embeddings.
         """
         if self.mapping_matrix is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
@@ -386,7 +397,11 @@ class CellMapper(CellMapperEvaluationMixin):
 
         Returns
         -------
-        Nothing, but creates/updates self.query_imputed with the transferred data in .X.
+        None
+
+        Notes
+        -----
+        Creates/updates ``self.query_imputed`` with the transferred data in .X.
         The new AnnData object will have the same cells as the query, but the features (genes) of the reference.
         """
         if self.mapping_matrix is None:

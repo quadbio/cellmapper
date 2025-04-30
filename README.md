@@ -21,13 +21,13 @@ If you don't have Python installed, we recommend installing [uv][].
 
 There are two alternative options to install ``cellmapper``:
 
-- **Install the latest release from [PyPI][]**:
+- Install the latest release from [PyPI][]:
 
   ```bash
   pip install cellmapper
   ```
 
-- **Install the latest development version**:
+- Install the latest development version:
 
   ```bash
   pip install git+https://github.com/quadbio/cellmapper.git@main
