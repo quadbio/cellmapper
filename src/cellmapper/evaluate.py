@@ -321,3 +321,100 @@ class CellMapperEvaluationMixin:
             len(shared_genes),
             int(valid_values.size),
         )
+
+    def estimate_presence_score(
+        self,
+        groupby: str | None = None,
+        key_added: str = "presence_score",
+        log: bool = False,
+        percentile: tuple[float, float] = (1, 99),
+    ):
+        """
+        Estimate raw presence scores for each reference cell based on query-to-reference connectivities.
+
+        Adapted from the HNOCA-tools package: https://github.com/devsystemslab/HNOCA-tools
+
+        Parameters
+        ----------
+        groupby
+            Column in self.query.obs to group query cells by (e.g., cell type, batch). If None, computes a single score for all query cells.
+        key_added
+            Key to store the presence score: always writes the score across all query cells to self.ref.obs[key_added].
+            If groupby is not None, also writes per-group scores as a DataFrame to self.ref.obsm[key_added].
+        log
+            Whether to apply log1p transformation to the scores.
+        percentile
+            Tuple of (low, high) percentiles for clipping scores before normalization.
+        """
+        if self.knn is None or self.knn.yx is None:
+            raise ValueError("Neighbors must be computed before estimating presence scores.")
+
+        conn = self.knn.yx.knn_graph_connectivities()
+        ref_names = self.ref.obs_names
+
+        # Always compute and post-process the overall score (all query cells)
+        scores_all = np.array(conn.sum(axis=0)).flatten()
+        df_all = pd.DataFrame({"all": scores_all}, index=ref_names)
+        df_all_processed = process_presence_scores(df_all, log=log, percentile=percentile)
+        self.ref.obs[key_added] = df_all_processed["all"]
+        logger.info("Presence score across all query cells computed and stored in `ref.obs['%s']`", key_added)
+
+        # If groupby, also compute and post-process per-group scores
+        if groupby is not None:
+            group_labels = self.query.obs[groupby]
+            groups = group_labels.unique()
+            score_matrix = np.zeros((len(ref_names), len(groups)), dtype=np.float32)
+            for i, group in enumerate(groups):
+                mask = group_labels == group
+                group_conn = conn[mask.values, :]
+                score_matrix[:, i] = np.array(group_conn.sum(axis=0)).flatten()
+            df_groups = pd.DataFrame(score_matrix, index=ref_names, columns=groups)
+            df_groups_processed = process_presence_scores(df_groups, log=log, percentile=percentile)
+            self.ref.obsm[key_added] = df_groups_processed
+
+            logger.info(
+                "Presence scores per group defined in `query.obs['%s']` computed and stored in `ref.obsm['%s']`",
+                groupby,
+                key_added,
+            )
+
+
+def process_presence_scores(
+    scores: pd.DataFrame,
+    log: bool = False,
+    percentile: tuple[float, float] = (1, 99),
+) -> pd.DataFrame:
+    """
+    Post-process presence scores with log1p, percentile clipping, and min-max normalization.
+
+    Parameters
+    ----------
+    scores
+        DataFrame of raw presence scores (rows: reference cells, columns: groups or 'all').
+    log
+        Whether to apply log1p transformation to the scores.
+    percentile
+        Tuple of (low, high) percentiles for clipping scores before normalization.
+
+    Returns
+    -------
+    pd.DataFrame
+        Post-processed presence scores, same shape as input.
+    """
+    # Log1p transformation (optional)
+    if log:
+        scores = np.log1p(scores)
+
+    # Percentile clipping (optional)
+    if percentile != (0, 100):
+        low, high = percentile
+        scores = scores.apply(lambda x: np.clip(x, np.percentile(x, low), np.percentile(x, high)), axis=0)
+
+    # Min-max normalization (always)
+    def minmax(x):
+        min_val, max_val = np.min(x), np.max(x)
+        return (x - min_val) / (max_val - min_val) if max_val > min_val else np.zeros_like(x)
+
+    scores = scores.apply(minmax, axis=0)
+
+    return scores
