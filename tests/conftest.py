@@ -88,6 +88,10 @@ def query_ref_adata(adata_pbmc3k):
     )
     query = query[:, query_genes].copy()
 
+    # Introduce two deterministic batch categories in the query AnnData object
+    query.obs["batch"] = np.repeat(["A", "B"], repeats=n_query_cells // 2).tolist()
+    query.obs["batch"] = query.obs["batch"].astype("category")
+
     return query, ref
 
 
@@ -124,7 +128,7 @@ def expected_label_transfer_metrics():
 def expected_expression_transfer_metrics():
     return {
         "method": "pearson",
-        "average_correlation": 0.376,
+        "average": 0.376,
         "n_genes": 300,
         "n_valid_genes": 300,
     }

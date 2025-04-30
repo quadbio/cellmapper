@@ -175,9 +175,10 @@ class CellMapperEvaluationMixin:
         self,
         layer_key: str = "X",
         method: Literal["pearson", "spearman", "js", "rmse"] = "pearson",
+        groupby: str | None = None,
     ) -> None:
         """
-        Evaluate the agreement between imputed and original expression in the query dataset.
+        Evaluate the agreement between imputed and original expression in the query dataset, optionally per group.
 
         These metrics are inspired by Li et al., Nature Methods 2022 (https://www.nature.com/articles/s41592-022-01480-9).
 
@@ -186,58 +187,68 @@ class CellMapperEvaluationMixin:
         layer_key
             Key in `self.query.layers` to use as the original expression. Use "X" to use `self.query.X`.
         method
-            Method to quantify agreement. Currently supported: "pearson" (average Pearson correlation across shared genes).
+            Method to quantify agreement. Supported: "pearson", "spearman", "js", "rmse".
+        groupby
+            Column in self.query.obs to group query cells by (e.g., cell type, batch). If None, computes a single score for all query cells.
 
         Returns
         -------
         Nothing, but updates the following attributes:
         expression_transfer_metrics
-            Dictionary containing the average correlation and number of genes used for the evaluation.
+            Dictionary containing the average metric and number of genes used for the evaluation.
+        query.var[f"metric_{method}"]
+            Per-gene metric values (overall, across all cells).
+        query.varm[f"metric_{method}"]
+            Per-gene, per-group metric values (if groupby is provided).
         """
         imputed_x, original_x, shared_genes = self._get_aligned_expression_arrays(layer_key)
-        log_msg = "Expression transfer evaluation (%s): average value = %.4f (n_genes=%d, n_valid_genes=%d)"
-        if method == "pearson" or method == "spearman":
-            if method == "pearson":
-                corr_func = pearsonr
-            elif method == "spearman":
-                corr_func = spearmanr
 
-            # Compute per-gene correlation
-            corrs = np.array([corr_func(original_x[:, i], imputed_x[:, i])[0] for i in range(imputed_x.shape[1])])
-
-            # Store per-gene correlation in query_imputed.var, only for shared genes
-            self._store_expression_metric(
-                shared_genes,
-                corrs,
-                f"metric_{method}",
-                "average_correlation",
-                method,
-                log_msg,
-            )
+        # Select metric function
+        if method == "pearson":
+            metric_func = lambda a, b: pearsonr(a, b)[0]
+        elif method == "spearman":
+            metric_func = lambda a, b: spearmanr(a, b)[0]
         elif method in ("js", "jensen-shannon"):
-            jsds = np.array(
-                [_jensen_shannon_divergence(imputed_x[:, i], original_x[:, i]) for i in range(imputed_x.shape[1])]
-            )
-            self._store_expression_metric(
-                shared_genes,
-                jsds,
-                "metric_js",
-                "average_jsd",
-                "js",
-                log_msg,
-            )
+            metric_func = _jensen_shannon_divergence
         elif method == "rmse":
-            rmses = np.array([_rmse_zscore(imputed_x[:, i], original_x[:, i]) for i in range(imputed_x.shape[1])])
-            self._store_expression_metric(
-                shared_genes,
-                rmses,
-                "metric_rmse",
-                "average_rmse",
-                "rmse",
-                log_msg,
-            )
+            metric_func = _rmse_zscore
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
+
+        # Helper to compute metrics for a given mask of cells
+        def compute_metrics(mask):
+            return np.array([metric_func(original_x[mask, i], imputed_x[mask, i]) for i in range(imputed_x.shape[1])])
+
+        # Compute metrics for all cells
+        overall_mask = np.ones(original_x.shape[0], dtype=bool)
+        overall_metrics = compute_metrics(overall_mask)
+        self._store_expression_metric(
+            shared_genes,
+            overall_metrics,
+            method,
+        )
+
+        if groupby is not None:
+            # Prepare DataFrame to store per-group metrics
+            group_labels = self.query.obs[groupby]
+            groups = group_labels.unique()
+            metrics_df = pd.DataFrame(
+                np.full((self.query.n_vars, len(groups)), np.nan, dtype=np.float32),
+                index=self.query.var_names,
+                columns=groups,
+            )
+
+            # Compute and store metrics for each group
+            for group in groups:
+                mask = group_labels == group
+                metrics_df.loc[shared_genes, group] = compute_metrics(mask.values)
+            self.query.varm[f"metric_{method}"] = metrics_df
+
+            logger.info(
+                "Metrics per group defined in `query.obs['%s']` computed and stored in `query.varm['%s']`",
+                groupby,
+                f"metric_{method}",
+            )
 
     def _get_aligned_expression_arrays(self, layer_key: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
         """
@@ -271,53 +282,136 @@ class CellMapperEvaluationMixin:
         self,
         shared_genes: list[str],
         values: np.ndarray,
-        metric_name: str,
-        summary_key: str,
-        method_label: str,
-        log_msg: str,
+        method: str,
     ) -> None:
         """
-        Store per-gene and summary expression transfer metrics in the query_imputed AnnData object and log the results.
+        Store per-gene and summary expression transfer metrics in the query AnnData object and log the results.
 
         Parameters
         ----------
         shared_genes
             List of shared gene names.
         values
-            Array of per-gene metric values (e.g., correlation, JSD).
-        metric_name
-            Name of the column to store per-gene values in query_imputed.var.
-        summary_key
-            Key for the average metric in self.expression_transfer_metrics.
-        method_label
+            Array of per-gene metric values (e.g., correlation, JSD) or 2D array (genes x groups).
+        method
             Name of the method/metric (for logging and summary dict).
-        log_msg
-            Logging message format string, should accept (avg_value, n_genes, n_valid_genes).
-
-        Returns
-        -------
-        Nothing, but updates the following attributes:
-        query_imputed.var[metric_name]
-            DataFrame column with per-gene metric values.
-        expression_transfer_metrics
-            Dictionary containing the average metric value and number of genes used for the evaluation.
         """
-        self.query_imputed.var[metric_name] = None
-        self.query_imputed.var.loc[shared_genes, metric_name] = values
+        # Store overall metric in .var
+        self.query.var[f"metric_{method}"] = np.nan
+        self.query.var.loc[shared_genes, f"metric_{method}"] = values
         valid_values = values[~np.isnan(values)]
+
         if valid_values.size == 0:
-            raise ValueError(f"No valid genes for {method_label} calculation.")
+            raise ValueError(f"No valid genes for {method} calculation.")
         avg_value = float(np.mean(valid_values))
         self.expression_transfer_metrics = {
-            "method": method_label,
-            summary_key: avg_value,
+            "method": method,
+            "average": avg_value,
             "n_genes": len(shared_genes),
             "n_valid_genes": int(valid_values.size),
         }
+
         logger.info(
-            log_msg,
-            method_label,
+            "Expression transfer evaluation (%s): average value = %.4f (n_genes=%d, n_valid_genes=%d)",
+            method,
             avg_value,
             len(shared_genes),
             int(valid_values.size),
         )
+
+    def estimate_presence_score(
+        self,
+        groupby: str | None = None,
+        key_added: str = "presence_score",
+        log: bool = False,
+        percentile: tuple[float, float] = (1, 99),
+    ):
+        """
+        Estimate raw presence scores for each reference cell based on query-to-reference connectivities.
+
+        Adapted from the HNOCA-tools package: https://github.com/devsystemslab/HNOCA-tools
+
+        Parameters
+        ----------
+        groupby
+            Column in self.query.obs to group query cells by (e.g., cell type, batch). If None, computes a single score for all query cells.
+        key_added
+            Key to store the presence score: always writes the score across all query cells to self.ref.obs[key_added].
+            If groupby is not None, also writes per-group scores as a DataFrame to self.ref.obsm[key_added].
+        log
+            Whether to apply log1p transformation to the scores.
+        percentile
+            Tuple of (low, high) percentiles for clipping scores before normalization.
+        """
+        if self.knn is None or self.knn.yx is None:
+            raise ValueError("Neighbors must be computed before estimating presence scores.")
+
+        conn = self.knn.yx.knn_graph_connectivities()
+        ref_names = self.ref.obs_names
+
+        # Always compute and post-process the overall score (all query cells)
+        scores_all = np.array(conn.sum(axis=0)).flatten()
+        df_all = pd.DataFrame({"all": scores_all}, index=ref_names)
+        df_all_processed = process_presence_scores(df_all, log=log, percentile=percentile)
+        self.ref.obs[key_added] = df_all_processed["all"]
+        logger.info("Presence score across all query cells computed and stored in `ref.obs['%s']`", key_added)
+
+        # If groupby, also compute and post-process per-group scores
+        if groupby is not None:
+            group_labels = self.query.obs[groupby]
+            groups = group_labels.unique()
+            score_matrix = np.zeros((len(ref_names), len(groups)), dtype=np.float32)
+            for i, group in enumerate(groups):
+                mask = group_labels == group
+                group_conn = conn[mask.values, :]
+                score_matrix[:, i] = np.array(group_conn.sum(axis=0)).flatten()
+            df_groups = pd.DataFrame(score_matrix, index=ref_names, columns=groups)
+            df_groups_processed = process_presence_scores(df_groups, log=log, percentile=percentile)
+            self.ref.obsm[key_added] = df_groups_processed
+
+            logger.info(
+                "Presence scores per group defined in `query.obs['%s']` computed and stored in `ref.obsm['%s']`",
+                groupby,
+                key_added,
+            )
+
+
+def process_presence_scores(
+    scores: pd.DataFrame,
+    log: bool = False,
+    percentile: tuple[float, float] = (1, 99),
+) -> pd.DataFrame:
+    """
+    Post-process presence scores with log1p, percentile clipping, and min-max normalization.
+
+    Parameters
+    ----------
+    scores
+        DataFrame of raw presence scores (rows: reference cells, columns: groups or 'all').
+    log
+        Whether to apply log1p transformation to the scores.
+    percentile
+        Tuple of (low, high) percentiles for clipping scores before normalization.
+
+    Returns
+    -------
+    pd.DataFrame
+        Post-processed presence scores, same shape as input.
+    """
+    # Log1p transformation (optional)
+    if log:
+        scores = np.log1p(scores)
+
+    # Percentile clipping (optional)
+    if percentile != (0, 100):
+        low, high = percentile
+        scores = scores.apply(lambda x: np.clip(x, np.percentile(x, low), np.percentile(x, high)), axis=0)
+
+    # Min-max normalization (always)
+    def minmax(x):
+        min_val, max_val = np.min(x), np.max(x)
+        return (x - min_val) / (max_val - min_val) if max_val > min_val else np.zeros_like(x)
+
+    scores = scores.apply(minmax, axis=0)
+
+    return scores
