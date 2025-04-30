@@ -188,6 +188,19 @@ class Neighbors:
             Random state for reproducibility.
         only_yx
             If True, only compute the xy neighbors.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``xx``: Nearest neighbors results for reference to reference.
+        - ``yy``: Nearest neighbors results for query to query.
+        - ``xy``: Nearest neighbors results for reference to query.
+        - ``yx``: Nearest neighbors results for query to reference.
         """
         if method in ["rapids", "sklearn", "pynndescent", "faiss"]:
             logger.info("Using %s to compute %d neighbors.", method, n_neighbors)

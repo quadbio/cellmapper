@@ -201,10 +201,14 @@ class CellMapper(CellMapperEvaluationMixin):
         Returns
         -------
         None
-            Updates the following attributes:
-            - knn: Nearest neighbors object.
-            - n_neighbors: Number of nearest neighbors.
-            - only_yx: Whether only yx neighbors were computed.
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``knn``: Nearest neighbors object.
+        - ``n_neighbors``: Number of nearest neighbors.
+        - ``only_yx``: Whether only yx neighbors were computed.
         """
         self.n_neighbors = n_neighbors
         self.only_yx = only_yx
@@ -243,8 +247,12 @@ class CellMapper(CellMapperEvaluationMixin):
         Returns
         -------
         None
-            Updates the following attributes:
-            - mapping_matrix: Mapping matrix for label transfer.
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``mapping_matrix``: Mapping matrix for label transfer.
         """
         if self.knn is None or self.n_neighbors is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
@@ -287,8 +295,12 @@ class CellMapper(CellMapperEvaluationMixin):
         Returns
         -------
         None
-            Updates the following attributes:
-            - query.obs: Contains the transferred labels and their confidence scores.
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``query.obs``: Contains the transferred labels and their confidence scores.
         """
         if self.mapping_matrix is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
@@ -347,8 +359,12 @@ class CellMapper(CellMapperEvaluationMixin):
         Returns
         -------
         None
-            Updates the following attributes:
-            - query.obsm: Contains the transferred embeddings.
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``query.obsm``: Contains the transferred embeddings.
         """
         if self.mapping_matrix is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
@@ -380,7 +396,11 @@ class CellMapper(CellMapperEvaluationMixin):
 
         Returns
         -------
-        Nothing, but creates/updates self.query_imputed with the transferred data in .X.
+        None
+
+        Notes
+        -----
+        Creates/updates ``self.query_imputed`` with the transferred data in .X.
         The new AnnData object will have the same cells as the query, but the features (genes) of the reference.
         """
         if self.mapping_matrix is None:
