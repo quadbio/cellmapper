@@ -1,39 +1,25 @@
-# API
-
-## Preprocessing
+# API Reference
 
 ```{eval-rst}
-.. module:: cellmapper.pp
+The class :class:`~cellmapper.CellMapper` is the main class that users interact with:
+
+.. module:: cellmapper
 .. currentmodule:: cellmapper
 
 .. autosummary::
     :toctree: generated
 
-    pp.basic_preproc
-    pp.elaborate_example
+    CellMapper
 ```
 
-## Tools
-
 ```{eval-rst}
-.. module:: cellmapper.tl
+The following classes are more technical; :class:`~cellmapper.Neighbors` is called under the hood for k-NN graph computation.
+
+.. module:: cellmapper
 .. currentmodule:: cellmapper
 
 .. autosummary::
     :toctree: generated
 
-    tl.basic_tool
-```
-
-## Plotting
-
-```{eval-rst}
-.. module:: cellmapper.pl
-.. currentmodule:: cellmapper
-
-.. autosummary::
-    :toctree: generated
-
-    pl.basic_plot
-    pl.BasicClass
+    Neighbors
 ```
