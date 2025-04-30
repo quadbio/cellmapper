@@ -11,12 +11,14 @@ and this project adheres to [Semantic Versioning][].
 ## [Unreleased]
 
 ### Added
-- Included tests for the `check` module, and more tests for the main classes.
+- Included tests for the `check` module, and more tests for the main classes {pr}`15`.
+- Implemented the computation of presence scores, following HNOCA-tools {pr}`16`.
+- Add a `groupby` parameter to expression transfer evaluation {pr}`16`.
 
 ## [v0.1.1]
 
 ### Changed
-- Switched to `vcs`-based versioning.
+- Switched to `vcs`-based versioning {pr}`5`.
 
 ### Added
 - Added PyPI badge.

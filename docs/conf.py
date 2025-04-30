@@ -60,6 +60,7 @@ extensions = [
     "IPython.sphinxext.ipython_console_highlighting",
     "sphinxext.opengraph",
     *[p.stem for p in (HERE / "extensions").glob("*.py")],
+    "sphinx.ext.extlinks",
 ]
 
 autosummary_generate = True
@@ -96,6 +97,13 @@ intersphinx_mapping = {
     "anndata": ("https://anndata.readthedocs.io/en/stable/", None),
     "scanpy": ("https://scanpy.readthedocs.io/en/stable/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
+}
+
+# extlinks config
+extlinks = {
+    "issue": (f"{repository_url}/issues/%s", "#%s"),
+    "pr": (f"{repository_url}/pull/%s", "#%s"),
+    "ghuser": ("https://github.com/%s", "@%s"),
 }
 
 # List of patterns, relative to source directory, that match files and
