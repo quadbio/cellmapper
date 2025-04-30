@@ -4,15 +4,17 @@
 [![Coverage][badge-coverage]][coverage]
 [![Pre-commit.ci][badge-pre-commit]][pre-commit]
 [![PyPI][badge-pypi]][pypi]
+[![Documentation][badge-docs]][docs]
 
 [badge-tests]: https://github.com/quadbio/cellmapper/actions/workflows/test.yaml/badge.svg
 [badge-coverage]: https://codecov.io/gh/quadbio/cellmapper/branch/main/graph/badge.svg
 [badge-pre-commit]: https://results.pre-commit.ci/badge/github/quadbio/cellmapper/main.svg
 [badge-pypi]: https://img.shields.io/pypi/v/cellmapper.svg
+[badge-docs]: https://img.shields.io/readthedocs/cellmapper
 
 k-NN-based mapping of cells across representations to tranfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets. Using [faiss][] to compute k-NN graphs, CellMapper takes about 30 seconds to transfer cell type labels from 1.5M cells to 1.5M cells on a single RTX 4090 with 60 GB CPU memory.
 
-Inspired by scanpy's [ingest][] and the [HNOCA-tools][] packages.
+Inspired by scanpy's [ingest][] and the [HNOCA-tools][] packages. Check out the [docs][] to learn more.
 
 ## Installation
 
@@ -48,7 +50,7 @@ cmap = CellMapper(ref, query).fit(
 
 This will transfer data from the reference to the query dataset, including celltype labels stored in ``ref.obs``, a UMAP embedding stored in ``ref.obsm``, and expression values stored in ``ref.X``.
 
-There are many ways to customize this, e.g. use different ways to compute k-NN graphs and to turn them into mapping matrices, and we implement a few methods to evaluate whether your k-NN transfer was sucessful.
+There are many ways to customize this, e.g. use different ways to compute k-NN graphs and to turn them into mapping matrices, and we implement a few methods to evaluate whether your k-NN transfer was sucessful. Check out the [docs][] to learn more.
 
 ## Release notes
 
@@ -66,7 +68,7 @@ Please cite this GitHub repo if you find CellMapper useful for your research.
 [issue tracker]: https://github.com/quadbio/cellmapper/issues
 [tests]: https://github.com/quadbio/cellmapper/actions/workflows/test.yaml
 [changelog]: https://cellmapper.readthedocs.io/en/latest/changelog.html
-[api documentation]: https://cellmapper.readthedocs.io/en/latest/api.html
+[docs]: https://cellmapper.readthedocs.io/
 [pypi]: https://pypi.org/project/cellmapper
 [coverage]: https://codecov.io/gh/quadbio/cellmapper
 [pre-commit]: https://results.pre-commit.ci/latest/github/quadbio/cellmapper/main
