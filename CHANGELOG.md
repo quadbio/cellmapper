@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.1.2]
+
 ### Added
 - Included tests for the `check` module, and more tests for the main classes {pr}`15`.
 - Implemented the computation of presence scores, following HNOCA-tools {pr}`16`.
