@@ -129,6 +129,6 @@ def expected_expression_transfer_metrics():
     return {
         "method": "pearson",
         "average": 0.376,
-        "n_genes": 300,
-        "n_valid_genes": 300,
+        "n_shared_genes": 300,
+        "n_test_genes": 300,
     }

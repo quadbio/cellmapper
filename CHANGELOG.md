@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning][].
 - Included tests for the `check` module, and more tests for the main classes {pr}`15`.
 - Implemented the computation of presence scores, following HNOCA-tools {pr}`16`.
 - Add a `groupby` parameter to expression transfer evaluation {pr}`16`.
+- Add a `test_var_key` parameter to expression transfer evaluation {pr}`19`.
+- Add a tutorial on spatial mapping {pr}`19`.
 
 ## [v0.1.1]
 

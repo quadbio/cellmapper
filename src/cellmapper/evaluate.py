@@ -180,6 +180,7 @@ class CellMapperEvaluationMixin:
         layer_key: str = "X",
         method: Literal["pearson", "spearman", "js", "rmse"] = "pearson",
         groupby: str | None = None,
+        test_var_key: str | None = None,
     ) -> None:
         """
         Evaluate the agreement between imputed and original expression in the query dataset, optionally per group.
@@ -194,6 +195,8 @@ class CellMapperEvaluationMixin:
             Method to quantify agreement. Supported: "pearson", "spearman", "js", "rmse".
         groupby
             Column in self.query.obs to group query cells by (e.g., cell type, batch). If None, computes a single score for all query cells.
+        test_var_key
+            Optional key in self.query.var where True marks test genes. If provided, average metrics are computed only over test genes.
 
         Returns
         -------
@@ -232,6 +235,7 @@ class CellMapperEvaluationMixin:
             shared_genes,
             overall_metrics,
             method,
+            test_var_key,
         )
 
         if groupby is not None:
@@ -289,6 +293,7 @@ class CellMapperEvaluationMixin:
         shared_genes: list[str],
         values: np.ndarray,
         method: str,
+        test_var_key: str | None = None,
     ) -> None:
         """
         Store per-gene and summary expression transfer metrics in the query AnnData object and log the results.
@@ -301,28 +306,57 @@ class CellMapperEvaluationMixin:
             Array of per-gene metric values (e.g., correlation, JSD) or 2D array (genes x groups).
         method
             Name of the method/metric (for logging and summary dict).
+        test_var_key
+            Optional key in self.query.var where True marks test genes. If provided, average metrics are computed only over test genes.
         """
         # Store overall metric in .var
         self.query.var[f"metric_{method}"] = np.nan
         self.query.var.loc[shared_genes, f"metric_{method}"] = values
-        valid_values = values[~np.isnan(values)]
 
-        if valid_values.size == 0:
-            raise ValueError(f"No valid genes for {method} calculation.")
+        # Create a mask for valid (non-nan) values
+        valid_mask = ~np.isnan(values)
+
+        # Create a mask for valid test genes - by default, all non-nan values are valid
+        self.query.var[f"_is_valid_test_gene_{method}"] = False
+        self.query.var.loc[shared_genes, f"_is_valid_test_gene_{method}"] = valid_mask
+
+        # If test_var_key provided, intersect with test gene mask
+        n_test_genes = np.sum(valid_mask)
+        if test_var_key is not None:
+            # Update valid test genes to be both non-nan AND marked as test genes
+            test_mask = self.query.var[test_var_key].astype(bool)
+            valid_test_mask = pd.Series(False, index=self.query.var_names)
+            valid_test_mask.loc[shared_genes] = valid_mask
+
+            # Combine the masks
+            self.query.var[f"_is_valid_test_gene_{method}"] = (
+                self.query.var[f"_is_valid_test_gene_{method}"] & test_mask
+            )
+
+            n_test_genes = self.query.var[f"_is_valid_test_gene_{method}"].sum()
+            if n_test_genes == 0:
+                raise ValueError(f"No valid test genes found using '{test_var_key}'")
+
+        # Get valid values using the combined mask
+        valid_values = self.query.var.loc[self.query.var[f"_is_valid_test_gene_{method}"], f"metric_{method}"]
+
+        # Compute average metric
         avg_value = float(np.mean(valid_values))
+
+        # Store metrics
         self.expression_transfer_metrics = {
             "method": method,
             "average": avg_value,
-            "n_genes": len(shared_genes),
-            "n_valid_genes": int(valid_values.size),
+            "n_shared_genes": len(shared_genes),
+            "n_test_genes": n_test_genes,
         }
 
         logger.info(
-            "Expression transfer evaluation (%s): average value = %.4f (n_genes=%d, n_valid_genes=%d)",
+            "Expression transfer evaluation (%s): average value = %.4f (n_shared_genes=%d, n_test_genes=%d)",
             method,
             avg_value,
             len(shared_genes),
-            int(valid_values.size),
+            n_test_genes,
         )
 
     def estimate_presence_score(
