@@ -59,6 +59,12 @@ optional-dependencies.test = [
   "coverage",
   "pytest",
 ]
+optional-dependencies.tutorials = [
+  "harmony-pytorch",
+  "seaborn",
+  "squidpy",
+]
+
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Documentation = "https://cellmapper.readthedocs.io/"
 urls.Homepage = "https://github.com/quadbio/cellmapper"
