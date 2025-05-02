@@ -313,12 +313,12 @@ class CellMapperEvaluationMixin:
         self.expression_transfer_metrics = {
             "method": method,
             "average": avg_value,
-            "n_genes": len(shared_genes),
+            "n_shared_genes": len(shared_genes),
             "n_valid_genes": int(valid_values.size),
         }
 
         logger.info(
-            "Expression transfer evaluation (%s): average value = %.4f (n_genes=%d, n_valid_genes=%d)",
+            "Expression transfer evaluation (%s): average value = %.4f (n_shared_genes=%d, n_valid_genes=%d)",
             method,
             avg_value,
             len(shared_genes),
