@@ -12,7 +12,7 @@ class TestEvaluate:
         cmap.evaluate_expression_transfer(layer_key=eval_layer, method=method, groupby=groupby)
         metrics = cmap.expression_transfer_metrics
         assert metrics["method"] == method
-        assert metrics["n_valid_genes"] > 0
+        assert metrics["n_test_genes"] > 0
         assert cmap.query_imputed is not None
         assert cmap.query.var[f"metric_{method}"] is not None
         if groupby == "batch":
