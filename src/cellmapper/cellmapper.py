@@ -51,7 +51,6 @@ class CellMapper(CellMapperEvaluationMixin):
         # Initialize result containers
         self.knn: Neighbors | None = None
         self._mapping_matrix: csr_matrix | None = None
-        self.n_neighbors: int | None = None
         self.label_transfer_metrics: dict[str, Any] | None = None
         self.label_transfer_report: pd.DataFrame | None = None
         self.prediction_postfix: str | None = None
@@ -66,7 +65,7 @@ class CellMapper(CellMapperEvaluationMixin):
         query_summary = f"AnnData(n_obs={self.query.n_obs:,}, n_vars={self.query.n_vars:,})"
         return (
             f"CellMapper(ref={ref_summary}, query={query_summary}, "
-            f"Mapping mode: {'self-mapping' if self._is_self_mapping else 'cross-mapping'}, "
+            f"Mapping mode: {'self-mapping' if self._is_self_mapping else 'cross-mapping'}."
         )
 
     @property
@@ -222,7 +221,6 @@ class CellMapper(CellMapperEvaluationMixin):
         - ``n_neighbors``: Number of nearest neighbors.
         - ``only_yx``: Whether only yx neighbors were computed.
         """
-        self.n_neighbors = n_neighbors
         self.only_yx = only_yx
         if use_rep is None:
             if pca_kwargs is None:
@@ -267,7 +265,7 @@ class CellMapper(CellMapperEvaluationMixin):
 
         - ``mapping_matrix``: Mapping matrix for label transfer.
         """
-        if self.knn is None or self.n_neighbors is None:
+        if self.knn is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
 
         logger.info("Computing mapping matrix using method '%s'.", method)
@@ -277,12 +275,13 @@ class CellMapper(CellMapperEvaluationMixin):
                     "Jaccard and HNOCa methods require both x and y neighbors to be computed. Set only_yx=False."
                 )
             xx, yy, xy, yx = self.knn.get_adjacency_matrices()
+            n_neighbors = self.knn.xx.n_neighbors
             jaccard = (yx @ xx.T) + (yy @ xy.T)
 
             if method == "jaccard":
-                jaccard.data /= 4 * self.n_neighbors - jaccard.data
+                jaccard.data /= 4 * n_neighbors - jaccard.data
             elif method == "hnoca":
-                jaccard.data /= 2 * self.n_neighbors - jaccard.data
+                jaccard.data /= 2 * n_neighbors - jaccard.data
                 jaccard.data = jaccard.data**2
             self.mapping_matrix = jaccard
         elif method in ["gaussian", "scarches", "inverse_distance", "random"]:
