@@ -141,13 +141,24 @@ def extract_neighbors_from_distances(distances_matrix: "csr_matrix") -> tuple[np
 
     n_cells = distances_matrix.shape[0]
 
-    # Get the maximum number of neighbors per cell
+    # Get the number of neighbors per cell
     n_neighbors_per_cell = np.diff(distances_matrix.indptr)
     max_n_neighbors = n_neighbors_per_cell.max()
+    min_n_neighbors = n_neighbors_per_cell.min()
+
+    # Check if all cells have the same number of neighbors
+    if max_n_neighbors != min_n_neighbors:
+        logger.warning(
+            "Variable neighborhood sizes detected: min=%d, max=%d neighbors per cell. "
+            "Some cells may have fewer neighbors than others, which could affect results.",
+            min_n_neighbors,
+            max_n_neighbors,
+        )
 
     # Pre-allocate arrays for indices and distances
-    indices = np.zeros((n_cells, max_n_neighbors), dtype=np.int64)
-    distances = np.ones((n_cells, max_n_neighbors), dtype=np.float64) * np.inf
+    # Use -1 as a sentinel value for missing neighbors (better than 0 which is a valid index)
+    indices = np.full((n_cells, max_n_neighbors), -1, dtype=np.int64)
+    distances = np.full((n_cells, max_n_neighbors), np.inf, dtype=np.float64)
 
     # Extract indices and distances for each cell
     for i in range(n_cells):

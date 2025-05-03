@@ -65,6 +65,51 @@ class NeighborsResults:
         """Shape of the adjacency/graph matrices (n_samples, n_targets)."""
         return (self.n_samples, self.n_targets or self.n_samples)
 
+    def _get_valid_entries_mask(self) -> np.ndarray:
+        """
+        Helper method to get a mask of valid entries (neither -1 indices nor infinite distances).
+
+        Returns
+        -------
+        np.ndarray
+            Boolean mask of valid entries with shape (n_samples, n_neighbors).
+        """
+        return (self.indices != -1) & np.isfinite(self.distances)
+
+    def _create_sparse_matrix(self, values: np.ndarray, valid_mask: np.ndarray, dtype=np.float64) -> csr_matrix:
+        """
+        Helper method to create a sparse matrix from values with filtering of invalid entries.
+
+        Parameters
+        ----------
+        values
+            Values for the sparse matrix, same shape as self.indices/self.distances.
+        valid_mask
+            Boolean mask of valid entries, same shape as values.
+        dtype
+            Data type for the matrix values.
+
+        Returns
+        -------
+        csr_matrix
+            Sparse matrix with only valid entries.
+        """
+        # Flatten all arrays
+        flat_indices = self.indices.ravel()
+        flat_values = values.ravel()
+        valid_entries = valid_mask.ravel()
+
+        # Extract valid data
+        valid_indices = flat_indices[valid_entries]
+        valid_values = flat_values[valid_entries]
+
+        # Create row indices
+        rows = np.repeat(np.arange(self.n_samples), self.n_neighbors)
+        rows = rows[valid_entries]
+
+        # Create CSR matrix with only valid entries
+        return csr_matrix((valid_values.astype(dtype), (rows, valid_indices)), shape=self.shape)
+
     @cached_property
     def knn_graph_distances(self, dtype=np.float64) -> csr_matrix:
         """
@@ -80,8 +125,11 @@ class NeighborsResults:
         csr_matrix
             Sparse matrix of distances (shape: n_samples x n_targets).
         """
-        rowptr = np.arange(0, self.n_samples * self.n_neighbors + 1, self.n_neighbors)
-        return csr_matrix((self.distances.ravel().astype(dtype), self.indices.ravel(), rowptr), shape=self.shape)
+        # Get valid entries mask
+        valid_mask = self._get_valid_entries_mask()
+
+        # Create sparse matrix with distances as values
+        return self._create_sparse_matrix(self.distances, valid_mask, dtype=dtype)
 
     def knn_graph_connectivities(
         self,
@@ -106,24 +154,72 @@ class NeighborsResults:
         csr_matrix
             Sparse matrix of connectivities (shape: n_samples x n_targets).
         """
+        # Get valid entries mask
+        valid_mask = self._get_valid_entries_mask()
+
+        # Calculate connectivities based on the kernel type
+        connectivities = self._compute_kernel_values(kernel, valid_mask, **kwargs)
+
+        # Create sparse matrix with calculated connectivities
+        return self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
+
+    def _compute_kernel_values(
+        self, kernel: Literal["gaussian", "scarches", "random", "inverse_distance"], valid_mask: np.ndarray, **kwargs
+    ) -> np.ndarray:
+        """
+        Helper method to compute kernel values based on distances.
+
+        Parameters
+        ----------
+        kernel
+            Kernel type to use for computing connectivities.
+        valid_mask
+            Boolean mask indicating valid entries.
+        **kwargs
+            Additional arguments for kernel computation.
+
+        Returns
+        -------
+        np.ndarray
+            Array of connectivity values with same shape as distances.
+        """
+        # Initialize empty connectivities array
+        connectivities = np.zeros_like(self.distances)
+
+        # Extract finite distances for parameter calculation
+        finite_distances = self.distances[valid_mask]
+        if len(finite_distances) == 0:
+            raise ValueError("No finite distances found in the neighborhood graph")
+
         if kernel == "gaussian":
-            sigma = np.mean(self.distances)
-            connectivities = np.exp(-(self.distances**2) / (2 * sigma**2))
+            # Calculate sigma using only finite distances
+            sigma = np.mean(finite_distances)
+            # Apply Gaussian kernel to valid entries
+            connectivities[valid_mask] = np.exp(-(finite_distances**2) / (2 * sigma**2))
+
         elif kernel == "scarches":
-            sigma = np.std(self.distances)
+            # Calculate sigma using only finite distances
+            sigma = np.std(finite_distances)
             sigma = (2.0 / sigma) ** 2
-            connectivities = np.exp(-self.distances / sigma)
+            # Apply scArches kernel to valid entries
+            connectivities[valid_mask] = np.exp(-finite_distances / sigma)
+
         elif kernel == "random":  # this is for testing purposes
-            connectivities = np.random.rand(*self.distances.shape)  # Random values for connectivities
+            # Generate random connectivities for valid entries
+            connectivities[valid_mask] = np.random.rand(np.sum(valid_mask))
+
         elif kernel == "inverse_distance":
+            # Get epsilon parameter with default
             epsilon = kwargs.get("epsilon", 1e-8)
-            connectivities = 1.0 / (self.distances + epsilon)
+            # Apply inverse distance kernel to valid entries
+            connectivities[valid_mask] = 1.0 / (finite_distances + epsilon)
+
         else:
             raise ValueError(
                 f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'scarches', 'random', 'inverse_distance'."
             )
-        rowptr = np.arange(0, self.n_samples * self.n_neighbors + 1, self.n_neighbors)
-        return csr_matrix((connectivities.ravel().astype(dtype), self.indices.ravel(), rowptr), shape=self.shape)
+
+        return connectivities
 
     def boolean_adjacency(self, dtype=np.float64) -> csr_matrix:
         """
@@ -139,9 +235,14 @@ class NeighborsResults:
         csr_matrix
             Boolean adjacency matrix (shape: n_samples x n_targets), with 1 for each neighbor relationship.
         """
-        rowptr = np.arange(0, self.n_samples * self.n_neighbors + 1, self.n_neighbors)
-        data = np.ones(self.indices.size, dtype=dtype)
-        return csr_matrix((data, self.indices.ravel(), rowptr), shape=self.shape)
+        # Get valid entries mask (only check indices, not distances)
+        valid_mask = self.indices != -1
+
+        # Create array of ones with same shape as indices
+        ones = np.ones_like(self.indices, dtype=dtype)
+
+        # Create sparse matrix with ones as values for valid entries
+        return self._create_sparse_matrix(ones, valid_mask, dtype=dtype)
 
 
 class Neighbors:
