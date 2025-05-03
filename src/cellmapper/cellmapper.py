@@ -21,7 +21,7 @@ from .knn import Neighbors
 class CellMapper(CellMapperEvaluationMixin):
     """Mapping of labels, embeddings, and expression values between reference and query datasets."""
 
-    def __init__(self, ref: AnnData, query: AnnData | None) -> None:
+    def __init__(self, ref: AnnData, query: AnnData | None = None) -> None:
         """
         Initialize the CellMapper class.
 
@@ -66,9 +66,7 @@ class CellMapper(CellMapperEvaluationMixin):
         query_summary = f"AnnData(n_obs={self.query.n_obs:,}, n_vars={self.query.n_vars:,})"
         return (
             f"CellMapper(ref={ref_summary}, query={query_summary}, "
-            f"n_neighbors={self.n_neighbors}, "
-            f"prediction_postfix={self.prediction_postfix}, "
-            f"confidence_postfix={self.confidence_postfix})"
+            f"Mapping mode: {'self-mapping' if self._is_self_mapping else 'cross-mapping'}, "
         )
 
     @property
