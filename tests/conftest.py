@@ -132,3 +132,52 @@ def expected_expression_transfer_metrics():
         "n_shared_genes": 300,
         "n_test_genes": 300,
     }
+
+
+@pytest.fixture
+def evaluation_methods():
+    """Fixture providing a list of evaluation methods for expression transfer."""
+    return ["pearson", "spearman", "js", "rmse"]
+
+
+@pytest.fixture
+def random_imputed_data(query_ref_adata):
+    """Fixture providing random expression data with the right shape for query_imputed testing."""
+    query, ref = query_ref_adata
+    return np.random.rand(query.n_obs, ref.n_vars)
+
+
+@pytest.fixture
+def sparse_imputed_data(query_ref_adata):
+    """Fixture providing a sparse expression matrix for query_imputed testing."""
+    from scipy.sparse import csr_matrix
+
+    query, ref = query_ref_adata
+    return csr_matrix(np.random.rand(query.n_obs, ref.n_vars))
+
+
+@pytest.fixture
+def dataframe_imputed_data(query_ref_adata):
+    """Fixture providing a pandas DataFrame with expression data for query_imputed testing."""
+    import pandas as pd
+
+    query, ref = query_ref_adata
+    return pd.DataFrame(np.random.rand(query.n_obs, ref.n_vars), index=query.obs_names, columns=ref.var_names)
+
+
+@pytest.fixture
+def custom_anndata_imputed(query_ref_adata):
+    """Fixture providing a custom AnnData object for query_imputed testing."""
+    import anndata as ad
+
+    query, ref = query_ref_adata
+    return ad.AnnData(X=np.random.rand(query.n_obs, ref.n_vars), obs=query.obs.copy(), var=ref.var.copy())
+
+
+@pytest.fixture
+def invalid_shape_data(query_ref_adata):
+    """Fixture providing expression matrices with invalid shapes."""
+    query, ref = query_ref_adata
+    too_few_cells = np.random.rand(query.n_obs - 5, ref.n_vars)
+    too_few_genes = np.random.rand(query.n_obs, ref.n_vars - 10)
+    return {"too_few_cells": too_few_cells, "too_few_genes": too_few_genes}

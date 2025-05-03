@@ -35,8 +35,6 @@ def _jensen_shannon_divergence(p: np.ndarray, q: np.ndarray) -> float:
     q = np.clip(q, 0, None)
     if p.sum() == 0 or q.sum() == 0:
         return np.nan
-    p = p / p.sum()
-    q = q / q.sum()
     return jensenshannon(p, q, base=10)
 
 
@@ -226,7 +224,11 @@ class CellMapperEvaluationMixin:
 
         # Helper to compute metrics for a given mask of cells
         def compute_metrics(mask):
-            return np.array([metric_func(original_x[mask, i], imputed_x[mask, i]) for i in range(imputed_x.shape[1])])
+            # Explicitly return as float32 to match DataFrame's dtype
+            return np.array(
+                [metric_func(original_x[mask, i], imputed_x[mask, i]) for i in range(imputed_x.shape[1])],
+                dtype=np.float32,
+            )
 
         # Compute metrics for all cells
         overall_mask = np.ones(original_x.shape[0], dtype=bool)
@@ -273,7 +275,9 @@ class CellMapperEvaluationMixin:
         imputed_x, original_x, shared_genes
         """
         if self.query_imputed is None:
-            raise ValueError("Imputed query data not found. Run transfer_expression() first.")
+            raise ValueError(
+                "Imputed query data not found. Either run transfer_expression() first or set query_imputed manually."
+            )
         shared_genes = list(self.query_imputed.var_names.intersection(self.query.var_names))
         if len(shared_genes) == 0:
             raise ValueError("No shared genes between query_imputed and query.")

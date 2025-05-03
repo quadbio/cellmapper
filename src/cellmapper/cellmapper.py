@@ -13,6 +13,7 @@ from sklearn.preprocessing import OneHotEncoder
 
 from cellmapper.evaluate import CellMapperEvaluationMixin
 from cellmapper.logging import logger
+from cellmapper.utils import create_imputed_anndata
 
 from .knn import Neighbors
 
@@ -43,7 +44,7 @@ class CellMapper(CellMapperEvaluationMixin):
         self.prediction_postfix: str | None = None
         self.confidence_postfix: str | None = None
         self.only_yx: bool | None = None
-        self.query_imputed: AnnData | None = None
+        self._query_imputed: AnnData | None = None
         self.expression_transfer_metrics: dict[str, Any] | None = None
 
     def __repr__(self):
@@ -401,7 +402,7 @@ class CellMapper(CellMapperEvaluationMixin):
 
         Notes
         -----
-        Creates/updates ``self.query_imputed`` with the transferred data in .X.
+        Creates ``self.query_imputed`` with the transferred data in .X.
         The new AnnData object will have the same cells as the query, but the features (genes) of the reference.
         """
         if self.mapping_matrix is None:
@@ -412,29 +413,55 @@ class CellMapper(CellMapperEvaluationMixin):
         ref_layer = self.ref.X if layer_key == "X" else self.ref.layers[layer_key]
         query_layer = self.mapping_matrix @ ref_layer  # shape = (n_query_cells x n_ref_features)
 
-        # Always create or update a new AnnData object for the imputed data, placing result in .X
-        obs = self.query.obs.copy(deep=False)
-        var = self.ref.var.copy(deep=False)
-        if self.query_imputed is None:
-            self.query_imputed = ad.AnnData(
-                X=query_layer,
-                obs=obs,
-                var=var,
-                uns=self.query.uns,
-                obsm=self.query.obsm,
-                varm=self.ref.varm,
-                obsp=None,
-                varp=None,
-            )
-        else:
-            self.query_imputed.X = query_layer
+        # Create query_imputed using the property setter for consistent behavior
+        self.query_imputed = query_layer
+        # Log that the layer was transferred
         logger.info(
-            "Imputed expression for layer '%s' stored in self.query_imputed.X.\n"
-            "Note: The feature space now matches the reference (n_vars=%s), not the query (n_vars=%s).",
+            "Imputed expression for layer '%s' stored in query_imputed.X.\n"
+            "Note: The feature space matches the reference (n_vars=%s), not the query (n_vars=%s).",
             layer_key,
             self.ref.n_vars,
             self.query.n_vars,
         )
+
+    @property
+    def query_imputed(self) -> AnnData | None:
+        """
+        Get the imputed query data.
+
+        Returns
+        -------
+        AnnData or None
+            The imputed query data as an AnnData object, or None if not set.
+        """
+        return self._query_imputed
+
+    @query_imputed.setter
+    def query_imputed(self, value: AnnData | np.ndarray | csr_matrix | pd.DataFrame | None) -> None:
+        """
+        Set the imputed query data with automatic alignment and validation.
+
+        This property allows flexibly setting imputed data as:
+        - An AnnData object
+        - A numpy array or sparse matrix
+        - A pandas DataFrame
+
+        The setter automatically constructs an AnnData object with proper alignment:
+        - Observations (obs, obsm) from the query dataset
+        - Features (var, varm) from the reference dataset
+
+        Parameters
+        ----------
+        value
+            The imputed query data to set. Can be AnnData, numpy array, sparse matrix,
+            pandas DataFrame, or None to unset.
+        """
+        if value is None:
+            self._query_imputed = None
+            return
+
+        # Let the utility function handle all validation and conversion
+        self._query_imputed = create_imputed_anndata(expression_data=value, query_adata=self.query, ref_adata=self.ref)
 
     def fit(
         self,

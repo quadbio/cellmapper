@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from scipy.sparse import issparse
 
 from cellmapper.cellmapper import CellMapper
 
@@ -104,3 +105,148 @@ class TestCellMapper:
         assert set(ref.obs["leiden_transfer"].cat.categories) <= set(ref.obs["leiden"].cat.categories)
         # If mapping to self, labels should match
         assert ref.obs["leiden_transfer"].equals(ref.obs["leiden"])
+
+    def test_query_imputed_property_numpy_array(self, cmap, random_imputed_data):
+        """Test setting query_imputed with a numpy array."""
+        # Set the imputed data using the property setter
+        cmap.query_imputed = random_imputed_data
+
+        # Verify the AnnData object was created correctly
+        assert cmap.query_imputed is not None
+        assert cmap.query_imputed.X.shape == random_imputed_data.shape
+        assert np.allclose(cmap.query_imputed.X, random_imputed_data)
+
+        # Verify metadata was copied correctly
+        assert cmap.query_imputed.obs.equals(cmap.query.obs)
+        assert cmap.query_imputed.var.equals(cmap.ref.var)
+
+        # Test evaluation works with custom imputed data
+        cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
+        assert cmap.expression_transfer_metrics is not None
+        assert cmap.expression_transfer_metrics["method"] == "pearson"
+
+    def test_query_imputed_property_sparse_matrix(self, cmap, sparse_imputed_data):
+        """Test setting query_imputed with a sparse matrix."""
+        # Set the imputed data using the property setter
+        cmap.query_imputed = sparse_imputed_data
+
+        # Verify the AnnData object was created correctly
+        assert cmap.query_imputed is not None
+        assert cmap.query_imputed.X.shape == sparse_imputed_data.shape
+
+        # Test sparse format is preserved
+        assert issparse(cmap.query_imputed.X)
+
+        # Test evaluation works with custom sparse imputed data
+        cmap.evaluate_expression_transfer(layer_key="X", method="spearman")
+        assert cmap.expression_transfer_metrics is not None
+        assert cmap.expression_transfer_metrics["method"] == "spearman"
+
+    def test_query_imputed_property_dataframe(self, cmap, dataframe_imputed_data):
+        """Test setting query_imputed with a pandas DataFrame."""
+        # Set the imputed data using the property setter
+        cmap.query_imputed = dataframe_imputed_data
+
+        # Verify the AnnData object was created correctly
+        assert cmap.query_imputed is not None
+        assert cmap.query_imputed.X.shape == dataframe_imputed_data.shape
+        assert np.allclose(cmap.query_imputed.X, dataframe_imputed_data.values)
+
+        # Test evaluation works with DataFrame-sourced imputed data
+        cmap.evaluate_expression_transfer(layer_key="X", method="js")
+        assert cmap.expression_transfer_metrics is not None
+        assert cmap.expression_transfer_metrics["method"] == "js"
+
+    def test_query_imputed_property_anndata(self, cmap, custom_anndata_imputed):
+        """Test setting query_imputed with a pre-made AnnData object."""
+        # Set the imputed data using the property setter
+        cmap.query_imputed = custom_anndata_imputed
+
+        # Verify the AnnData object was set correctly
+        assert cmap.query_imputed is custom_anndata_imputed
+
+        # Test evaluation works with custom AnnData
+        cmap.evaluate_expression_transfer(layer_key="X", method="rmse")
+        assert cmap.expression_transfer_metrics is not None
+        assert cmap.expression_transfer_metrics["method"] == "rmse"
+
+    def test_query_imputed_invalid_shape(self, cmap, invalid_shape_data):
+        """Test that setting query_imputed with wrong shape raises an error."""
+        # Wrong shape - too few cells
+        with pytest.raises(ValueError, match="shape mismatch"):
+            cmap.query_imputed = invalid_shape_data["too_few_cells"]
+
+        # Wrong shape - too few genes
+        with pytest.raises(ValueError, match="shape mismatch"):
+            cmap.query_imputed = invalid_shape_data["too_few_genes"]
+
+    def test_query_imputed_invalid_type(self, cmap):
+        """Test that setting query_imputed with invalid type raises an error."""
+        # Invalid type - a string
+        with pytest.raises(TypeError):
+            cmap.query_imputed = "not a valid imputed data type"
+
+        # Invalid type - a list
+        with pytest.raises(TypeError):
+            cmap.query_imputed = [1, 2, 3]
+
+    def test_query_imputed_integration_with_transfer_expression(self, cmap, random_imputed_data):
+        """Test that transfer_expression correctly uses the query_imputed property."""
+        # First check query_imputed is None
+        assert cmap.query_imputed is None
+
+        # Transfer expression
+        cmap.transfer_expression(layer_key="X")
+
+        # Verify query_imputed was set
+        assert cmap.query_imputed is not None
+        assert cmap.query_imputed.X.shape == (cmap.query.n_obs, cmap.ref.n_vars)
+
+        if issparse(cmap.query_imputed.X):
+            # For sparse data, we'll convert a small subset to dense for comparison
+            original_data_sample = cmap.query_imputed.X[:5, :5].toarray()
+        else:
+            original_data_sample = cmap.query_imputed.X[:5, :5].copy()
+
+        # Set new random data
+        cmap.query_imputed = random_imputed_data
+
+        # Verify the data was updated (using sample to avoid sparse matrix issues)
+        if issparse(cmap.query_imputed.X):
+            new_data_sample = cmap.query_imputed.X[:5, :5].toarray()
+        else:
+            new_data_sample = cmap.query_imputed.X[:5, :5]
+
+        # The samples should be different since we're using random data
+        assert not np.allclose(original_data_sample, new_data_sample)
+
+    @pytest.mark.parametrize("method", ["pearson", "spearman", "js", "rmse"])
+    def test_evaluate_with_custom_imputation(self, cmap, random_imputed_data, method):
+        """Test evaluation with imputed data from an alternative method."""
+        # Set the imputed data
+        cmap.query_imputed = random_imputed_data
+
+        # Evaluate using the specified method
+        cmap.evaluate_expression_transfer(layer_key="X", method=method)
+        assert cmap.expression_transfer_metrics is not None
+        assert cmap.expression_transfer_metrics["method"] == method
+
+    def test_imputation_without_copying(self, cmap, random_imputed_data):
+        """Test that query_imputed correctly reflects metadata changes."""
+        # Set the imputed data
+        cmap.query_imputed = random_imputed_data
+
+        # Check that obs and var have the same contents
+        assert cmap.query_imputed.obs.equals(cmap.query.obs)
+        assert cmap.query_imputed.var.equals(cmap.ref.var)
+
+        # Modify query.obs
+        test_key = "_test_metadata_update"
+        cmap.query.obs[test_key] = 1
+
+        # Set imputed data again to trigger copy of updated metadata
+        cmap.query_imputed = random_imputed_data
+
+        # Check that new metadata is reflected in the imputed data
+        assert test_key in cmap.query_imputed.obs
+        assert cmap.query_imputed.obs[test_key].iloc[0] == 1
