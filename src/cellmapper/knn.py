@@ -17,7 +17,9 @@ from .utils import extract_neighbors_from_distances
 class NeighborsResults:
     """Nearest neighbors results data store.
 
-    Adapted from the scib-metrics package: https://github.com/YosefLab/scib-metrics
+    Adapted from the scib-metrics package: https://github.com/YosefLab/scib-metrics. Extended to non-square matrices and potentially
+    varying number of neighbors per cell. This class is used to store the results of nearest neighbor searches, including
+    distances and indices of the nearest neighbors. It also provides methods to compute adjacency matrices and connectivities based on the nearest neighbors.
 
     Attributes
     ----------
