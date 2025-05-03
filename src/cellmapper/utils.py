@@ -4,7 +4,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 from anndata import AnnData
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, issparse
 
 from cellmapper.logging import logger
 
@@ -119,3 +119,59 @@ def create_imputed_anndata(
     )
 
     return imputed_adata
+
+
+def extract_neighbors_from_distances(distances_matrix: "csr_matrix") -> tuple[np.ndarray, np.ndarray]:
+    """
+    Extract neighbor indices and distances from a sparse distance matrix.
+
+    Parameters
+    ----------
+    distances_matrix
+        Sparse matrix of distances, typically from adata.obsp['distances']
+
+    Returns
+    -------
+    tuple
+        (indices, distances) in the format expected by NeighborsResults
+    """
+    # Check that the input is a sparse matrix
+    if not issparse(distances_matrix):
+        raise TypeError("Distances matrix must be sparse")
+
+    n_cells = distances_matrix.shape[0]
+
+    # Get the maximum number of neighbors per cell
+    n_neighbors_per_cell = np.diff(distances_matrix.indptr)
+    max_n_neighbors = n_neighbors_per_cell.max()
+
+    # Pre-allocate arrays for indices and distances
+    indices = np.zeros((n_cells, max_n_neighbors), dtype=np.int64)
+    distances = np.ones((n_cells, max_n_neighbors), dtype=np.float64) * np.inf
+
+    # Extract indices and distances for each cell
+    for i in range(n_cells):
+        # Get start and end indices for this cell in the sparse matrix
+        start, end = distances_matrix.indptr[i], distances_matrix.indptr[i + 1]
+
+        # Number of neighbors for this cell
+        n_neighbors = end - start
+
+        if n_neighbors > 0:
+            # Get neighbor indices
+            cell_indices = distances_matrix.indices[start:end]
+
+            # Get distances
+            cell_distances = distances_matrix.data[start:end]
+
+            # Sort by distance if they aren't already sorted
+            if not np.all(np.diff(cell_distances) >= 0):
+                sort_idx = np.argsort(cell_distances)
+                cell_indices = cell_indices[sort_idx]
+                cell_distances = cell_distances[sort_idx]
+
+            # Fill arrays
+            indices[i, :n_neighbors] = cell_indices
+            distances[i, :n_neighbors] = cell_distances
+
+    return indices, distances

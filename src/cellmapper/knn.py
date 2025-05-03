@@ -10,6 +10,7 @@ from scipy.sparse import csr_matrix
 from cellmapper.logging import logger
 
 from .check import check_deps
+from .utils import extract_neighbors_from_distances
 
 
 @dataclass
@@ -146,7 +147,7 @@ class NeighborsResults:
 class Neighbors:
     """Class to compute and store nearest neighbors."""
 
-    def __init__(self, xrep: np.ndarray, yrep: np.ndarray):
+    def __init__(self, xrep: np.ndarray, yrep: np.ndarray | None = None):
         """
         Initialize the Neighbors class.
 
@@ -155,15 +156,56 @@ class Neighbors:
         xrep
             Representation of the reference dataset.
         yrep
-            Representation of the query dataset.
+            Representation of the query dataset. If None, self-mapping will be used.
         """
         self.xrep = xrep
-        self.yrep = yrep
+        # Use xrep for self-mapping if yrep is None
+        self.yrep = yrep if yrep is not None else xrep
 
+        # Initialize neighbor result containers
         self.xx: NeighborsResults | None = None
         self.yy: NeighborsResults | None = None
         self.xy: NeighborsResults | None = None
         self.yx: NeighborsResults | None = None
+
+        # Flag to track if this is a self-mapping case
+        self._is_self_mapping = yrep is None
+
+    @classmethod
+    def from_distances(cls, distances_matrix: "csr_matrix") -> "Neighbors":
+        """
+        Create a Neighbors object from a pre-computed distances matrix.
+
+        Parameters
+        ----------
+        distances_matrix
+            Sparse distance matrix, typically from adata.obsp['distances']
+
+        Returns
+        -------
+        Neighbors
+            A new Neighbors object with pre-computed neighbor information
+        """
+        # Extract indices and distances from the sparse matrix
+        indices, distances = extract_neighbors_from_distances(distances_matrix)
+
+        # Create a minimal Neighbors object for self-mapping
+        n_cells = distances_matrix.shape[0]
+        placeholder_rep = np.zeros((n_cells, 1))
+        neighbors = cls(xrep=placeholder_rep)
+
+        # Create a NeighborsResults object with the extracted data
+        neighbors_result = NeighborsResults(distances=distances, indices=indices)
+
+        # For self-mapping, all neighbor objects should be the same
+        neighbors.xx = neighbors_result
+        neighbors.yy = neighbors_result
+        neighbors.xy = neighbors_result
+        neighbors.yx = neighbors_result
+
+        logger.info("Created Neighbors object from distances matrix with %d cells", n_cells)
+
+        return neighbors
 
     def compute_neighbors(
         self,
@@ -311,5 +353,6 @@ class Neighbors:
         return (
             f"Neighbors(xrep_shape={self.xrep.shape}, yrep_shape={self.yrep.shape}, "
             f"xx={self.xx is not None}, yy={self.yy is not None}, "
-            f"xy={self.xy is not None}, yx={self.yx is not None})"
+            f"xy={self.xy is not None}, yx={self.yx is not None}, "
+            f"self_mapping={self._is_self_mapping})"
         )

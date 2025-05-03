@@ -21,7 +21,7 @@ from .knn import Neighbors
 class CellMapper(CellMapperEvaluationMixin):
     """Mapping of labels, embeddings, and expression values between reference and query datasets."""
 
-    def __init__(self, ref: AnnData, query: AnnData) -> None:
+    def __init__(self, ref: AnnData, query: AnnData | None) -> None:
         """
         Initialize the CellMapper class.
 
@@ -30,12 +30,25 @@ class CellMapper(CellMapperEvaluationMixin):
         ref
             Reference dataset.
         query
-            Query dataset.
+            Optional query dataset.
         """
         self.ref = ref
-        self.query = query
 
-        # Initialize attributes
+        # Handle self-mapping case - use the reference as both source and target
+        self.query = query if query is not None else ref
+        self._is_self_mapping = query is None
+
+        # Update log message to reflect self-mapping if applicable
+        if self._is_self_mapping:
+            logger.info("Initialized CellMapper for self-mapping with %d cells.", ref.n_obs)
+        else:
+            logger.info(
+                "Initialized CellMapper with %d reference cells and %d query cells.",
+                ref.n_obs,
+                self.query.n_obs,
+            )
+
+        # Initialize result containers
         self.knn: Neighbors | None = None
         self._mapping_matrix: csr_matrix | None = None
         self.n_neighbors: int | None = None
@@ -519,3 +532,33 @@ class CellMapper(CellMapperEvaluationMixin):
             )
 
         return self
+
+    def load_precomputed_distances(self, distances_key: str = "distances") -> None:
+        """
+        Load a pre-computed distance matrix from AnnData.obsp.
+
+        Parameters
+        ----------
+        distances_key
+            Key in adata.obsp where the distance matrix is stored
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method can only be used in self-mapping mode (when CellMapper was
+        initialized with query=None).
+        """
+        if not self._is_self_mapping:
+            raise ValueError("Pre-computed distances can only be used in self-mapping mode")
+
+        if distances_key not in self.ref.obsp:
+            raise KeyError(f"Distance matrix '{distances_key}' not found in ref.obsp")
+
+        self.knn = Neighbors.from_distances(self.ref.obsp[distances_key])
+
+        logger.info(
+            "Loaded pre-computed distance matrix from ref.obsp['%s'] with %d cells", distances_key, self.ref.n_obs
+        )
