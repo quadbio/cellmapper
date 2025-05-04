@@ -404,9 +404,10 @@ class TestSelfMapping:
             assert cm.knn.xx.n_neighbors >= 3, "Delaunay should create at least a few connections per cell"
 
         if "set_diag" in squidpy_params and squidpy_params["set_diag"]:
-            # If diagonal is set, cell should be its own neighbor
-            for i in range(min(10, cm.knn.xx.n_samples)):  # Check first 10 cells
-                assert i in cm.knn.xx.indices[i]
+            assert (
+                adata_spatial.obsp["spatial_connectivities"].diagonal()
+                == cm.knn.xx.boolean_adjacency(set_diag=True).diagonal()
+            ).all()
 
         # Test the mapping pipeline
         cm.compute_mappping_matrix(method="gaussian")
