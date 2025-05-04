@@ -56,9 +56,9 @@ class TestCellMapper:
             n_pca_components=n_pca_components,
             pca_kwargs=pca_kwargs,
         )
-        assert joint_pca_key in cmap.ref.obsm
+        assert joint_pca_key in cmap.reference.obsm
         assert joint_pca_key in cmap.query.obsm
-        assert cmap.ref.obsm[joint_pca_key].shape[1] == n_pca_components
+        assert cmap.reference.obsm[joint_pca_key].shape[1] == n_pca_components
         assert cmap.query.obsm[joint_pca_key].shape[1] == n_pca_components
 
     @pytest.mark.parametrize(
@@ -89,8 +89,8 @@ class TestCellMapper:
 
     def test_transfer_labels_self_mapping(self, query_ref_adata):
         """Check mapping to self."""
-        _, ref = query_ref_adata
-        cm = CellMapper(ref, ref)
+        _, reference = query_ref_adata
+        cm = CellMapper(reference, reference)
         cm.fit(
             knn_method="sklearn",
             mapping_method="jaccard",
@@ -99,12 +99,12 @@ class TestCellMapper:
             n_neighbors=1,
             prediction_postfix="transfer",
         )
-        assert "leiden_transfer" in ref.obs
-        assert len(ref.obs["leiden_transfer"]) == len(ref.obs["leiden"])
+        assert "leiden_transfer" in reference.obs
+        assert len(reference.obs["leiden_transfer"]) == len(reference.obs["leiden"])
         # Check that all predicted labels are valid categories
-        assert set(ref.obs["leiden_transfer"].cat.categories) <= set(ref.obs["leiden"].cat.categories)
+        assert set(reference.obs["leiden_transfer"].cat.categories) <= set(reference.obs["leiden"].cat.categories)
         # If mapping to self, labels should match
-        assert ref.obs["leiden_transfer"].equals(ref.obs["leiden"])
+        assert reference.obs["leiden_transfer"].equals(reference.obs["leiden"])
 
     def test_query_imputed_property_numpy_array(self, cmap, random_imputed_data):
         """Test setting query_imputed with a numpy array."""
@@ -118,7 +118,7 @@ class TestCellMapper:
 
         # Verify metadata was copied correctly
         assert cmap.query_imputed.obs.equals(cmap.query.obs)
-        assert cmap.query_imputed.var.equals(cmap.ref.var)
+        assert cmap.query_imputed.var.equals(cmap.reference.var)
 
         # Test evaluation works with custom imputed data
         cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
@@ -200,7 +200,7 @@ class TestCellMapper:
 
         # Verify query_imputed was set
         assert cmap.query_imputed is not None
-        assert cmap.query_imputed.X.shape == (cmap.query.n_obs, cmap.ref.n_vars)
+        assert cmap.query_imputed.X.shape == (cmap.query.n_obs, cmap.reference.n_vars)
 
         if issparse(cmap.query_imputed.X):
             # For sparse data, we'll convert a small subset to dense for comparison
@@ -238,7 +238,7 @@ class TestCellMapper:
 
         # Check that obs and var have the same contents
         assert cmap.query_imputed.obs.equals(cmap.query.obs)
-        assert cmap.query_imputed.var.equals(cmap.ref.var)
+        assert cmap.query_imputed.var.equals(cmap.reference.var)
 
         # Modify query.obs
         test_key = "_test_metadata_update"
