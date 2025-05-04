@@ -66,6 +66,76 @@ def adata_pbmc3k(precomputed_leiden):
 
 
 @pytest.fixture
+def adata_spatial(adata_pbmc3k):
+    """Fixture to load spatial data with realistic coordinates for testing distance calculations.
+
+    This can be used to test the loading of pre-computed distance matrices. It contains toy spatial
+    coordinates and batches, so that neighbors can be computed with either scanpy or squidpy.
+
+    Spatial patterns:
+    - Batch A: Concentric rings structure (inner and outer ring)
+    - Batch B: Grid-like pattern
+
+    The patterns have some overlap in the center of the coordinate system, creating a
+    biologically plausible scenario where different cell types might be present in the same area.
+    """
+    # Get number of observations
+    n_obs = adata_pbmc3k.n_obs
+    n_half = n_obs // 2
+
+    # Introduce batch categories first
+    adata_pbmc3k.obs["batch"] = np.repeat(["A", "B"], repeats=n_half).tolist()
+    adata_pbmc3k.obs["batch"] = adata_pbmc3k.obs["batch"].astype("category")
+
+    # Create coordinates using numpy's random generator with fixed seed
+    rng = np.random.Generator(np.random.PCG64(42))
+    coords = np.zeros((n_obs, 2))
+
+    # First half - batch A: concentric rings structure
+    # Inner ring
+    inner_count = n_half // 3
+    angles_inner = rng.uniform(0, 2 * np.pi, inner_count)
+    radii_inner = rng.normal(5, 1, inner_count)  # Smaller radius with less variation
+    coords[:inner_count, 0] = radii_inner * np.cos(angles_inner)
+    coords[:inner_count, 1] = radii_inner * np.sin(angles_inner)
+
+    # Outer ring
+    outer_count = n_half - inner_count
+    angles_outer = rng.uniform(0, 2 * np.pi, outer_count)
+    radii_outer = rng.normal(15, 2, outer_count)  # Larger radius with more variation
+    coords[inner_count:n_half, 0] = radii_outer * np.cos(angles_outer)
+    coords[inner_count:n_half, 1] = radii_outer * np.sin(angles_outer)
+
+    # Second half - batch B: grid-like structure with noise that overlaps with batch A
+    # Create a grid that overlaps with the inner ring from batch A
+    grid_size = int(np.sqrt(n_half))
+    x_grid = np.linspace(-10, 10, grid_size)
+    y_grid = np.linspace(-10, 10, grid_size)
+
+    # Create all combinations of x and y coordinates
+    xx, yy = np.meshgrid(x_grid, y_grid)
+    grid_points = np.column_stack([xx.ravel(), yy.ravel()])
+
+    # Add some noise to the grid points
+    grid_points += rng.normal(0, 1, size=grid_points.shape)
+
+    # Use the grid points (or as many as needed)
+    max_points = min(grid_points.shape[0], n_half)
+    coords[n_half : n_half + max_points] = grid_points[:max_points]
+
+    # If we need more points than the grid provides, add random points
+    if max_points < n_half:
+        remaining = n_half - max_points
+        random_points = rng.uniform(-10, 10, size=(remaining, 2))
+        coords[n_half + max_points :] = random_points
+
+    # Add the spatial coordinates to the AnnData object
+    adata_pbmc3k.obsm["spatial"] = coords
+
+    return adata_pbmc3k
+
+
+@pytest.fixture
 def query_reference_adata(adata_pbmc3k):
     # Define the number of query cells and genes
     n_query_cells = 500
