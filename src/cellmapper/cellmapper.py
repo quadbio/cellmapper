@@ -199,6 +199,7 @@ class CellMapper(CellMapperEvaluationMixin):
             Data representation based on which to find nearest neighbors. If None, a joint PCA will be computed.
         method
             Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU, "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact neighbor search. With GPU acceleration, "faiss" is usually fastest and more memory efficient than "rapids".
+            All methods return exactly `n_neighbors` neighbors, including the reference cell itself (in self-mapping mode). For faiss and sklearn, distances to self are very small positive numbers, for rapids and sklearn, they are exactly 0.
         metric
             Distance metric to use for nearest neighbors.
         only_yx

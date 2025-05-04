@@ -223,7 +223,7 @@ class NeighborsResults:
 
         return connectivities
 
-    def boolean_adjacency(self, dtype=np.float64) -> csr_matrix:
+    def boolean_adjacency(self, dtype=np.float64, set_diag: bool | None = None) -> csr_matrix:
         """
         Construct a boolean adjacency matrix from neighbor indices.
 
@@ -231,6 +231,10 @@ class NeighborsResults:
         ----------
         dtype
             Data type for the matrix values.
+        set_diag
+            If True, set the diagonal to 1. If False, set the diagonal to 0.
+            If None, do not modify the diagonal - whether it's 0 or 1 depends on the neighbor algorithm.
+            This parameter can only be used with square matrices.
 
         Returns
         -------
@@ -244,7 +248,20 @@ class NeighborsResults:
         ones = np.ones_like(self.indices, dtype=dtype)
 
         # Create sparse matrix with ones as values for valid entries
-        return self._create_sparse_matrix(ones, valid_mask, dtype=dtype)
+        adj_matrix = self._create_sparse_matrix(ones, valid_mask, dtype=dtype)
+
+        # Handle the diagonal based on set_diag parameter
+        if set_diag is not None:
+            # Check that we have a square matrix
+            if self.shape[0] != self.shape[1]:
+                raise ValueError(
+                    "The set_diag parameter can only be used with square matrices "
+                    f"(got shape {self.shape[0]} x {self.shape[1]})."
+                )
+            # Use setdiag to efficiently set diagonal elements
+            adj_matrix.setdiag(1.0 if set_diag else 0.0)
+
+        return adj_matrix
 
 
 class Neighbors:
