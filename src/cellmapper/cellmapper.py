@@ -139,20 +139,20 @@ class CellMapper(CellMapperEvaluationMixin):
 
     def compute_joint_pca(self, n_components: int = 50, key_added: str = "pca_joint", **kwargs) -> None:
         """
-        Compute a joint PCA on the normalized .X matrices of reference and query, using only overlapping genes.
+        Compute a joint PCA on the normalized .X matrices of query and reference, using only overlapping genes.
 
         Parameters
         ----------
         n_components
             Number of principal components to compute.
         key_added
-            Key under which to store the joint PCA embeddings in `.obsm` of both reference and query AnnData objects.
+            Key under which to store the joint PCA embeddings in `.obsm` of both query and reference AnnData objects.
         **kwargs
             Additional keyword arguments to pass to scanpy's `pp.pca` function.
 
         Notes
         -----
-        This method performs an inner join on genes (variables) between the reference and query AnnData objects,
+        This method performs an inner join on genes (variables) between the query and reference AnnData objects,
         concatenates the normalized expression matrices, and computes a joint PCA using Scanpy. The resulting
         PCA embeddings are stored in `.obsm[key_added]` for both objects. This is a fallback and not recommended
         for most use cases. Please provide a biologically meaningful representation if possible.
@@ -226,8 +226,12 @@ class CellMapper(CellMapperEvaluationMixin):
         if use_rep is None:
             if pca_kwargs is None:
                 pca_kwargs = {}
-            self.compute_joint_pca(n_components=n_pca_components, key_added=joint_pca_key, **pca_kwargs)
-            use_rep = joint_pca_key
+            if self._is_self_mapping:
+                sc.pp.pca(self.query, n_comps=n_pca_components, **pca_kwargs)
+                use_rep = "X_pca"
+            else:
+                self.compute_joint_pca(n_components=n_pca_components, key_added=joint_pca_key, **pca_kwargs)
+                use_rep = joint_pca_key
         if use_rep == "X":
             xrep = self.reference.X
             yrep = self.query.X
@@ -428,14 +432,13 @@ class CellMapper(CellMapperEvaluationMixin):
 
         # Create query_imputed using the property setter for consistent behavior
         self.query_imputed = query_layer
-        # Log that the layer was transferred
-        logger.info(
-            "Imputed expression for layer '%s' stored in query_imputed.X.\n"
-            "Note: The feature space matches the reference (n_vars=%s), not the query (n_vars=%s).",
-            layer_key,
-            self.reference.n_vars,
-            self.query.n_vars,
-        )
+
+        # Create base message and conditionally add note about feature spaces for non-self-mapping
+        message = f"Imputed expression for layer '{layer_key}' stored in query_imputed.X."
+        if not self._is_self_mapping:
+            message += f"\nNote: The feature space matches the reference (n_vars={self.reference.n_vars}), not the query (n_vars={self.query.n_vars})."
+
+        logger.info(message)
 
     @property
     def query_imputed(self) -> AnnData | None:
