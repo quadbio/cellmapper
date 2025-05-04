@@ -559,13 +559,13 @@ class CellMapper(CellMapperEvaluationMixin):
         if not self._is_self_mapping:
             raise ValueError("Pre-computed distances can only be used in self-mapping mode")
 
-        if distances_key not in self.reference.obsp:
-            raise KeyError(f"Distance matrix '{distances_key}' not found in reference.obsp")
+        if distances_key not in self.query.obsp:
+            raise KeyError(f"Distance matrix '{distances_key}' not found in query.obsp")
 
-        self.knn = Neighbors.from_distances(self.reference.obsp[distances_key])
+        self.knn = Neighbors.from_distances(self.query.obsp[distances_key])
 
         logger.info(
-            "Loaded pre-computed distance matrix from reference.obsp['%s'] with %d cells",
+            "Loaded pre-computed distance matrix from query.obsp['%s'] with %d cells",
             distances_key,
-            self.reference.n_obs,
+            self.query.n_obs,
         )

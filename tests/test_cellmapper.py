@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import scanpy as sc
 from scipy.sparse import issparse
 
 from cellmapper.cellmapper import CellMapper
@@ -331,3 +332,85 @@ class TestSelfMapping:
         # Test rest of pipeline
         cm.transfer_labels(obs_keys="leiden")
         assert "leiden_pred" in cm.query.obs
+
+    @pytest.mark.parametrize("n_neighbors", [5, 15, 30])
+    def test_load_scanpy_distances(self, adata_spatial, n_neighbors):
+        """Test loading distances computed with scanpy.pp.neighbors."""
+
+        # Compute neighbors with scanpy
+        sc.pp.neighbors(adata_spatial, n_neighbors=n_neighbors, use_rep="X_pca")
+
+        # Initialize CellMapper in self-mapping mode
+        cm = CellMapper(adata_spatial)
+
+        # Load precomputed distances
+        cm.load_precomputed_distances(distances_key="distances")
+
+        # Verify the neighbors were properly loaded. Note that scanpy will return values for n_neighbors-1 neighbors.
+        assert cm.knn is not None
+        assert cm.knn.xx.n_neighbors + 1 == n_neighbors
+
+        # Test the full pipeline with precomputed distances
+        cm.compute_mappping_matrix(method="gaussian")
+        cm.transfer_labels(obs_keys="leiden")
+
+        assert "leiden_pred" in cm.query.obs
+        assert "leiden_conf" in cm.query.obs
+
+    @pytest.mark.parametrize(
+        "squidpy_params",
+        [
+            # Test basic KNN approach
+            {
+                "n_neighs": 10,
+                "library_key": None,
+            },
+            # Test with library_key
+            {"n_neighs": 8, "library_key": "batch"},
+            # Test Delaunay triangulation
+            {
+                "delaunay": True,
+                "library_key": None,
+            },
+            # Test radius with set_diag=True
+            {"radius": 10.0, "set_diag": True, "library_key": "batch", "coord_type": "generic"},
+            # Test percentile with library_key
+            {"percentile": 99.0, "library_key": "batch"},
+        ],
+    )
+    def test_load_squidpy_distances(self, adata_spatial, squidpy_params):
+        """Test loading distances computed with squidpy.gr.spatial_neighbors with various configurations."""
+        # Skip test if squidpy is not installed
+        pytest.importorskip("squidpy")
+        import squidpy as sq
+
+        # Compute spatial neighbors with squidpy using the provided parameters
+        sq.gr.spatial_neighbors(adata_spatial, spatial_key="spatial", **squidpy_params)
+
+        # Initialize CellMapper in self-mapping mode
+        cm = CellMapper(adata_spatial)
+
+        print(adata_spatial)
+
+        # Load precomputed distances
+        cm.load_precomputed_distances(distances_key="spatial_distances")
+
+        # Verify the neighbors were properly loaded
+        assert cm.knn is not None
+
+        # Additional checks based on specific parameters
+        if "delaunay" in squidpy_params and squidpy_params["delaunay"]:
+            # Delaunay triangulation typically has more connections
+            assert cm.knn.xx.n_neighbors >= 3, "Delaunay should create at least a few connections per cell"
+
+        if "set_diag" in squidpy_params and squidpy_params["set_diag"]:
+            # If diagonal is set, cell should be its own neighbor
+            for i in range(min(10, cm.knn.xx.n_samples)):  # Check first 10 cells
+                assert i in cm.knn.xx.indices[i]
+
+        # Test the mapping pipeline
+        cm.compute_mappping_matrix(method="gaussian")
+        cm.transfer_labels(obs_keys="leiden")
+
+        assert "leiden_pred" in cm.query.obs
+        assert "leiden_conf" in cm.query.obs
