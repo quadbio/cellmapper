@@ -33,7 +33,9 @@ class TestQueryToReferenceMapping:
         cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
         assert_metrics_close(cmap.expression_transfer_metrics, expected_expression_transfer_metrics)
 
-    @pytest.mark.parametrize("method", ["gaussian", "scarches", "random", "inverse_distance", "jaccard", "hnoca"])
+    @pytest.mark.parametrize(
+        "method", ["gaussian", "scarches", "random", "inverse_distance", "jaccard", "hnoca", "equal"]
+    )
     def test_compute_mapping_matrix_all_methods(self, cmap, method):
         cmap.compute_mappping_matrix(method=method)
         assert cmap.mapping_matrix is not None
