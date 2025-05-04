@@ -417,7 +417,7 @@ class TestSelfMapping:
         assert "leiden_conf" in cm.query.obs
 
     @pytest.mark.parametrize("include_self", [True, False])
-    def test_load_distances_with_include_self(self, adata_spatial):
+    def test_load_distances_with_include_self(self, adata_spatial, include_self):
         """Test loading precomputed distances with and without self-connections."""
 
         # Compute neighbors with scanpy

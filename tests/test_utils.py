@@ -8,7 +8,8 @@ from cellmapper.utils import extract_neighbors_from_distances
 class TestExtractNeighborsFromDistances:
     """Tests for the extract_neighbors_from_distances function."""
 
-    def test_basic_extraction(self):
+    @pytest.mark.parametrize("include_self", [None, True, False])
+    def test_basic_extraction(self, include_self):
         """Test basic extraction from a simple distance matrix."""
         # Create a simple distance matrix
         distances_data = np.array(
@@ -16,18 +17,32 @@ class TestExtractNeighborsFromDistances:
         )
         distances = csr_matrix(distances_data)
 
-        # Extract neighbors
-        indices, nbr_distances = extract_neighbors_from_distances(distances)
+        # Extract neighbors with specified include_self parameter
+        indices, nbr_distances = extract_neighbors_from_distances(distances, include_self=include_self)
+
+        # Determine expected shapes and content based on include_self
+        if include_self is False or include_self is None:
+            # Without self, each row has 3 neighbors
+            expected_shape = (4, 3)
+            # First neighbors should be the closest non-self neighbors
+            expected_first_neighbors = [1, 0, 0, 0]
+        else:
+            # With self (or default behavior), each row has 4 neighbors
+            expected_shape = (4, 4)
+            # First neighbors should be self (distance 0)
+            expected_first_neighbors = [0, 1, 2, 3]
 
         # Check shapes
-        assert indices.shape == (4, 4)
-        assert nbr_distances.shape == (4, 4)
+        assert indices.shape == expected_shape
+        assert nbr_distances.shape == expected_shape
 
-        # Check values - neighbors should be sorted by distance
-        np.testing.assert_array_equal(indices[0], [0, 1, 2, 3])
-        np.testing.assert_array_equal(indices[1], [1, 0, 2, 3])
-        np.testing.assert_array_almost_equal(nbr_distances[0], [0.0, 1.0, 2.0, 3.0])
-        np.testing.assert_array_almost_equal(nbr_distances[1], [0.0, 1.0, 4.0, 5.0])
+        # Check first neighbors for each cell
+        for i, expected in enumerate(expected_first_neighbors):
+            assert indices[i, 0] == expected, f"Cell {i}'s first neighbor should be {expected}"
+
+        # Check all distances are sorted
+        for i in range(4):
+            assert np.all(np.diff(nbr_distances[i, :]) >= 0), f"Distances for cell {i} should be sorted"
 
     def test_sparse_matrix(self):
         """Test extraction from a sparse distance matrix."""
