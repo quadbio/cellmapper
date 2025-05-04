@@ -415,3 +415,45 @@ class TestSelfMapping:
 
         assert "leiden_pred" in cm.query.obs
         assert "leiden_conf" in cm.query.obs
+
+    @pytest.mark.parametrize("include_self", [True, False])
+    def test_load_distances_with_include_self(self, adata_spatial):
+        """Test loading precomputed distances with and without self-connections."""
+
+        # Compute neighbors with scanpy
+        sc.pp.neighbors(adata_spatial, n_neighbors=10, use_rep="X_pca")
+
+        # Initialize CellMapper in self-mapping mode
+        cm_with_self = CellMapper(adata_spatial)
+        cm_without_self = CellMapper(adata_spatial)
+
+        # Load precomputed distances with different include_self settings
+        cm_with_self.load_precomputed_distances(distances_key="distances", include_self=True)
+        cm_without_self.load_precomputed_distances(distances_key="distances", include_self=False)
+
+        # Verify that neighbors were loaded with or without self
+        assert cm_with_self.knn is not None
+        assert cm_without_self.knn is not None
+
+        # Check that with include_self=True, each cell has itself as a neighbor
+        for i in range(min(10, cm_with_self.knn.xx.n_samples)):  # Check first 10 cells
+            assert i in cm_with_self.knn.xx.indices[i]
+
+        # Check that with include_self=False, no cell has itself as a neighbor
+        for i in range(min(10, cm_without_self.knn.xx.n_samples)):  # Check first 10 cells
+            assert i not in cm_without_self.knn.xx.indices[i]
+
+        # Both should work with the rest of the pipeline
+        cm_with_self.compute_mappping_matrix(method="gaussian")
+        cm_without_self.compute_mappping_matrix(method="gaussian")
+
+        # Compute label transfer for both
+        cm_with_self.transfer_labels(obs_keys="leiden", prediction_postfix="with_self")
+        cm_without_self.transfer_labels(obs_keys="leiden", prediction_postfix="without_self")
+
+        # Both should have created prediction columns
+        assert "leiden_with_self" in adata_spatial.obs
+        assert "leiden_without_self" in adata_spatial.obs
+
+        # The results should be different (excluding self changes the neighborhood)
+        assert not adata_spatial.obs["leiden_with_self"].equals(adata_spatial.obs["leiden_without_self"])

@@ -292,7 +292,7 @@ class Neighbors:
         self._is_self_mapping = yrep is None
 
     @classmethod
-    def from_distances(cls, distances_matrix: "csr_matrix") -> "Neighbors":
+    def from_distances(cls, distances_matrix: "csr_matrix", include_self: bool | None = None) -> "Neighbors":
         """
         Create a Neighbors object from a pre-computed distances matrix.
 
@@ -300,6 +300,10 @@ class Neighbors:
         ----------
         distances_matrix
             Sparse distance matrix, typically from adata.obsp['distances']
+        include_self
+            If True, include self as a neighbor (cells are their own neighbors).
+            If False, exclude self connections, even if present in the distance matrix.
+            If None (default), preserve the original behavior of the distance matrix.
 
         Returns
         -------
@@ -307,7 +311,7 @@ class Neighbors:
             A new Neighbors object with pre-computed neighbor information
         """
         # Extract indices and distances from the sparse matrix
-        indices, distances = extract_neighbors_from_distances(distances_matrix)
+        indices, distances = extract_neighbors_from_distances(distances_matrix, include_self=include_self)
 
         # Create a minimal Neighbors object for self-mapping
         n_cells = distances_matrix.shape[0]
@@ -322,6 +326,9 @@ class Neighbors:
         neighbors.yy = neighbors_result
         neighbors.xy = neighbors_result
         neighbors.yx = neighbors_result
+
+        # Mark as self-mapping
+        neighbors._is_self_mapping = True
 
         logger.info("Created Neighbors object from distances matrix with %d cells", n_cells)
 

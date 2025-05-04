@@ -86,3 +86,30 @@ class TestExtractNeighborsFromDistances:
         # Check that infinite values are excluded
         for i in range(4):
             assert np.all(np.isfinite(nbr_distances[i]))
+
+    def test_include_self_parameter(self):
+        """Test the include_self parameter to control self-connections."""
+        # Create a distance matrix with self-connections (diagonal = 0)
+        distances_data = np.array(
+            [[0.0, 1.0, 2.0, 3.0], [1.0, 0.0, 4.0, 5.0], [2.0, 4.0, 0.0, 6.0], [3.0, 5.0, 6.0, 0.0]]
+        )
+        distances = csr_matrix(distances_data)
+
+        # Test with include_self=True (default)
+        indices_with_self, distances_with_self = extract_neighbors_from_distances(distances, include_self=True)
+
+        # Test with include_self=False
+        indices_without_self, distances_without_self = extract_neighbors_from_distances(distances, include_self=False)
+
+        # With include_self=True, diagonal elements should be included
+        # (self should be the first neighbor because distance is 0)
+        for i in range(4):
+            assert indices_with_self[i, 0] == i
+            assert distances_with_self[i, 0] == 0.0
+
+        # With include_self=False, diagonal elements should be excluded
+        for i in range(4):
+            # The self-index should not be in the neighbors
+            assert i not in indices_without_self[i]
+            # Check that no zero distances are present
+            assert np.all(distances_without_self[i] > 0)

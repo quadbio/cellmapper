@@ -123,7 +123,9 @@ def create_imputed_anndata(
     return imputed_adata
 
 
-def extract_neighbors_from_distances(distances_matrix: "csr_matrix") -> tuple[np.ndarray, np.ndarray]:
+def extract_neighbors_from_distances(
+    distances_matrix: "csr_matrix", include_self: bool | None = None
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Extract neighbor indices and distances from a sparse distance matrix.
 
@@ -131,6 +133,10 @@ def extract_neighbors_from_distances(distances_matrix: "csr_matrix") -> tuple[np
     ----------
     distances_matrix
         Sparse matrix of distances, typically from adata.obsp['distances']
+    include_self
+        If True, include self as a neighbor (even if not present in the distance matrix).
+        If False, exclude self connections (even if present in the distance matrix).
+        If None (default), preserve the original behavior of the distance matrix.
 
     Returns
     -------
@@ -139,44 +145,64 @@ def extract_neighbors_from_distances(distances_matrix: "csr_matrix") -> tuple[np
     """
     # Check that the input is a sparse matrix
     if not issparse(distances_matrix):
-        raise TypeError("Distances matrix must be sparse")
+        raise TypeError("Distances matrix must be a sparse matrix")
+
+    # Verify that the matrix is square
+    if distances_matrix.shape[0] != distances_matrix.shape[1]:
+        raise ValueError(f"Square distance matrix required (got {distances_matrix.shape})")
 
     n_cells = distances_matrix.shape[0]
 
-    # Get the number of neighbors per cell
-    n_neighbors_per_cell = np.diff(distances_matrix.indptr)
-    max_n_neighbors = n_neighbors_per_cell.max()
-    min_n_neighbors = n_neighbors_per_cell.min()
+    # Ensure the matrix is CSR format for efficient row-based operations
+    distances_matrix = distances_matrix.tocsr()
 
-    # Check if all cells have the same number of neighbors
-    if max_n_neighbors != min_n_neighbors:
-        logger.warning(
-            "Variable neighborhood sizes detected: min=%d, max=%d neighbors per cell. "
-            "Some cells may have fewer neighbors than others, which could affect results.",
-            min_n_neighbors,
-            max_n_neighbors,
-        )
+    # First pass: determine the max number of neighbors after including/excluding self
+    max_n_neighbors = 0
+    for i in range(n_cells):
+        start, end = distances_matrix.indptr[i], distances_matrix.indptr[i + 1]
+        cell_indices = distances_matrix.indices[start:end]
 
-    # Pre-allocate arrays for indices and distances
-    # Use -1 as a sentinel value for missing neighbors (better than 0 which is a valid index)
+        # Calculate how many neighbors this cell will have after applying include_self
+        n_neighbors = len(cell_indices)
+        if include_self is True and i not in cell_indices:
+            n_neighbors += 1  # Will add self
+        elif include_self is False and i in cell_indices:
+            n_neighbors -= 1  # Will remove self
+
+        max_n_neighbors = max(max_n_neighbors, n_neighbors)
+
+    # Pre-allocate arrays for indices and distances with the correct size
     indices = np.full((n_cells, max_n_neighbors), -1, dtype=np.int64)
     distances = np.full((n_cells, max_n_neighbors), np.inf, dtype=np.float64)
 
-    # Extract indices and distances for each cell
+    # Second pass: extract and process neighbor data
     for i in range(n_cells):
         # Get start and end indices for this cell in the sparse matrix
         start, end = distances_matrix.indptr[i], distances_matrix.indptr[i + 1]
 
-        # Number of neighbors for this cell
-        n_neighbors = end - start
+        # Get neighbor indices and distances
+        cell_indices = distances_matrix.indices[start:end]
+        cell_distances = distances_matrix.data[start:end]
+
+        # Filter self-connection if requested and present
+        if include_self is False and i in cell_indices:
+            # Find the index of self in the neighbors
+            self_idx = np.where(cell_indices == i)[0]
+            if len(self_idx) > 0:
+                # Remove self from indices and distances
+                mask = cell_indices != i
+                cell_indices = cell_indices[mask]
+                cell_distances = cell_distances[mask]
+        # If include_self is True and self is not in the neighbors, add it
+        elif include_self is True and i not in cell_indices:
+            # Add self with distance 0
+            cell_indices = np.append(cell_indices, i)
+            cell_distances = np.append(cell_distances, 0.0)
+
+        # Number of neighbors after potential filtering
+        n_neighbors = len(cell_indices)
 
         if n_neighbors > 0:
-            # Get neighbor indices
-            cell_indices = distances_matrix.indices[start:end]
-
-            # Get distances
-            cell_distances = distances_matrix.data[start:end]
-
             # Sort by distance if they aren't already sorted
             if not np.all(np.diff(cell_distances) >= 0):
                 sort_idx = np.argsort(cell_distances)

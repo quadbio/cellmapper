@@ -539,14 +539,20 @@ class CellMapper(CellMapperEvaluationMixin):
 
         return self
 
-    def load_precomputed_distances(self, distances_key: str = "distances") -> None:
+    def load_precomputed_distances(self, distances_key: str = "distances", include_self: bool | None = None) -> None:
         """
-        Load a pre-computed distance matrix from AnnData.obsp.
+        Load precomputed distances from the AnnData object.
+
+        This method is only available in self-mapping mode.
 
         Parameters
         ----------
         distances_key
-            Key in adata.obsp where the distance matrix is stored
+            Key in adata.obsp where the precomputed distances are stored.
+        include_self
+            If True, include self as a neighbor (even if not present in the distance matrix).
+            If False, exclude self connections (even if present in the distance matrix).
+            If None (default), preserve the original behavior of the distance matrix.
 
         Returns
         -------
@@ -554,19 +560,22 @@ class CellMapper(CellMapperEvaluationMixin):
 
         Notes
         -----
-        This method can only be used in self-mapping mode (when CellMapper was
-        initialized with query=None).
+        Updates the following attributes:
+
+        - ``knn``: Neighbors object constructed from the precomputed distances.
         """
         if not self._is_self_mapping:
-            raise ValueError("Pre-computed distances can only be used in self-mapping mode")
+            raise ValueError("load_precomputed_distances is only available in self-mapping mode.")
 
-        if distances_key not in self.query.obsp:
-            raise KeyError(f"Distance matrix '{distances_key}' not found in query.obsp")
+        # Access the precomputed distances
+        distances_matrix = self.query.obsp[distances_key]
 
-        self.knn = Neighbors.from_distances(self.query.obsp[distances_key])
+        # Create a neighbors object using the factory method
+        self.knn = Neighbors.from_distances(distances_matrix, include_self=include_self)
 
         logger.info(
-            "Loaded pre-computed distance matrix from query.obsp['%s'] with %d cells",
+            "Loaded precomputed distances from '%s' with %d cells and %d neighbors per cell.",
             distances_key,
-            self.query.n_obs,
+            distances_matrix.shape[0],
+            self.knn.xx.n_neighbors,
         )

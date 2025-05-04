@@ -76,7 +76,9 @@ class TestNeighbors:
         # Test with the neighbors results
         nn_results = neighbors.xx
         assert nn_results.n_samples == n_samples
-        assert nn_results.n_neighbors == n_samples
+        assert (
+            nn_results.n_neighbors + 1 == n_samples
+        )  # the distance to self is exactly 0, so it won't be included as a neighbor
 
         # Get adjacency matrix and verify it reflects the original distances
         adj_matrix = nn_results.knn_graph_distances
@@ -154,9 +156,10 @@ class TestNeighbors:
                     distances_data[i, j] = abs(i - j)  # Simple metric: difference in indices
 
         distances = csr_matrix(distances_data)
+        print(distances)
 
         # Create Neighbors object
-        neighbors = Neighbors.from_distances(distances)
+        neighbors = Neighbors.from_distances(distances, include_self=True)
 
         # Compute connectivities with different kernels
         connectivities = neighbors.xx.knn_graph_connectivities(kernel=kernel)
@@ -167,8 +170,7 @@ class TestNeighbors:
         assert np.all(connectivities.data > 0)
         # Diagonal should be large values (except for random kernel)
         if kernel != "random":
-            diag_indices = list(range(n_samples))
-            diag_values = connectivities[diag_indices, diag_indices].toarray().flatten()
+            diag_values = connectivities.diagonal()
             # Diagonal elements should typically be the largest for each row
             for i in range(n_samples):
                 row = connectivities.getrow(i).toarray().flatten()
