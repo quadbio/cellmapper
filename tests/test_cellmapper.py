@@ -14,7 +14,9 @@ def assert_metrics_close(actual: dict, expected: dict, atol=1e-3):
             assert act == exp, f"{key}: {act} != {exp}"
 
 
-class TestCellMapper:
+class TestQueryToReferenceMapping:
+    """Tests for query-to-reference mapping functionality in CellMapper."""
+
     def test_label_transfer(self, cmap, expected_label_transfer_metrics):
         cmap.transfer_labels(obs_keys="leiden")
         cmap.evaluate_label_transfer(label_key="leiden")
@@ -250,3 +252,82 @@ class TestCellMapper:
         # Check that new metadata is reflected in the imputed data
         assert test_key in cmap.query_imputed.obs
         assert cmap.query_imputed.obs[test_key].iloc[0] == 1
+
+
+class TestSelfMapping:
+    """Tests for self-mapping functionality in CellMapper."""
+
+    def test_self_mapping_initialization(self, adata_pbmc3k):
+        """Test that self-mapping mode is correctly detected when reference=None."""
+        # Initialize with only reference
+        cm = CellMapper(adata_pbmc3k)
+        assert cm._is_self_mapping
+        assert cm.reference is adata_pbmc3k
+        assert cm.query is adata_pbmc3k
+
+    def test_identity_mapping(self, adata_pbmc3k):
+        """Test that with n_neighbors=1, self-mapping preserves original labels exactly."""
+        # Initialize with self-mapping
+        cm = CellMapper(adata_pbmc3k)
+        cm.fit(
+            knn_method="sklearn",
+            mapping_method="jaccard",
+            obs_keys="leiden",
+            use_rep="X_pca",
+            n_neighbors=1,
+            prediction_postfix="transfer",
+        )
+
+        # With n_neighbors=1, labels should be perfectly preserved
+        assert "leiden_transfer" in adata_pbmc3k.obs
+        assert len(adata_pbmc3k.obs["leiden_transfer"]) == len(adata_pbmc3k.obs["leiden"])
+        # Check that all predicted labels are valid categories
+        assert set(adata_pbmc3k.obs["leiden_transfer"].cat.categories) <= set(adata_pbmc3k.obs["leiden"].cat.categories)
+        # Labels should match exactly when n_neighbors=1
+        assert adata_pbmc3k.obs["leiden_transfer"].equals(adata_pbmc3k.obs["leiden"])
+
+    def test_all_operations_self_mapping(self, adata_pbmc3k):
+        """Test the full pipeline in self-mapping mode."""
+        # Initialize with self-mapping
+        cm = CellMapper(adata_pbmc3k)
+
+        # Test with typical parameters
+        cm.compute_neighbors(n_neighbors=5, use_rep="X_pca")
+        cm.compute_mappping_matrix(method="gaussian")
+
+        # Test label transfer
+        cm.transfer_labels(obs_keys="leiden")
+        assert "leiden_pred" in cm.query.obs
+        # With n_neighbors>1, self-mapped labels might not be 100% identical
+
+        # Test embedding transfer
+        cm.transfer_embeddings(obsm_keys="X_pca")
+        assert "X_pca_pred" in cm.query.obsm
+
+        # Test expression transfer
+        cm.transfer_expression(layer_key="X")
+        assert cm.query_imputed is not None
+
+        # Test evaluation functions
+        cm.evaluate_label_transfer(label_key="leiden")
+        assert cm.label_transfer_metrics is not None
+
+        cm.evaluate_expression_transfer(layer_key="X", method="pearson")
+        assert cm.expression_transfer_metrics is not None
+
+    def test_self_mapping_without_rep(self, adata_pbmc3k):
+        """Test self-mapping when use_rep=None, testing automatic PCA computation."""
+        # Initialize with self-mapping
+        cm = CellMapper(adata_pbmc3k)
+
+        # Test with no representation provided
+        cm.compute_neighbors(n_neighbors=5, use_rep=None, n_pca_components=10)
+        cm.compute_mappping_matrix(method="gaussian")
+
+        # Verify joint PCA was computed
+        assert "X_pca" in adata_pbmc3k.obsm
+        assert adata_pbmc3k.obsm["X_pca"].shape[1] == 10
+
+        # Test rest of pipeline
+        cm.transfer_labels(obs_keys="leiden")
+        assert "leiden_pred" in cm.query.obs
