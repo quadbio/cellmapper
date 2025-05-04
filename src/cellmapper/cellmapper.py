@@ -244,7 +244,7 @@ class CellMapper(CellMapperEvaluationMixin):
 
     def compute_mappping_matrix(
         self,
-        method: Literal["jaccard", "gaussian", "scarches", "inverse_distance", "random", "hnoca"] = "gaussian",
+        method: Literal["jaccard", "gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"] = "gaussian",
     ) -> None:
         """
         Compute the mapping matrix for label transfer.
@@ -255,11 +255,12 @@ class CellMapper(CellMapperEvaluationMixin):
             Method to use for computing the mapping matrix. Options include:
 
             - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
-            - "gaussian": Gaussian kernel with adaptive bandwidth. Loosely inspired by MAGIC :cite:`van2018recovering`
+            - "gaussian": Gaussian kernel with (global) bandwith equal to the mean distance.
             - "scarches": scArches kernel. Inspired by scArches :cite:`lotfollahi2022mapping`
             - "inverse_distance": Inverse distance kernel.
             - "random": Random kernel, useful for testing.
             - "hnoca": HNOCA kernel. Inspired by HNOCA-tools :cite:`he2024integrated`
+            - "equal": All neighbors are equally weighted (1/n_neighbors).
 
         Returns
         -------
@@ -290,7 +291,7 @@ class CellMapper(CellMapperEvaluationMixin):
                 jaccard.data /= 2 * n_neighbors - jaccard.data
                 jaccard.data = jaccard.data**2
             self.mapping_matrix = jaccard
-        elif method in ["gaussian", "scarches", "inverse_distance", "random"]:
+        elif method in ["gaussian", "scarches", "inverse_distance", "random", "equal"]:
             self.mapping_matrix = self.knn.yx.knn_graph_connectivities(kernel=method)
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
