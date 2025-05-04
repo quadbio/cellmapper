@@ -351,8 +351,10 @@ class Neighbors:
             logger.info("Using %s to compute %d neighbors.", method, n_neighbors)
 
             if method == "rapids":
-                check_deps("rapids")
+                check_deps("cuml")
                 import cuml as cm
+
+                check_deps("cupy")
                 import cupy as cp
 
                 xrep_gpu = cp.asarray(self.xrep)
