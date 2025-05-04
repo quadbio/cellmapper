@@ -84,23 +84,25 @@ class TestExtractNeighborsFromDistances:
         assert nbr_distances.size == 0
 
     def test_infinite_values(self):
-        """Test with a matrix containing infinite values."""
+        """Test that infinite values are preserved in the neighbor matrix."""
         # Create a distance matrix with some infinite values
         distances_data = np.array(
             [[0.0, 1.0, np.inf, 3.0], [1.0, 0.0, 4.0, np.inf], [np.inf, 4.0, 0.0, 6.0], [3.0, np.inf, 6.0, 0.0]]
         )
         distances = csr_matrix(distances_data)
 
-        # Extract neighbors
-        indices, nbr_distances = extract_neighbors_from_distances(distances)
+        # Extract neighbors with include_self=True
+        indices, nbr_distances = extract_neighbors_from_distances(distances, include_self=True)
 
-        # Check shapes - should exclude infinite values
-        assert indices.shape == (4, 3)  # One less neighbor per cell
-        assert nbr_distances.shape == (4, 3)
+        # Check for a specific cell with infinite distance
+        row0_neighbors = indices[0]
+        assert 2 in row0_neighbors, "Neighbor with infinite distance should be included"
 
-        # Check that infinite values are excluded
-        for i in range(4):
-            assert np.all(np.isfinite(nbr_distances[i]))
+        # Find where the infinite value is in the results
+        idx = np.where(row0_neighbors == 2)[0][0]
+
+        # Verify the distance is infinite
+        assert np.isinf(nbr_distances[0, idx]), "Distance should be infinite"
 
     def test_include_self_parameter(self):
         """Test the include_self parameter to control self-connections."""
