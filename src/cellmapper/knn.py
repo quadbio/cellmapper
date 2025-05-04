@@ -199,6 +199,10 @@ class NeighborsResults:
             # Apply Gaussian kernel to valid entries
             connectivities[valid_mask] = np.exp(-(finite_distances**2) / (2 * sigma**2))
 
+        elif kernel == "equal":
+            # Set connectivities to 1 for valid entries
+            connectivities[valid_mask] = 1.0
+
         elif kernel == "scarches":
             # Calculate sigma using only finite distances
             sigma = np.std(finite_distances)
@@ -218,7 +222,7 @@ class NeighborsResults:
 
         else:
             raise ValueError(
-                f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'scarches', 'random', 'inverse_distance'."
+                f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'scarches', 'random', 'inverse_distance', 'equal'."
             )
 
         return connectivities
