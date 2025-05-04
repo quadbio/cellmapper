@@ -29,8 +29,8 @@ class TestEvaluate:
     )
     def test_presence_score_overall(self, cmap, log, percentile):
         cmap.estimate_presence_score(log=log, percentile=percentile)
-        assert "presence_score" in cmap.ref.obs
-        scores = cmap.ref.obs["presence_score"]
+        assert "presence_score" in cmap.reference.obs
+        scores = cmap.reference.obs["presence_score"]
         assert isinstance(scores, pd.Series | np.ndarray)
         assert np.all((scores >= 0) & (scores <= 1))
         assert not np.all(scores == 0)  # Should not be all zeros
@@ -39,10 +39,10 @@ class TestEvaluate:
     def test_presence_score_groupby(self, cmap, groupby):
         cmap.estimate_presence_score(groupby=groupby)
         # Overall score should always be present in .obs
-        assert "presence_score" in cmap.ref.obs
+        assert "presence_score" in cmap.reference.obs
         # Per-group scores should be present in .obsm
-        assert "presence_score" in cmap.ref.obsm
-        df = cmap.ref.obsm["presence_score"]
+        assert "presence_score" in cmap.reference.obsm
+        df = cmap.reference.obsm["presence_score"]
         assert isinstance(df, pd.DataFrame)
         assert all(np.all((df[col] >= 0) & (df[col] <= 1)) for col in df.columns)
         # Columns should match group names

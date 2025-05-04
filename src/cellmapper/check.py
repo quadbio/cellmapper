@@ -57,14 +57,17 @@ class Checker:
 
 
 INSTALL_HINTS = types.SimpleNamespace(
-    rapids="To speed up k-NN search on GPU, you may install rapids following the guide from "
-    "https://docs.rapids.ai/install/. Note that you will only need cuML.",
+    cuml="To speed up k-NN search on GPU, you may install cuML following the guide from "
+    "https://docs.rapids.ai/install/.",
+    cupy="To speed up k-NN search on GPU, you may install cuPy following the guide from "
+    "https://docs.rapids.ai/install/.",
     faiss="To speed up k-NN search on GPU, you may install faiss following the guide from "
     "https://github.com/facebookresearch/faiss/blob/main/INSTALL.md",
 )
 
 CHECKERS = {
-    "rapids": Checker("rapids", vmin=None, install_hint=INSTALL_HINTS.rapids),
+    "cuml": Checker("cuml", vmin=None, install_hint=INSTALL_HINTS.cuml),
+    "cupy": Checker("cupy", vmin=None, install_hint=INSTALL_HINTS.cupy),
     "faiss": Checker("faiss", package_name="faiss", vmin="1.7.0", install_hint=INSTALL_HINTS.faiss),
 }
 

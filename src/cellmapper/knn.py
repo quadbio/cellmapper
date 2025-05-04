@@ -10,13 +10,16 @@ from scipy.sparse import csr_matrix
 from cellmapper.logging import logger
 
 from .check import check_deps
+from .utils import extract_neighbors_from_distances
 
 
 @dataclass
 class NeighborsResults:
     """Nearest neighbors results data store.
 
-    Adapted from the scib-metrics package: https://github.com/YosefLab/scib-metrics
+    Adapted from the scib-metrics package: https://github.com/YosefLab/scib-metrics. Extended to non-square matrices and potentially
+    varying number of neighbors per cell. This class is used to store the results of nearest neighbor searches, including
+    distances and indices of the nearest neighbors. It also provides methods to compute adjacency matrices and connectivities based on the nearest neighbors.
 
     Attributes
     ----------
@@ -64,6 +67,51 @@ class NeighborsResults:
         """Shape of the adjacency/graph matrices (n_samples, n_targets)."""
         return (self.n_samples, self.n_targets or self.n_samples)
 
+    def _get_valid_entries_mask(self) -> np.ndarray:
+        """
+        Helper method to get a mask of valid entries (neither -1 indices nor infinite distances).
+
+        Returns
+        -------
+        np.ndarray
+            Boolean mask of valid entries with shape (n_samples, n_neighbors).
+        """
+        return (self.indices != -1) & np.isfinite(self.distances)
+
+    def _create_sparse_matrix(self, values: np.ndarray, valid_mask: np.ndarray, dtype=np.float64) -> csr_matrix:
+        """
+        Helper method to create a sparse matrix from values with filtering of invalid entries.
+
+        Parameters
+        ----------
+        values
+            Values for the sparse matrix, same shape as self.indices/self.distances.
+        valid_mask
+            Boolean mask of valid entries, same shape as values.
+        dtype
+            Data type for the matrix values.
+
+        Returns
+        -------
+        csr_matrix
+            Sparse matrix with only valid entries.
+        """
+        # Flatten all arrays
+        flat_indices = self.indices.ravel()
+        flat_values = values.ravel()
+        valid_entries = valid_mask.ravel()
+
+        # Extract valid data
+        valid_indices = flat_indices[valid_entries]
+        valid_values = flat_values[valid_entries]
+
+        # Create row indices
+        rows = np.repeat(np.arange(self.n_samples), self.n_neighbors)
+        rows = rows[valid_entries]
+
+        # Create CSR matrix with only valid entries
+        return csr_matrix((valid_values.astype(dtype), (rows, valid_indices)), shape=self.shape)
+
     @cached_property
     def knn_graph_distances(self, dtype=np.float64) -> csr_matrix:
         """
@@ -79,8 +127,11 @@ class NeighborsResults:
         csr_matrix
             Sparse matrix of distances (shape: n_samples x n_targets).
         """
-        rowptr = np.arange(0, self.n_samples * self.n_neighbors + 1, self.n_neighbors)
-        return csr_matrix((self.distances.ravel().astype(dtype), self.indices.ravel(), rowptr), shape=self.shape)
+        # Get valid entries mask
+        valid_mask = self._get_valid_entries_mask()
+
+        # Create sparse matrix with distances as values
+        return self._create_sparse_matrix(self.distances, valid_mask, dtype=dtype)
 
     def knn_graph_connectivities(
         self,
@@ -105,26 +156,74 @@ class NeighborsResults:
         csr_matrix
             Sparse matrix of connectivities (shape: n_samples x n_targets).
         """
+        # Get valid entries mask
+        valid_mask = self._get_valid_entries_mask()
+
+        # Calculate connectivities based on the kernel type
+        connectivities = self._compute_kernel_values(kernel, valid_mask, **kwargs)
+
+        # Create sparse matrix with calculated connectivities
+        return self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
+
+    def _compute_kernel_values(
+        self, kernel: Literal["gaussian", "scarches", "random", "inverse_distance"], valid_mask: np.ndarray, **kwargs
+    ) -> np.ndarray:
+        """
+        Helper method to compute kernel values based on distances.
+
+        Parameters
+        ----------
+        kernel
+            Kernel type to use for computing connectivities.
+        valid_mask
+            Boolean mask indicating valid entries.
+        **kwargs
+            Additional arguments for kernel computation.
+
+        Returns
+        -------
+        np.ndarray
+            Array of connectivity values with same shape as distances.
+        """
+        # Initialize empty connectivities array
+        connectivities = np.zeros_like(self.distances)
+
+        # Extract finite distances for parameter calculation
+        finite_distances = self.distances[valid_mask]
+        if len(finite_distances) == 0:
+            raise ValueError("No finite distances found in the neighborhood graph")
+
         if kernel == "gaussian":
-            sigma = np.mean(self.distances)
-            connectivities = np.exp(-(self.distances**2) / (2 * sigma**2))
+            # Calculate sigma using only finite distances
+            sigma = np.mean(finite_distances)
+            # Apply Gaussian kernel to valid entries
+            connectivities[valid_mask] = np.exp(-(finite_distances**2) / (2 * sigma**2))
+
         elif kernel == "scarches":
-            sigma = np.std(self.distances)
+            # Calculate sigma using only finite distances
+            sigma = np.std(finite_distances)
             sigma = (2.0 / sigma) ** 2
-            connectivities = np.exp(-self.distances / sigma)
+            # Apply scArches kernel to valid entries
+            connectivities[valid_mask] = np.exp(-finite_distances / sigma)
+
         elif kernel == "random":  # this is for testing purposes
-            connectivities = np.random.rand(*self.distances.shape)  # Random values for connectivities
+            # Generate random connectivities for valid entries
+            connectivities[valid_mask] = np.random.rand(np.sum(valid_mask))
+
         elif kernel == "inverse_distance":
+            # Get epsilon parameter with default
             epsilon = kwargs.get("epsilon", 1e-8)
-            connectivities = 1.0 / (self.distances + epsilon)
+            # Apply inverse distance kernel to valid entries
+            connectivities[valid_mask] = 1.0 / (finite_distances + epsilon)
+
         else:
             raise ValueError(
                 f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'scarches', 'random', 'inverse_distance'."
             )
-        rowptr = np.arange(0, self.n_samples * self.n_neighbors + 1, self.n_neighbors)
-        return csr_matrix((connectivities.ravel().astype(dtype), self.indices.ravel(), rowptr), shape=self.shape)
 
-    def boolean_adjacency(self, dtype=np.float64) -> csr_matrix:
+        return connectivities
+
+    def boolean_adjacency(self, dtype=np.float64, set_diag: bool | None = None) -> csr_matrix:
         """
         Construct a boolean adjacency matrix from neighbor indices.
 
@@ -132,21 +231,43 @@ class NeighborsResults:
         ----------
         dtype
             Data type for the matrix values.
+        set_diag
+            If True, set the diagonal to 1. If False, set the diagonal to 0.
+            If None, do not modify the diagonal - whether it's 0 or 1 depends on the neighbor algorithm.
+            This parameter can only be used with square matrices.
 
         Returns
         -------
         csr_matrix
             Boolean adjacency matrix (shape: n_samples x n_targets), with 1 for each neighbor relationship.
         """
-        rowptr = np.arange(0, self.n_samples * self.n_neighbors + 1, self.n_neighbors)
-        data = np.ones(self.indices.size, dtype=dtype)
-        return csr_matrix((data, self.indices.ravel(), rowptr), shape=self.shape)
+        # Get valid entries mask (only check indices, not distances)
+        valid_mask = self.indices != -1
+
+        # Create array of ones with same shape as indices
+        ones = np.ones_like(self.indices, dtype=dtype)
+
+        # Create sparse matrix with ones as values for valid entries
+        adj_matrix = self._create_sparse_matrix(ones, valid_mask, dtype=dtype)
+
+        # Handle the diagonal based on set_diag parameter
+        if set_diag is not None:
+            # Check that we have a square matrix
+            if self.shape[0] != self.shape[1]:
+                raise ValueError(
+                    "The set_diag parameter can only be used with square matrices "
+                    f"(got shape {self.shape[0]} x {self.shape[1]})."
+                )
+            # Use setdiag to efficiently set diagonal elements
+            adj_matrix.setdiag(1.0 if set_diag else 0.0)
+
+        return adj_matrix
 
 
 class Neighbors:
     """Class to compute and store nearest neighbors."""
 
-    def __init__(self, xrep: np.ndarray, yrep: np.ndarray):
+    def __init__(self, xrep: np.ndarray, yrep: np.ndarray | None = None):
         """
         Initialize the Neighbors class.
 
@@ -155,15 +276,63 @@ class Neighbors:
         xrep
             Representation of the reference dataset.
         yrep
-            Representation of the query dataset.
+            Representation of the query dataset. If None, self-mapping will be used.
         """
         self.xrep = xrep
-        self.yrep = yrep
+        # Use xrep for self-mapping if yrep is None
+        self.yrep = yrep if yrep is not None else xrep
 
+        # Initialize neighbor result containers
         self.xx: NeighborsResults | None = None
         self.yy: NeighborsResults | None = None
         self.xy: NeighborsResults | None = None
         self.yx: NeighborsResults | None = None
+
+        # Flag to track if this is a self-mapping case
+        self._is_self_mapping = yrep is None
+
+    @classmethod
+    def from_distances(cls, distances_matrix: "csr_matrix", include_self: bool | None = None) -> "Neighbors":
+        """
+        Create a Neighbors object from a pre-computed distances matrix.
+
+        Parameters
+        ----------
+        distances_matrix
+            Sparse distance matrix, typically from adata.obsp['distances']
+        include_self
+            If True, include self as a neighbor (cells are their own neighbors).
+            If False, exclude self connections, even if present in the distance matrix.
+            If None (default), preserve the original behavior of the distance matrix.
+
+        Returns
+        -------
+        Neighbors
+            A new Neighbors object with pre-computed neighbor information
+        """
+        # Extract indices and distances from the sparse matrix
+        indices, distances = extract_neighbors_from_distances(distances_matrix, include_self=include_self)
+
+        # Create a minimal Neighbors object for self-mapping
+        n_cells = distances_matrix.shape[0]
+        placeholder_rep = np.zeros((n_cells, 1))
+        neighbors = cls(xrep=placeholder_rep)
+
+        # Create a NeighborsResults object with the extracted data
+        neighbors_result = NeighborsResults(distances=distances, indices=indices)
+
+        # For self-mapping, all neighbor objects should be the same
+        neighbors.xx = neighbors_result
+        neighbors.yy = neighbors_result
+        neighbors.xy = neighbors_result
+        neighbors.yx = neighbors_result
+
+        # Mark as self-mapping
+        neighbors._is_self_mapping = True
+
+        logger.info("Created Neighbors object from distances matrix with %d cells", n_cells)
+
+        return neighbors
 
     def compute_neighbors(
         self,
@@ -206,8 +375,10 @@ class Neighbors:
             logger.info("Using %s to compute %d neighbors.", method, n_neighbors)
 
             if method == "rapids":
-                check_deps("rapids")
+                check_deps("cuml")
                 import cuml as cm
+
+                check_deps("cupy")
                 import cupy as cp
 
                 xrep_gpu = cp.asarray(self.xrep)
@@ -311,5 +482,6 @@ class Neighbors:
         return (
             f"Neighbors(xrep_shape={self.xrep.shape}, yrep_shape={self.yrep.shape}, "
             f"xx={self.xx is not None}, yy={self.yy is not None}, "
-            f"xy={self.xy is not None}, yx={self.yx is not None})"
+            f"xy={self.xy is not None}, yx={self.yx is not None}, "
+            f"self_mapping={self._is_self_mapping})"
         )

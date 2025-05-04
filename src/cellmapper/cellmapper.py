@@ -13,6 +13,7 @@ from sklearn.preprocessing import OneHotEncoder
 
 from cellmapper.evaluate import CellMapperEvaluationMixin
 from cellmapper.logging import logger
+from cellmapper.utils import create_imputed_anndata
 
 from .knn import Neighbors
 
@@ -20,42 +21,53 @@ from .knn import Neighbors
 class CellMapper(CellMapperEvaluationMixin):
     """Mapping of labels, embeddings, and expression values between reference and query datasets."""
 
-    def __init__(self, ref: AnnData, query: AnnData) -> None:
+    def __init__(self, query: AnnData, reference: AnnData | None = None) -> None:
         """
         Initialize the CellMapper class.
 
         Parameters
         ----------
-        ref
-            Reference dataset.
         query
             Query dataset.
+        reference
+            Optional reference dataset.
         """
-        self.ref = ref
         self.query = query
 
-        # Initialize attributes
+        # Handle self-mapping case - use the query as both source and target
+        self.reference = reference if reference is not None else query
+        self._is_self_mapping = reference is None
+
+        # Update log message to reflect self-mapping if applicable
+        if self._is_self_mapping:
+            logger.info("Initialized CellMapper for self-mapping with %d cells.", query.n_obs)
+        else:
+            logger.info(
+                "Initialized CellMapper with %d query cells and %d reference cells.",
+                query.n_obs,
+                self.reference.n_obs,
+            )
+
+        # Initialize result containers
         self.knn: Neighbors | None = None
         self._mapping_matrix: csr_matrix | None = None
-        self.n_neighbors: int | None = None
         self.label_transfer_metrics: dict[str, Any] | None = None
         self.label_transfer_report: pd.DataFrame | None = None
         self.prediction_postfix: str | None = None
         self.confidence_postfix: str | None = None
         self.only_yx: bool | None = None
-        self.query_imputed: AnnData | None = None
+        self._query_imputed: AnnData | None = None
         self.expression_transfer_metrics: dict[str, Any] | None = None
 
     def __repr__(self):
         """Return a concise string representation of the CellMapper object."""
-        ref_summary = f"AnnData(n_obs={self.ref.n_obs:,}, n_vars={self.ref.n_vars:,})"
         query_summary = f"AnnData(n_obs={self.query.n_obs:,}, n_vars={self.query.n_vars:,})"
-        return (
-            f"CellMapper(ref={ref_summary}, query={query_summary}, "
-            f"n_neighbors={self.n_neighbors}, "
-            f"prediction_postfix={self.prediction_postfix}, "
-            f"confidence_postfix={self.confidence_postfix})"
-        )
+
+        if self._is_self_mapping:
+            return f"CellMapper(self-mapping, data={query_summary}, "
+        else:
+            reference_summary = f"AnnData(n_obs={self.reference.n_obs:,}, n_vars={self.reference.n_vars:,})"
+            return f"CellMapper(query={query_summary}, reference={reference_summary}"
 
     @property
     def mapping_matrix(self):
@@ -95,7 +107,7 @@ class CellMapper(CellMapperEvaluationMixin):
         ----------
         mapping_matrix
             The mapping matrix to validate and normalize.
-        n_ref_cells
+        n_reference_cells
             Number of reference cells (rows).
         n_query_cells
             Number of query cells (columns).
@@ -105,9 +117,9 @@ class CellMapper(CellMapperEvaluationMixin):
         Validated and row-normalized mapping matrix.
         """
         # Validate the shape
-        if mapping_matrix.shape != (self.query.n_obs, self.ref.n_obs):
+        if mapping_matrix.shape != (self.query.n_obs, self.reference.n_obs):
             raise ValueError(
-                f"Mapping matrix shape mismatch: expected ({self.query.n_obs}, {self.ref.n_obs}), "
+                f"Mapping matrix shape mismatch: expected ({self.query.n_obs}, {self.reference.n_obs}), "
                 f"but got {mapping_matrix.shape}."
             )
 
@@ -127,20 +139,20 @@ class CellMapper(CellMapperEvaluationMixin):
 
     def compute_joint_pca(self, n_components: int = 50, key_added: str = "pca_joint", **kwargs) -> None:
         """
-        Compute a joint PCA on the normalized .X matrices of ref and query, using only overlapping genes.
+        Compute a joint PCA on the normalized .X matrices of query and reference, using only overlapping genes.
 
         Parameters
         ----------
         n_components
             Number of principal components to compute.
         key_added
-            Key under which to store the joint PCA embeddings in `.obsm` of both ref and query AnnData objects.
+            Key under which to store the joint PCA embeddings in `.obsm` of both query and reference AnnData objects.
         **kwargs
             Additional keyword arguments to pass to scanpy's `pp.pca` function.
 
         Notes
         -----
-        This method performs an inner join on genes (variables) between the reference and query AnnData objects,
+        This method performs an inner join on genes (variables) between the query and reference AnnData objects,
         concatenates the normalized expression matrices, and computes a joint PCA using Scanpy. The resulting
         PCA embeddings are stored in `.obsm[key_added]` for both objects. This is a fallback and not recommended
         for most use cases. Please provide a biologically meaningful representation if possible.
@@ -151,16 +163,16 @@ class CellMapper(CellMapperEvaluationMixin):
             "This is NOT recommended for most use cases! Please provide a biologically meaningful representation."
         )
         # Concatenate with inner join on genes
-        joint = ad.concat([self.ref, self.query], join="inner", label="batch", keys=["ref", "query"])
+        joint = ad.concat([self.reference, self.query], join="inner", label="batch", keys=["reference", "query"])
 
         # Compute PCA using scanpy
         sc.pp.pca(joint, n_comps=n_components, **kwargs)
 
         # Assign PCA embeddings back to each object using the batch key
-        self.ref.obsm[key_added] = joint.obsm["X_pca"][joint.obs["batch"] == "ref"]
+        self.reference.obsm[key_added] = joint.obsm["X_pca"][joint.obs["batch"] == "reference"]
         self.query.obsm[key_added] = joint.obsm["X_pca"][joint.obs["batch"] == "query"]
         logger.info(
-            "Joint PCA computed and stored as '%s' in both ref.obsm and query.obsm. "
+            "Joint PCA computed and stored as '%s' in both reference.obsm and query.obsm. "
             "Proceeding to use this as the representation for neighbor search.",
             key_added,
         )
@@ -187,6 +199,7 @@ class CellMapper(CellMapperEvaluationMixin):
             Data representation based on which to find nearest neighbors. If None, a joint PCA will be computed.
         method
             Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU, "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact neighbor search. With GPU acceleration, "faiss" is usually fastest and more memory efficient than "rapids".
+            All methods return exactly `n_neighbors` neighbors, including the reference cell itself (in self-mapping mode). For faiss and sklearn, distances to self are very small positive numbers, for rapids and sklearn, they are exactly 0.
         metric
             Distance metric to use for nearest neighbors.
         only_yx
@@ -210,18 +223,21 @@ class CellMapper(CellMapperEvaluationMixin):
         - ``n_neighbors``: Number of nearest neighbors.
         - ``only_yx``: Whether only yx neighbors were computed.
         """
-        self.n_neighbors = n_neighbors
         self.only_yx = only_yx
         if use_rep is None:
             if pca_kwargs is None:
                 pca_kwargs = {}
-            self.compute_joint_pca(n_components=n_pca_components, key_added=joint_pca_key, **pca_kwargs)
-            use_rep = joint_pca_key
+            if self._is_self_mapping:
+                sc.pp.pca(self.query, n_comps=n_pca_components, **pca_kwargs)
+                use_rep = "X_pca"
+            else:
+                self.compute_joint_pca(n_components=n_pca_components, key_added=joint_pca_key, **pca_kwargs)
+                use_rep = joint_pca_key
         if use_rep == "X":
-            xrep = self.ref.X
+            xrep = self.reference.X
             yrep = self.query.X
         else:
-            xrep = self.ref.obsm[use_rep]
+            xrep = self.reference.obsm[use_rep]
             yrep = self.query.obsm[use_rep]
         self.knn = Neighbors(np.ascontiguousarray(xrep), np.ascontiguousarray(yrep))
         self.knn.compute_neighbors(n_neighbors=n_neighbors, method=method, metric=metric, only_yx=only_yx)
@@ -255,7 +271,7 @@ class CellMapper(CellMapperEvaluationMixin):
 
         - ``mapping_matrix``: Mapping matrix for label transfer.
         """
-        if self.knn is None or self.n_neighbors is None:
+        if self.knn is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
 
         logger.info("Computing mapping matrix using method '%s'.", method)
@@ -265,12 +281,13 @@ class CellMapper(CellMapperEvaluationMixin):
                     "Jaccard and HNOCa methods require both x and y neighbors to be computed. Set only_yx=False."
                 )
             xx, yy, xy, yx = self.knn.get_adjacency_matrices()
+            n_neighbors = self.knn.xx.n_neighbors
             jaccard = (yx @ xx.T) + (yy @ xy.T)
 
             if method == "jaccard":
-                jaccard.data /= 4 * self.n_neighbors - jaccard.data
+                jaccard.data /= 4 * n_neighbors - jaccard.data
             elif method == "hnoca":
-                jaccard.data /= 2 * self.n_neighbors - jaccard.data
+                jaccard.data /= 2 * n_neighbors - jaccard.data
                 jaccard.data = jaccard.data**2
             self.mapping_matrix = jaccard
         elif method in ["gaussian", "scarches", "inverse_distance", "random"]:
@@ -287,7 +304,7 @@ class CellMapper(CellMapperEvaluationMixin):
         Parameters
         ----------
         obs_keys
-            One or more keys in ``ref.obs`` to be transferred into ``query.obs`` (must be discrete)
+            One or more keys in ``reference.obs`` to be transferred into ``query.obs`` (must be discrete)
         prediction_postfix
             New ``query.obs`` key added for the transferred labels, by default ``{obs_key}_pred`` for each obs_key.
         confidence_postfix
@@ -316,14 +333,14 @@ class CellMapper(CellMapperEvaluationMixin):
             logger.info("Predicting labels for key '%s'.", key)
             onehot = OneHotEncoder(dtype=np.float32)
             xtab = onehot.fit_transform(
-                self.ref.obs[[key]],
-            )  # shape = (n_ref_cells x n_categories), sparse csr matrix, float32
+                self.reference.obs[[key]],
+            )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
             ytab = self.mapping_matrix @ xtab  # shape = (n_query_cells x n_categories), sparse crs matrix, float32
 
             pred = pd.Series(
                 data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1],
                 index=self.query.obs_names,
-                dtype=self.ref.obs[key].dtype,
+                dtype=self.reference.obs[key].dtype,
             )
             conf = pd.Series(
                 ytab.max(axis=1).toarray().ravel(),
@@ -334,8 +351,10 @@ class CellMapper(CellMapperEvaluationMixin):
             self.query.obs[f"{key}_{self.confidence_postfix}"] = conf
 
             # Add colors if available
-            if f"{key}_colors" in self.ref.uns:
-                color_lookup = dict(zip(self.ref.obs[key].cat.categories, self.ref.uns[f"{key}_colors"], strict=True))
+            if f"{key}_colors" in self.reference.uns:
+                color_lookup = dict(
+                    zip(self.reference.obs[key].cat.categories, self.reference.uns[f"{key}_colors"], strict=True)
+                )
                 self.query.uns[f"{key}_{self.prediction_postfix}_colors"] = [
                     color_lookup.get(cat, "#000000") for cat in pred.cat.categories
                 ]
@@ -353,7 +372,7 @@ class CellMapper(CellMapperEvaluationMixin):
         Parameters
         ----------
         obsm_keys
-            One or more keys in ``ref.obsm`` storing the embeddings to be transferred.
+            One or more keys in ``reference.obsm`` storing the embeddings to be transferred.
         prediction_postfix
             Postfix to append to the output keys in ``query.obsm`` where the transferred embeddings will be stored.
 
@@ -377,8 +396,8 @@ class CellMapper(CellMapperEvaluationMixin):
             logger.info("Transferring embeddings for key '%s'.", key)
 
             # Perform matrix multiplication to transfer embeddings
-            ref_embeddings = self.ref.obsm[key]  # shape = (n_ref_cells x n_embedding_dims)
-            query_embeddings = self.mapping_matrix @ ref_embeddings  # shape = (n_query_cells x n_embedding_dims)
+            reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
+            query_embeddings = self.mapping_matrix @ reference_embeddings  # shape = (n_query_cells x n_embedding_dims)
 
             # Store the transferred embeddings in query.obsm
             output_key = f"{key}_{prediction_postfix}"
@@ -393,7 +412,7 @@ class CellMapper(CellMapperEvaluationMixin):
         Parameters
         ----------
         layer_key
-            Key in ``ref.layers`` to be transferred. Use "X" to transfer ``ref.X``.
+            Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``.
 
         Returns
         -------
@@ -401,7 +420,7 @@ class CellMapper(CellMapperEvaluationMixin):
 
         Notes
         -----
-        Creates/updates ``self.query_imputed`` with the transferred data in .X.
+        Creates ``self.query_imputed`` with the transferred data in .X.
         The new AnnData object will have the same cells as the query, but the features (genes) of the reference.
         """
         if self.mapping_matrix is None:
@@ -409,31 +428,58 @@ class CellMapper(CellMapperEvaluationMixin):
 
         logger.info("Transferring layer for key '%s'.", layer_key)
         # Get the reference layer (or .X if key is "X")
-        ref_layer = self.ref.X if layer_key == "X" else self.ref.layers[layer_key]
-        query_layer = self.mapping_matrix @ ref_layer  # shape = (n_query_cells x n_ref_features)
+        reference_layer = self.reference.X if layer_key == "X" else self.reference.layers[layer_key]
+        query_layer = self.mapping_matrix @ reference_layer  # shape = (n_query_cells x n_reference_features)
 
-        # Always create or update a new AnnData object for the imputed data, placing result in .X
-        obs = self.query.obs.copy(deep=False)
-        var = self.ref.var.copy(deep=False)
-        if self.query_imputed is None:
-            self.query_imputed = ad.AnnData(
-                X=query_layer,
-                obs=obs,
-                var=var,
-                uns=self.query.uns,
-                obsm=self.query.obsm,
-                varm=self.ref.varm,
-                obsp=None,
-                varp=None,
-            )
-        else:
-            self.query_imputed.X = query_layer
-        logger.info(
-            "Imputed expression for layer '%s' stored in self.query_imputed.X.\n"
-            "Note: The feature space now matches the reference (n_vars=%s), not the query (n_vars=%s).",
-            layer_key,
-            self.ref.n_vars,
-            self.query.n_vars,
+        # Create query_imputed using the property setter for consistent behavior
+        self.query_imputed = query_layer
+
+        # Create base message and conditionally add note about feature spaces for non-self-mapping
+        message = f"Imputed expression for layer '{layer_key}' stored in query_imputed.X."
+        if not self._is_self_mapping:
+            message += f"\nNote: The feature space matches the reference (n_vars={self.reference.n_vars}), not the query (n_vars={self.query.n_vars})."
+
+        logger.info(message)
+
+    @property
+    def query_imputed(self) -> AnnData | None:
+        """
+        Get the imputed query data.
+
+        Returns
+        -------
+        AnnData or None
+            The imputed query data as an AnnData object, or None if not set.
+        """
+        return self._query_imputed
+
+    @query_imputed.setter
+    def query_imputed(self, value: AnnData | np.ndarray | csr_matrix | pd.DataFrame | None) -> None:
+        """
+        Set the imputed query data with automatic alignment and validation.
+
+        This property allows flexibly setting imputed data as:
+        - An AnnData object
+        - A numpy array or sparse matrix
+        - A pandas DataFrame
+
+        The setter automatically constructs an AnnData object with proper alignment:
+        - Observations (obs, obsm) from the query dataset
+        - Features (var, varm) from the reference dataset
+
+        Parameters
+        ----------
+        value
+            The imputed query data to set. Can be AnnData, numpy array, sparse matrix,
+            pandas DataFrame, or None to unset.
+        """
+        if value is None:
+            self._query_imputed = None
+            return
+
+        # Let the utility function handle all validation and conversion
+        self._query_imputed = create_imputed_anndata(
+            expression_data=value, query_adata=self.query, reference_adata=self.reference
         )
 
     def fit(
@@ -455,11 +501,11 @@ class CellMapper(CellMapperEvaluationMixin):
         Parameters
         ----------
         obs_keys
-            One or more keys in ``ref.obs`` to be transferred into ``query.obs`` (must be discrete)
+            One or more keys in ``reference.obs`` to be transferred into ``query.obs`` (must be discrete)
         obsm_keys
-            One or more keys in ``ref.obsm`` storing the embeddings to be transferred.
+            One or more keys in ``reference.obsm`` storing the embeddings to be transferred.
         layer_key
-            Key in ``ref.layers`` to be transferred. Use "X" to transfer ``ref.X``.
+            Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``.
         n_neighbors
             Number of nearest neighbors.
         use_rep
@@ -492,3 +538,44 @@ class CellMapper(CellMapperEvaluationMixin):
             )
 
         return self
+
+    def load_precomputed_distances(self, distances_key: str = "distances", include_self: bool | None = None) -> None:
+        """
+        Load precomputed distances from the AnnData object.
+
+        This method is only available in self-mapping mode.
+
+        Parameters
+        ----------
+        distances_key
+            Key in adata.obsp where the precomputed distances are stored.
+        include_self
+            If True, include self as a neighbor (even if not present in the distance matrix).
+            If False, exclude self connections (even if present in the distance matrix).
+            If None (default), preserve the original behavior of the distance matrix.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``knn``: Neighbors object constructed from the precomputed distances.
+        """
+        if not self._is_self_mapping:
+            raise ValueError("load_precomputed_distances is only available in self-mapping mode.")
+
+        # Access the precomputed distances
+        distances_matrix = self.query.obsp[distances_key]
+
+        # Create a neighbors object using the factory method
+        self.knn = Neighbors.from_distances(distances_matrix, include_self=include_self)
+
+        logger.info(
+            "Loaded precomputed distances from '%s' with %d cells and %d neighbors per cell.",
+            distances_key,
+            distances_matrix.shape[0],
+            self.knn.xx.n_neighbors,
+        )

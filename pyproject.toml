@@ -58,6 +58,7 @@ optional-dependencies.doc = [
 optional-dependencies.test = [
   "coverage",
   "pytest",
+  "squidpy",
 ]
 optional-dependencies.tutorials = [
   "harmony-pytorch",

@@ -66,21 +66,91 @@ def adata_pbmc3k(precomputed_leiden):
 
 
 @pytest.fixture
-def query_ref_adata(adata_pbmc3k):
+def adata_spatial(adata_pbmc3k):
+    """Fixture to load spatial data with realistic coordinates for testing distance calculations.
+
+    This can be used to test the loading of pre-computed distance matrices. It contains toy spatial
+    coordinates and batches, so that neighbors can be computed with either scanpy or squidpy.
+
+    Spatial patterns:
+    - Batch A: Concentric rings structure (inner and outer ring)
+    - Batch B: Grid-like pattern
+
+    The patterns have some overlap in the center of the coordinate system, creating a
+    biologically plausible scenario where different cell types might be present in the same area.
+    """
+    # Get number of observations
+    n_obs = adata_pbmc3k.n_obs
+    n_half = n_obs // 2
+
+    # Introduce batch categories first
+    adata_pbmc3k.obs["batch"] = np.repeat(["A", "B"], repeats=n_half).tolist()
+    adata_pbmc3k.obs["batch"] = adata_pbmc3k.obs["batch"].astype("category")
+
+    # Create coordinates using numpy's random generator with fixed seed
+    rng = np.random.Generator(np.random.PCG64(42))
+    coords = np.zeros((n_obs, 2))
+
+    # First half - batch A: concentric rings structure
+    # Inner ring
+    inner_count = n_half // 3
+    angles_inner = rng.uniform(0, 2 * np.pi, inner_count)
+    radii_inner = rng.normal(5, 1, inner_count)  # Smaller radius with less variation
+    coords[:inner_count, 0] = radii_inner * np.cos(angles_inner)
+    coords[:inner_count, 1] = radii_inner * np.sin(angles_inner)
+
+    # Outer ring
+    outer_count = n_half - inner_count
+    angles_outer = rng.uniform(0, 2 * np.pi, outer_count)
+    radii_outer = rng.normal(15, 2, outer_count)  # Larger radius with more variation
+    coords[inner_count:n_half, 0] = radii_outer * np.cos(angles_outer)
+    coords[inner_count:n_half, 1] = radii_outer * np.sin(angles_outer)
+
+    # Second half - batch B: grid-like structure with noise that overlaps with batch A
+    # Create a grid that overlaps with the inner ring from batch A
+    grid_size = int(np.sqrt(n_half))
+    x_grid = np.linspace(-10, 10, grid_size)
+    y_grid = np.linspace(-10, 10, grid_size)
+
+    # Create all combinations of x and y coordinates
+    xx, yy = np.meshgrid(x_grid, y_grid)
+    grid_points = np.column_stack([xx.ravel(), yy.ravel()])
+
+    # Add some noise to the grid points
+    grid_points += rng.normal(0, 1, size=grid_points.shape)
+
+    # Use the grid points (or as many as needed)
+    max_points = min(grid_points.shape[0], n_half)
+    coords[n_half : n_half + max_points] = grid_points[:max_points]
+
+    # If we need more points than the grid provides, add random points
+    if max_points < n_half:
+        remaining = n_half - max_points
+        random_points = rng.uniform(-10, 10, size=(remaining, 2))
+        coords[n_half + max_points :] = random_points
+
+    # Add the spatial coordinates to the AnnData object
+    adata_pbmc3k.obsm["spatial"] = coords
+
+    return adata_pbmc3k
+
+
+@pytest.fixture
+def query_reference_adata(adata_pbmc3k):
     # Define the number of query cells and genes
     n_query_cells = 500
     n_query_genes = 300
-    n_ref_cells = adata_pbmc3k.n_obs - n_query_cells
+    n_reference_cells = adata_pbmc3k.n_obs - n_query_cells
 
     # Create modality annotations in the AnnData object
     adata_pbmc3k.obs["modality"] = (
-        np.repeat("query", repeats=n_query_cells).tolist() + np.repeat("ref", repeats=n_ref_cells).tolist()
+        np.repeat("query", repeats=n_query_cells).tolist() + np.repeat("reference", repeats=n_reference_cells).tolist()
     )
     adata_pbmc3k.obs["modality"] = adata_pbmc3k.obs["modality"].astype("category")
 
     # use these annotations to create query and reference AnnData objects
     query = adata_pbmc3k[adata_pbmc3k.obs["modality"] == "query"].copy()
-    ref = adata_pbmc3k[adata_pbmc3k.obs["modality"] == "ref"].copy()
+    reference = adata_pbmc3k[adata_pbmc3k.obs["modality"] == "reference"].copy()
 
     # Subset genes in the query AnnData object
     query_genes = (
@@ -92,17 +162,17 @@ def query_ref_adata(adata_pbmc3k):
     query.obs["batch"] = np.repeat(["A", "B"], repeats=n_query_cells // 2).tolist()
     query.obs["batch"] = query.obs["batch"].astype("category")
 
-    return query, ref
+    return query, reference
 
 
 @pytest.fixture
-def cmap(query_ref_adata):
-    query, ref = query_ref_adata
+def cmap(query_reference_adata):
+    query, reference = query_reference_adata
 
     # Create a CellMapper object
     cmap = CellMapper(
         query=query,
-        ref=ref,
+        reference=reference,
     )
 
     # Compute neighbors and mapping matrix
@@ -132,3 +202,54 @@ def expected_expression_transfer_metrics():
         "n_shared_genes": 300,
         "n_test_genes": 300,
     }
+
+
+@pytest.fixture
+def evaluation_methods():
+    """Fixture providing a list of evaluation methods for expression transfer."""
+    return ["pearson", "spearman", "js", "rmse"]
+
+
+@pytest.fixture
+def random_imputed_data(query_reference_adata):
+    """Fixture providing random expression data with the right shape for query_imputed testing."""
+    query, reference = query_reference_adata
+    return np.random.rand(query.n_obs, reference.n_vars)
+
+
+@pytest.fixture
+def sparse_imputed_data(query_reference_adata):
+    """Fixture providing a sparse expression matrix for query_imputed testing."""
+    from scipy.sparse import csr_matrix
+
+    query, reference = query_reference_adata
+    return csr_matrix(np.random.rand(query.n_obs, reference.n_vars))
+
+
+@pytest.fixture
+def dataframe_imputed_data(query_reference_adata):
+    """Fixture providing a pandas DataFrame with expression data for query_imputed testing."""
+    import pandas as pd
+
+    query, reference = query_reference_adata
+    return pd.DataFrame(
+        np.random.rand(query.n_obs, reference.n_vars), index=query.obs_names, columns=reference.var_names
+    )
+
+
+@pytest.fixture
+def custom_anndata_imputed(query_reference_adata):
+    """Fixture providing a custom AnnData object for query_imputed testing."""
+    import anndata as ad
+
+    query, reference = query_reference_adata
+    return ad.AnnData(X=np.random.rand(query.n_obs, reference.n_vars), obs=query.obs.copy(), var=reference.var.copy())
+
+
+@pytest.fixture
+def invalid_shape_data(query_reference_adata):
+    """Fixture providing expression matrices with invalid shapes."""
+    query, reference = query_reference_adata
+    too_few_cells = np.random.rand(query.n_obs - 5, reference.n_vars)
+    too_few_genes = np.random.rand(query.n_obs, reference.n_vars - 10)
+    return {"too_few_cells": too_few_cells, "too_few_genes": too_few_genes}
