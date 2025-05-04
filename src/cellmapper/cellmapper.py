@@ -61,12 +61,13 @@ class CellMapper(CellMapperEvaluationMixin):
 
     def __repr__(self):
         """Return a concise string representation of the CellMapper object."""
-        reference_summary = f"AnnData(n_obs={self.reference.n_obs:,}, n_vars={self.reference.n_vars:,})"
         query_summary = f"AnnData(n_obs={self.query.n_obs:,}, n_vars={self.query.n_vars:,})"
-        return (
-            f"CellMapper(reference={reference_summary}, query={query_summary}, "
-            f"Mapping mode: {'self-mapping' if self._is_self_mapping else 'cross-mapping'}."
-        )
+
+        if self._is_self_mapping:
+            return f"CellMapper(self-mapping, data={query_summary}, "
+        else:
+            reference_summary = f"AnnData(n_obs={self.reference.n_obs:,}, n_vars={self.reference.n_vars:,})"
+            return f"CellMapper(query={query_summary}, reference={reference_summary}"
 
     @property
     def mapping_matrix(self):
