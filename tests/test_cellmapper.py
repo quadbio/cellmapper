@@ -87,9 +87,9 @@ class TestCellMapper:
             assert cmap.query_imputed is not None
             assert cmap.query_imputed.X.shape[0] == cmap.query.n_obs
 
-    def test_transfer_labels_self_mapping(self, query_ref_adata):
+    def test_transfer_labels_self_mapping(self, query_reference_adata):
         """Check mapping to self."""
-        _, reference = query_ref_adata
+        _, reference = query_reference_adata
         cm = CellMapper(reference, reference)
         cm.fit(
             knn_method="sklearn",

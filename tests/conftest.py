@@ -66,15 +66,15 @@ def adata_pbmc3k(precomputed_leiden):
 
 
 @pytest.fixture
-def query_ref_adata(adata_pbmc3k):
+def query_reference_adata(adata_pbmc3k):
     # Define the number of query cells and genes
     n_query_cells = 500
     n_query_genes = 300
-    n_ref_cells = adata_pbmc3k.n_obs - n_query_cells
+    n_reference_cells = adata_pbmc3k.n_obs - n_query_cells
 
     # Create modality annotations in the AnnData object
     adata_pbmc3k.obs["modality"] = (
-        np.repeat("query", repeats=n_query_cells).tolist() + np.repeat("reference", repeats=n_ref_cells).tolist()
+        np.repeat("query", repeats=n_query_cells).tolist() + np.repeat("reference", repeats=n_reference_cells).tolist()
     )
     adata_pbmc3k.obs["modality"] = adata_pbmc3k.obs["modality"].astype("category")
 
@@ -96,8 +96,8 @@ def query_ref_adata(adata_pbmc3k):
 
 
 @pytest.fixture
-def cmap(query_ref_adata):
-    query, reference = query_ref_adata
+def cmap(query_reference_adata):
+    query, reference = query_reference_adata
 
     # Create a CellMapper object
     cmap = CellMapper(
@@ -141,45 +141,45 @@ def evaluation_methods():
 
 
 @pytest.fixture
-def random_imputed_data(query_ref_adata):
+def random_imputed_data(query_reference_adata):
     """Fixture providing random expression data with the right shape for query_imputed testing."""
-    query, reference = query_ref_adata
+    query, reference = query_reference_adata
     return np.random.rand(query.n_obs, reference.n_vars)
 
 
 @pytest.fixture
-def sparse_imputed_data(query_ref_adata):
+def sparse_imputed_data(query_reference_adata):
     """Fixture providing a sparse expression matrix for query_imputed testing."""
     from scipy.sparse import csr_matrix
 
-    query, reference = query_ref_adata
+    query, reference = query_reference_adata
     return csr_matrix(np.random.rand(query.n_obs, reference.n_vars))
 
 
 @pytest.fixture
-def dataframe_imputed_data(query_ref_adata):
+def dataframe_imputed_data(query_reference_adata):
     """Fixture providing a pandas DataFrame with expression data for query_imputed testing."""
     import pandas as pd
 
-    query, reference = query_ref_adata
+    query, reference = query_reference_adata
     return pd.DataFrame(
         np.random.rand(query.n_obs, reference.n_vars), index=query.obs_names, columns=reference.var_names
     )
 
 
 @pytest.fixture
-def custom_anndata_imputed(query_ref_adata):
+def custom_anndata_imputed(query_reference_adata):
     """Fixture providing a custom AnnData object for query_imputed testing."""
     import anndata as ad
 
-    query, reference = query_ref_adata
+    query, reference = query_reference_adata
     return ad.AnnData(X=np.random.rand(query.n_obs, reference.n_vars), obs=query.obs.copy(), var=reference.var.copy())
 
 
 @pytest.fixture
-def invalid_shape_data(query_ref_adata):
+def invalid_shape_data(query_reference_adata):
     """Fixture providing expression matrices with invalid shapes."""
-    query, reference = query_ref_adata
+    query, reference = query_reference_adata
     too_few_cells = np.random.rand(query.n_obs - 5, reference.n_vars)
     too_few_genes = np.random.rand(query.n_obs, reference.n_vars - 10)
     return {"too_few_cells": too_few_cells, "too_few_genes": too_few_genes}

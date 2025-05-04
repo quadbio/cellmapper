@@ -391,11 +391,11 @@ class CellMapperEvaluationMixin:
             raise ValueError("Neighbors must be computed before estimating presence scores.")
 
         conn = self.knn.yx.knn_graph_connectivities()
-        ref_names = self.reference.obs_names
+        reference_names = self.reference.obs_names
 
         # Always compute and post-process the overall score (all query cells)
         scores_all = np.array(conn.sum(axis=0)).flatten()
-        df_all = pd.DataFrame({"all": scores_all}, index=ref_names)
+        df_all = pd.DataFrame({"all": scores_all}, index=reference_names)
         df_all_processed = process_presence_scores(df_all, log=log, percentile=percentile)
         self.reference.obs[key_added] = df_all_processed["all"]
         logger.info("Presence score across all query cells computed and stored in `reference.obs['%s']`", key_added)
@@ -404,12 +404,12 @@ class CellMapperEvaluationMixin:
         if groupby is not None:
             group_labels = self.query.obs[groupby]
             groups = group_labels.unique()
-            score_matrix = np.zeros((len(ref_names), len(groups)), dtype=np.float32)
+            score_matrix = np.zeros((len(reference_names), len(groups)), dtype=np.float32)
             for i, group in enumerate(groups):
                 mask = group_labels == group
                 group_conn = conn[mask.values, :]
                 score_matrix[:, i] = np.array(group_conn.sum(axis=0)).flatten()
-            df_groups = pd.DataFrame(score_matrix, index=ref_names, columns=groups)
+            df_groups = pd.DataFrame(score_matrix, index=reference_names, columns=groups)
             df_groups_processed = process_presence_scores(df_groups, log=log, percentile=percentile)
             self.reference.obsm[key_added] = df_groups_processed
 

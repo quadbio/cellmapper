@@ -12,7 +12,7 @@ from cellmapper.logging import logger
 def create_imputed_anndata(
     expression_data: np.ndarray | csr_matrix | pd.DataFrame | AnnData,
     query_adata: AnnData,
-    ref_adata: AnnData,
+    reference_adata: AnnData,
 ) -> AnnData:
     """
     Create an AnnData object for imputed expression data with validation and conversion.
@@ -25,13 +25,13 @@ def create_imputed_anndata(
     ----------
     expression_data
         The imputed expression data in one of these formats:
-        - A numpy array with shape (n_query_cells, n_ref_genes)
-        - A sparse matrix with shape (n_query_cells, n_ref_genes)
-        - A pandas DataFrame with shape (n_query_cells, n_ref_genes)
+        - A numpy array with shape (n_query_cells, n_reference_genes)
+        - A sparse matrix with shape (n_query_cells, n_reference_genes)
+        - A pandas DataFrame with shape (n_query_cells, n_reference_genes)
         - An existing AnnData object with n_obs matching query_adata
     query_adata
         Query AnnData object providing observation metadata (obs, obsm).
-    ref_adata
+    reference_adata
         Reference AnnData object providing feature metadata (var, varm).
 
     Returns
@@ -44,9 +44,9 @@ def create_imputed_anndata(
     The returned AnnData object will have:
     - X: The imputed expression data
     - obs: Reference to query_adata.obs (not copied)
-    - var: Reference to ref_adata.var (not copied)
+    - var: Reference to reference_adata.var (not copied)
     - obsm: Reference to query_adata.obsm (not copied)
-    - varm: Reference to ref_adata.varm if available (not copied)
+    - varm: Reference to reference_adata.varm if available (not copied)
     - uns: Deep copy from query_adata.uns since it can contain complex objects
     """
     # Check for unsupported types first
@@ -84,9 +84,9 @@ def create_imputed_anndata(
                 "They must match."
             )
 
-        if len(expression_data.columns) != ref_adata.n_vars:
+        if len(expression_data.columns) != reference_adata.n_vars:
             raise ValueError(
-                f"DataFrame has {len(expression_data.columns)} columns, but reference has {ref_adata.n_vars} features. "
+                f"DataFrame has {len(expression_data.columns)} columns, but reference has {reference_adata.n_vars} features. "
                 "They must match."
             )
 
@@ -95,21 +95,23 @@ def create_imputed_anndata(
 
     # Case 3: Handle numpy arrays and sparse matrices
     # Validate shape
-    expected_shape = (query_adata.n_obs, ref_adata.n_vars)
+    expected_shape = (query_adata.n_obs, reference_adata.n_vars)
     if expression_data.shape != expected_shape:
         raise ValueError(
             f"Expression data shape mismatch: expected {expected_shape}, but got {expression_data.shape}. "
-            f"Should be (n_query_cells, n_ref_genes)."
+            f"Should be (n_query_cells, n_reference_genes)."
         )
 
     # Create a new AnnData object without copying data where possible
     imputed_adata = ad.AnnData(
         X=expression_data,
         obs=query_adata.obs,  # No copy - direct reference
-        var=ref_adata.var,  # No copy - direct reference
+        var=reference_adata.var,  # No copy - direct reference
         uns=query_adata.uns.copy(),  # Deep copy since uns can contain complex objects
         obsm=query_adata.obsm,  # No copy - direct reference
-        varm=ref_adata.varm if hasattr(ref_adata, "varm") and ref_adata.varm is not None else None,  # No copy
+        varm=reference_adata.varm
+        if hasattr(reference_adata, "varm") and reference_adata.varm is not None
+        else None,  # No copy
     )
 
     logger.info(

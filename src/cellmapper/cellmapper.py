@@ -21,31 +21,31 @@ from .knn import Neighbors
 class CellMapper(CellMapperEvaluationMixin):
     """Mapping of labels, embeddings, and expression values between reference and query datasets."""
 
-    def __init__(self, reference: AnnData, query: AnnData | None = None) -> None:
+    def __init__(self, query: AnnData, reference: AnnData | None = None) -> None:
         """
         Initialize the CellMapper class.
 
         Parameters
         ----------
-        reference
-            Reference dataset.
         query
-            Optional query dataset.
+            Query dataset.
+        reference
+            Optional reference dataset.
         """
-        self.reference = reference
+        self.query = query
 
-        # Handle self-mapping case - use the reference as both source and target
-        self.query = query if query is not None else reference
-        self._is_self_mapping = query is None
+        # Handle self-mapping case - use the query as both source and target
+        self.reference = reference if reference is not None else query
+        self._is_self_mapping = reference is None
 
         # Update log message to reflect self-mapping if applicable
         if self._is_self_mapping:
-            logger.info("Initialized CellMapper for self-mapping with %d cells.", reference.n_obs)
+            logger.info("Initialized CellMapper for self-mapping with %d cells.", query.n_obs)
         else:
             logger.info(
-                "Initialized CellMapper with %d reference cells and %d query cells.",
-                reference.n_obs,
-                self.query.n_obs,
+                "Initialized CellMapper with %d query cells and %d reference cells.",
+                query.n_obs,
+                self.reference.n_obs,
             )
 
         # Initialize result containers
@@ -61,10 +61,10 @@ class CellMapper(CellMapperEvaluationMixin):
 
     def __repr__(self):
         """Return a concise string representation of the CellMapper object."""
-        ref_summary = f"AnnData(n_obs={self.reference.n_obs:,}, n_vars={self.reference.n_vars:,})"
+        reference_summary = f"AnnData(n_obs={self.reference.n_obs:,}, n_vars={self.reference.n_vars:,})"
         query_summary = f"AnnData(n_obs={self.query.n_obs:,}, n_vars={self.query.n_vars:,})"
         return (
-            f"CellMapper(reference={ref_summary}, query={query_summary}, "
+            f"CellMapper(reference={reference_summary}, query={query_summary}, "
             f"Mapping mode: {'self-mapping' if self._is_self_mapping else 'cross-mapping'}."
         )
 
@@ -106,7 +106,7 @@ class CellMapper(CellMapperEvaluationMixin):
         ----------
         mapping_matrix
             The mapping matrix to validate and normalize.
-        n_ref_cells
+        n_reference_cells
             Number of reference cells (rows).
         n_query_cells
             Number of query cells (columns).
@@ -328,7 +328,7 @@ class CellMapper(CellMapperEvaluationMixin):
             onehot = OneHotEncoder(dtype=np.float32)
             xtab = onehot.fit_transform(
                 self.reference.obs[[key]],
-            )  # shape = (n_ref_cells x n_categories), sparse csr matrix, float32
+            )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
             ytab = self.mapping_matrix @ xtab  # shape = (n_query_cells x n_categories), sparse crs matrix, float32
 
             pred = pd.Series(
@@ -390,8 +390,8 @@ class CellMapper(CellMapperEvaluationMixin):
             logger.info("Transferring embeddings for key '%s'.", key)
 
             # Perform matrix multiplication to transfer embeddings
-            ref_embeddings = self.reference.obsm[key]  # shape = (n_ref_cells x n_embedding_dims)
-            query_embeddings = self.mapping_matrix @ ref_embeddings  # shape = (n_query_cells x n_embedding_dims)
+            reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
+            query_embeddings = self.mapping_matrix @ reference_embeddings  # shape = (n_query_cells x n_embedding_dims)
 
             # Store the transferred embeddings in query.obsm
             output_key = f"{key}_{prediction_postfix}"
@@ -422,8 +422,8 @@ class CellMapper(CellMapperEvaluationMixin):
 
         logger.info("Transferring layer for key '%s'.", layer_key)
         # Get the reference layer (or .X if key is "X")
-        ref_layer = self.reference.X if layer_key == "X" else self.reference.layers[layer_key]
-        query_layer = self.mapping_matrix @ ref_layer  # shape = (n_query_cells x n_ref_features)
+        reference_layer = self.reference.X if layer_key == "X" else self.reference.layers[layer_key]
+        query_layer = self.mapping_matrix @ reference_layer  # shape = (n_query_cells x n_reference_features)
 
         # Create query_imputed using the property setter for consistent behavior
         self.query_imputed = query_layer
@@ -474,7 +474,7 @@ class CellMapper(CellMapperEvaluationMixin):
 
         # Let the utility function handle all validation and conversion
         self._query_imputed = create_imputed_anndata(
-            expression_data=value, query_adata=self.query, ref_adata=self.reference
+            expression_data=value, query_adata=self.query, reference_adata=self.reference
         )
 
     def fit(
