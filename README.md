@@ -16,6 +16,16 @@ k-NN-based mapping of cells across representations to tranfer labels, embeddings
 
 Inspired by scanpy's [ingest][] and the [HNOCA-tools][] packages. Check out the [docs][] to learn more, in particular our [tutorials][].
 
+## Key use cases
+
+- Transfer cell type labels and expression values from dissociated to spatial datasets.
+- Transfer embeddings between arbitrary query and reference datasets.
+- Compute presence scores for query datasets in large reference atlasses.
+- Identify niches in spatial datasets by contextualizing latent spaces in spatial coordinates.
+- Evaluate the results of transferring labels, embeddings and feature spaces using a variety of metrics.
+
+The core idea of `CellMapper` is to separate the method (k-NN graph with some kernel applied to get a mapping matrix) from the application (mapping across arbitrary representations), to be flexible and fast. The tool currently supports [pynndescent][], [sklearn][], [faiss][] and [rapids][] for neighborhood search, implements a variety of graph kernels, and is closely integrated with `AnnData` objects.
+
 ## Installation
 
 You need to have Python 3.10 or newer installed on your system.
@@ -37,20 +47,20 @@ There are two alternative options to install ``cellmapper``:
 
 ## Getting started
 
-This package assumes that you have ``ref`` and ``query`` AnnData objects, with a joint embedding computed and stored in ``.obsm``. We explicilty do not compute this joint embedding, but there are plenty of method you can use to get such joint embeddings, e.g. [GimVI][] or [ENVI][] for spatial mapping, [GLUE][], [MIDAS][] and [MOFA+][] for modality translation, and [scVI][], [scANVI][] and [scArches][] for query-to-reference mapping - this is just a small selection!
+This package assumes that you have ``query`` and ``reference`` AnnData objects, with a joint embedding computed and stored in ``.obsm``. We explicilty do not compute this joint embedding, but there are plenty of method you can use to get such joint embeddings, e.g. [GimVI][] or [ENVI][] for spatial mapping, [GLUE][], [MIDAS][] and [MOFA+][] for modality translation, and [scVI][], [scANVI][] and [scArches][] for query-to-reference mapping - this is just a small selection!
 
 With a joint embedding in ``.obsm["X_joint"]`` at hand, the simplest way to use ``CellMapper`` is as follows:
 ```Python
 from cellmapper import CellMapper
 
-cmap = CellMapper(ref, query).fit(
+cmap = CellMapper(query, reference).fit(
     use_rep="X_joint", obs_keys="celltype", obsm_keys="X_umap", layer_key="X"
     )
 ```
 
-This will transfer data from the reference to the query dataset, including celltype labels stored in ``ref.obs``, a UMAP embedding stored in ``ref.obsm``, and expression values stored in ``ref.X``.
+This will transfer data from the reference to the query dataset, including celltype labels stored in ``reference.obs``, a UMAP embedding stored in ``reference.obsm``, and expression values stored in ``reference.X``.
 
-There are many ways to customize this, e.g. use different ways to compute k-NN graphs and to turn them into mapping matrices, and we implement a few methods to evaluate whether your k-NN transfer was sucessful. Check out the [docs][] to learn more.
+There are many ways to customize this, e.g. use different ways to compute k-NN graphs and to turn them into mapping matrices, and we implement a few methods to evaluate whether your k-NN transfer was sucessful. The tool also implements a `self-mapping` mode (only a query object, no reference), which is useful for spatial contextualization. Check out the [docs][] to learn more.
 
 ## Release notes
 
@@ -74,7 +84,11 @@ Please cite this GitHub repo if you find CellMapper useful for your research.
 [coverage]: https://codecov.io/gh/quadbio/cellmapper
 [pre-commit]: https://results.pre-commit.ci/latest/github/quadbio/cellmapper/main
 [pypi]: https://pypi.org/project/cellmapper/
+
 [faiss]: https://github.com/facebookresearch/faiss
+[pynndescent]: https://github.com/lmcinnes/pynndescent
+[sklearn]: https://scikit-learn.org/stable/modules/neighbors.html
+[rapids]: https://docs.rapids.ai/api/cuml/stable/api/#nearest-neighbors
 
 [ingest]: https://scanpy.readthedocs.io/en/stable/generated/scanpy.tl.ingest.html
 [HNOCA-tools]: https://devsystemslab.github.io/HNOCA-tools/
