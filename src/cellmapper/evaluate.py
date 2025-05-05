@@ -69,19 +69,70 @@ def _rmse_zscore(a: np.ndarray, b: np.ndarray) -> float:
 class CellMapperEvaluationMixin:
     """Mixin class for evaluation-related methods for CellMapper."""
 
+    def register_external_predictions(self, label_key: str, prediction_postfix: str, confidence_postfix: str) -> None:
+        """
+        Register externally computed predictions for evaluation.
+
+        Parameters
+        ----------
+        label_key
+            Base key in .obs for the label (e.g., 'cell_type').
+        prediction_postfix
+            Postfix for prediction column in .obs (e.g., 'pred').
+            The full column name should be f"{label_key}_{prediction_postfix}".
+        confidence_postfix
+            Postfix for confidence column in .obs (e.g., 'conf').
+            The full column name should be f"{label_key}_{confidence_postfix}".
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``prediction_postfix``: Postfix for prediction column.
+        - ``confidence_postfix``: Postfix for confidence column.
+        """
+        # Verify that the expected columns exist
+        pred_col = f"{label_key}_{prediction_postfix}"
+        conf_col = f"{label_key}_{confidence_postfix}"
+
+        if pred_col not in self.query.obs.columns:
+            raise ValueError(f"Prediction column '{pred_col}' not found in query.obs")
+        if conf_col not in self.query.obs.columns:
+            raise ValueError(f"Confidence column '{conf_col}' not found in query.obs")
+
+        # Register the postfixes
+        self.prediction_postfix = prediction_postfix
+        self.confidence_postfix = confidence_postfix
+
+        logger.info(
+            "External predictions registered with prediction_postfix='%s' and confidence_postfix='%s'",
+            prediction_postfix,
+            confidence_postfix,
+        )
+
     def evaluate_label_transfer(
         self,
         label_key: str,
+        prediction_postfix: str | None = None,
+        confidence_postfix: str | None = None,
         confidence_cutoff: float = 0.0,
         zero_division: int | Literal["warn"] = 0,
     ) -> None:
         """
-        Evaluate label transfer using a k-NN classifier.
+        Evaluate label transfer using a k-NN classifier or externally computed predictions.
 
         Parameters
         ----------
         label_key
             Key in .obs storing ground-truth cell type annotations.
+        prediction_postfix
+            Postfix for prediction column in .obs. If None, uses self.prediction_postfix.
+        confidence_postfix
+            Postfix for confidence column in .obs. If None, uses self.confidence_postfix.
         confidence_cutoff
             Minimum confidence score required to include a cell in the evaluation.
         zero_division
@@ -97,8 +148,15 @@ class CellMapperEvaluationMixin:
 
         - ``label_transfer_metrics``: Dictionary containing accuracy, precision, recall, F1 scores, and excluded fraction.
         """
-        if self.prediction_postfix is None or self.confidence_postfix is None:
-            raise ValueError("Label transfer has not been performed. Call transfer_labels() first.")
+        # Use provided postfixes if given, otherwise fall back to instance attributes
+        pred_postfix = prediction_postfix or self.prediction_postfix
+        conf_postfix = confidence_postfix or self.confidence_postfix
+
+        if pred_postfix is None or conf_postfix is None:
+            raise ValueError(
+                "Label transfer has not been performed. Either call transfer_labels() first "
+                "or provide prediction_postfix and confidence_postfix parameters."
+            )
 
         # Extract ground-truth and predicted labels
         y_true = self.query.obs[label_key].dropna()
