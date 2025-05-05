@@ -69,7 +69,9 @@ def _rmse_zscore(a: np.ndarray, b: np.ndarray) -> float:
 class CellMapperEvaluationMixin:
     """Mixin class for evaluation-related methods for CellMapper."""
 
-    def register_external_predictions(self, label_key: str, prediction_postfix: str, confidence_postfix: str) -> None:
+    def register_external_predictions(
+        self, label_key: str, prediction_postfix: str = "pred", confidence_postfix: str = "conf"
+    ) -> None:
         """
         Register externally computed predictions for evaluation.
 
