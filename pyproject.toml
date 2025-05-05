@@ -61,8 +61,13 @@ optional-dependencies.test = [
   "squidpy",
 ]
 optional-dependencies.tutorials = [
+  "cellmapper",
   "harmony-pytorch",
+  "netgraph",
+  "python-louvain",
+  "scvi-tools",
   "seaborn",
+  "sopa",
   "squidpy",
 ]
 
