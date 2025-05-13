@@ -311,6 +311,7 @@ def truncated_svd_cross_covariance(
         corr_1 = X @ Y_mean  # Shape: (n_obs_x,)
         corr_2 = Y @ X_mean  # Shape: (n_obs_y,)
         corr_3 = X_mean.T @ Y_mean  # Shape: (1,)
+        print(corr_1.shape, corr_2.shape, corr_3.shape)
 
         # Define matrix-vector multiplication operations with implicit centering
         def matvec(v):
