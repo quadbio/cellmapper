@@ -281,6 +281,15 @@ def truncated_svd_cross_covariance(
     if x_is_sparse != y_is_sparse:
         raise TypeError("X and Y must be of the same type: both sparse or both dense")
 
+    # if not implicit, always densify
+    if not implicit:
+        if x_is_sparse:
+            X = X.toarray()
+            x_is_sparse = False
+        if y_is_sparse:
+            Y = Y.toarray()
+            y_is_sparse = False
+
     # Continue with the implicit approach for the remaining code
     # Ensure sparse matrices are in CSR format for efficiency
     if x_is_sparse:
