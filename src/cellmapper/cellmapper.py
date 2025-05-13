@@ -11,14 +11,14 @@ from anndata import AnnData
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
 from sklearn.preprocessing import OneHotEncoder
 
-from cellmapper.evaluate import CellMapperEvaluationMixin
+from cellmapper.evaluate import EvaluationMixin
 from cellmapper.logging import logger
 from cellmapper.utils import create_imputed_anndata, truncated_svd_cross_covariance
 
 from .knn import Neighbors
 
 
-class CellMapper(CellMapperEvaluationMixin):
+class CellMapper(EvaluationMixin):
     """Mapping of labels, embeddings, and expression values between reference and query datasets."""
 
     def __init__(self, query: AnnData, reference: AnnData | None = None) -> None:

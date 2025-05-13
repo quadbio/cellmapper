@@ -66,7 +66,7 @@ def _rmse_zscore(a: np.ndarray, b: np.ndarray) -> float:
     return np.sqrt(np.mean((a_z - b_z) ** 2))
 
 
-class CellMapperEvaluationMixin:
+class EvaluationMixin:
     """Mixin class for evaluation-related methods for CellMapper."""
 
     def register_external_predictions(
