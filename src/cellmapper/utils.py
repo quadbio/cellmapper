@@ -308,18 +308,62 @@ def truncated_svd_cross_covariance(
 
     # For sparse matrices with zero_center, use implicit centering
     elif zero_center and x_is_sparse:
-        corr_1 = X @ Y_mean  # Shape: (n_obs_x,)
-        corr_2 = Y @ X_mean  # Shape: (n_obs_y,)
-        corr_3 = X_mean.T @ Y_mean  # Shape: (1,)
+        # Precompute values needed for mean-centering
+        X_sum = X.sum(axis=0)  # Sum of each feature across all observations
+        Y_sum = Y.sum(axis=0)  # Sum of each feature across all observations
+        n_obs_x = X.shape[0]
+        n_obs_y = Y.shape[0]
 
         # Define matrix-vector multiplication operations with implicit centering
         def matvec(v):
+            """Compute (X_c @ Y_c.T) @ v without materializing the full matrix."""
             # v shape: (n_obs_y,)
-            return X @ (Y.T @ v) - corr_1 * v.sum() + corr_2.T @ v + corr_3 * v.sum()
+
+            # 1. Compute Y.T @ v
+            Ytv = Y.T.dot(v)  # shape: (n_vars,)
+
+            # 2. Compute X @ (Y.T @ v)
+            XYtv = X.dot(Ytv)  # shape: (n_obs_x,)
+
+            # 3. Compute X @ (1/n_obs_y * Y_sum.T @ v)
+            v_sum = np.sum(v)
+            term2 = v_sum / n_obs_y * X.dot(Y_sum)  # shape: (n_obs_x,)
+
+            # 4. Compute (1/n_obs_x * X_sum) @ (Y.T @ v)
+            term3 = 1.0 / n_obs_x * (X_sum.dot(Ytv)) * np.ones(n_obs_x)  # shape: (n_obs_x,)
+
+            # 5. Compute (1/n_obs_x * X_sum) @ (1/n_obs_y * Y_sum.T) @ v)
+            term4 = v_sum / (n_obs_x * n_obs_y) * (X_sum.dot(Y_sum)) * np.ones(n_obs_x)  # shape: (n_obs_x,)
+
+            # Combine all terms: term1 - term2 - term3 + term4
+            result = XYtv - term2 - term3 + term4
+
+            return result
 
         def rmatvec(v):
+            """Compute (X_c @ Y_c.T).T @ v = Y_c @ X_c.T @ v without materializing the full matrix."""
             # v shape: (n_obs_x,)
-            return Y @ (X.T @ v) - corr_1.T @ v + corr_2 * v.sum() + corr_3 * v.sum()
+
+            # 1. Compute X.T @ v
+            Xtv = X.T.dot(v)  # shape: (n_vars,)
+
+            # 2. Compute Y @ (X.T @ v)
+            YXtv = Y.dot(Xtv)  # shape: (n_obs_y,)
+
+            # 3. Compute Y @ (1/n_obs_x * X_sum.T @ v)
+            v_sum = np.sum(v)
+            term2 = v_sum / n_obs_x * Y.dot(X_sum)  # shape: (n_obs_y,)
+
+            # 4. Compute (1/n_obs_y * Y_sum) @ (X.T @ v)
+            term3 = 1.0 / n_obs_y * (Y_sum.dot(Xtv)) * np.ones(n_obs_y)  # shape: (n_obs_y,)
+
+            # 5. Compute (1/n_obs_y * Y_sum) @ (1/n_obs_x * X_sum.T @ v)
+            term4 = v_sum / (n_obs_y * n_obs_x) * (Y_sum.dot(X_sum)) * np.ones(n_obs_y)  # shape: (n_obs_y,)
+
+            # Combine all terms: term1 - term2 - term3 + term4
+            result = YXtv - term2 - term3 + term4
+
+            return result
 
     # For the case with no centering, direct matrix multiplication
     else:
