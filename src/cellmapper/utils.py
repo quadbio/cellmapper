@@ -306,9 +306,6 @@ def truncated_svd_cross_covariance(
         def rmatvec(v):
             return Y @ (X.T @ v)
 
-        matmat = matvec
-        rmatmat = rmatvec
-
     # For sparse matrices with zero_center, use implicit centering
     elif zero_center and x_is_sparse:
         corr_1 = X @ Y_mean  # Shape: (n_obs_x,)
@@ -317,33 +314,20 @@ def truncated_svd_cross_covariance(
 
         # Define matrix-vector multiplication operations with implicit centering
         def matvec(v):
-            """Compute (X_c @ Y_c.T) @ v without materializing the full matrix."""
-            # v shape: (n_obs_y,)
-            v_sum = np.sum(v)
-            return X @ (Y.T @ v) - corr_1 * v_sum - corr_2.T @ v + corr_3 * v_sum
-
-        def rmatvec(v):
-            """Compute (X_c @ Y_c.T).T @ v = Y_c @ X_c.T @ v without materializing the full matrix."""
-            # v shape: (n_obs_x,)
-            v_sum = np.sum(v)
-            return Y @ (X.T @ v) - corr_1.T @ v - corr_2 * v_sum + corr_3 * v_sum
-
-        # Define matrix-matrix multiplication operations for when v is a matrix
-        def matmat(V):
             """Compute (X_c @ Y_c.T) @ V without materializing the full matrix."""
             # V shape: (n_obs_y, n_cols)
 
             # For each column, calculate the sum and apply corrections
-            V_sum = V.sum(axis=0)  # Sum of each column
-            return X @ (Y.T @ V) - np.outer(corr_1, V_sum) - corr_2.T @ V + corr_3 * V_sum
+            v_sum = v.sum(axis=0)  # Sum of each column
+            return X @ (Y.T @ v) - np.outer(corr_1, v_sum).squeeze() - corr_2.T @ v + corr_3 * v_sum
 
-        def rmatmat(V):
+        def rmatvec(v):
             """Compute (X_c @ Y_c.T).T @ V without materializing the full matrix."""
             # V shape: (n_obs_x, n_cols)
 
             # For each column, calculate the sum and apply corrections
-            V_sum = V.sum(axis=0)  # Sum of each column
-            return Y @ (X.T @ V) - corr_1.T @ V - np.outer(corr_2, V_sum) + corr_3 * V_sum
+            v_sum = v.sum(axis=0)  # Sum of each column
+            return Y @ (X.T @ v) - corr_1.T @ v - np.outer(corr_2, v_sum).squeeze() + corr_3 * v_sum
 
     # For the case with no centering, direct matrix multiplication
     else:
@@ -354,12 +338,9 @@ def truncated_svd_cross_covariance(
         def rmatvec(v):
             return Y @ (X.T @ v)
 
-        matmat = matvec
-        rmatmat = rmatvec
-
     # Create LinearOperator representing the cross-covariance matrix without materializing it
     XYt_op = LinearOperator(
-        shape=(X.shape[0], Y.shape[0]), matvec=matvec, rmatvec=rmatvec, matmat=matmat, rmatmat=rmatmat, dtype=np.float64
+        shape=(X.shape[0], Y.shape[0]), matvec=matvec, rmatvec=rmatvec, matmat=matvec, rmatmat=rmatvec, dtype=np.float64
     )
 
     # Set random seed
