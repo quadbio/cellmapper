@@ -1,6 +1,7 @@
 import anndata as ad
 import numpy as np
 import scanpy as sc
+from scanpy.get import _check_mask, _get_obs_rep
 from scipy.sparse import csr_matrix, issparse
 
 from cellmapper.logging import logger
@@ -55,7 +56,7 @@ class EmbeddingMixin:
         n_components: int = 50,
         key_added: str = "X_pca_dual",
         layer: str | None = None,
-        var_mask: np.ndarray | str | None = None,
+        mask_var: np.ndarray | str | None = None,
         zero_center: bool = True,
         scale_with_singular: bool = True,
         random_state: int = 0,
@@ -77,7 +78,7 @@ class EmbeddingMixin:
             query and reference AnnData objects.
         layer
             Layer to use for the computation. If None, use .X.
-        var_mask
+        mask_var
             Boolean mask or string mask identifying a subset of variables/genes to use
             for computation. If string, should be a key in .var for both query and reference
             that contains a boolean mask. If None, uses the intersection of all variables
@@ -113,66 +114,19 @@ class EmbeddingMixin:
             self.reference.n_obs,
         )
 
-        # Handle var_mask parameter
-        if var_mask is not None:
-            # If var_mask is a string, interpret it as a key in .var
-            if isinstance(var_mask, str):
-                if var_mask not in self.query.var or var_mask not in self.reference.var:
-                    raise ValueError(
-                        f"var_mask '{var_mask}' not found in both query.var and reference.var. "
-                        "The mask must be present in both datasets."
-                    )
-                query_mask = self.query.var[var_mask].values
-                ref_mask = self.reference.var[var_mask].values
+        # Concatenate with inner join on genes
+        joint = ad.concat([self.reference, self.query], join="inner", label="batch", keys=["reference", "query"])
 
-                # Get masked genes from both datasets
-                query_genes = self.query.var_names[query_mask]
-                ref_genes = self.reference.var_names[ref_mask]
+        # Potentially subset along the features
+        mask_var = _check_mask(joint, mask_var, "var")
+        X_query = _get_obs_rep(joint[joint.obs["batch"] == "query", mask_var], layer=layer)
+        X_ref = _get_obs_rep(joint[joint.obs["batch"] == "reference", mask_var], layer=layer)
 
-                # Find common genes between the masked sets
-                common_genes = np.intersect1d(query_genes, ref_genes)
-
-                logger.info(
-                    "Using var_mask '%s': %d genes in query, %d genes in reference, %d common genes.",
-                    var_mask,
-                    np.sum(query_mask),
-                    np.sum(ref_mask),
-                    len(common_genes),
-                )
-            # If var_mask is a boolean array
-            elif isinstance(var_mask, np.ndarray):
-                if len(var_mask) != len(self.query.var_names) or len(var_mask) != len(self.reference.var_names):
-                    raise ValueError(
-                        f"Length of var_mask ({len(var_mask)}) must match the number of variables "
-                        f"in both query ({self.query.n_vars}) and reference ({self.reference.n_vars})."
-                    )
-                # Apply the boolean mask to get gene names
-                query_genes = self.query.var_names[var_mask]
-                ref_genes = self.reference.var_names[var_mask]
-                common_genes = np.intersect1d(query_genes, ref_genes)
-
-                logger.info(
-                    "Using provided boolean var_mask: %d genes selected, %d common genes.",
-                    np.sum(var_mask),
-                    len(common_genes),
-                )
-            else:
-                raise TypeError(f"var_mask must be a string key in .var or a boolean array, got {type(var_mask)}.")
-        else:
-            # Default behavior: use intersection of all genes
-            common_genes = np.intersect1d(self.query.var_names, self.reference.var_names)
-            logger.info("Using all %d common genes for dual PCA.", len(common_genes))
-
-        if len(common_genes) == 0:
-            raise ValueError("No overlapping genes found between query and reference datasets.")
-
-        # Extract the expression matrices for the common genes
-        if layer is None:
-            X_query = self.query[:, common_genes].X
-            X_ref = self.reference[:, common_genes].X
-        else:
-            X_query = self.query[:, common_genes].layers[layer]
-            X_ref = self.reference[:, common_genes].layers[layer]
+        n_common_genes = X_query.shape[1]
+        logger.info(
+            "Using %d common genes between query and reference datasets.",
+            n_common_genes,
+        )
 
         # Check sparsity types match
         both_sparse = issparse(X_query) and issparse(X_ref)
@@ -214,10 +168,9 @@ class EmbeddingMixin:
             "n_components": n_components,
             "variance": s,
             "variance_ratio": explained_variance_ratio,
-            "n_common_genes": len(common_genes),
+            "n_common_genes": n_common_genes,
             "zero_center": zero_center,
             "scale_with_singular": scale_with_singular,
-            "var_mask": var_mask if isinstance(var_mask, str) else None,
         }
 
         # Reference dataset gets the same parameters
