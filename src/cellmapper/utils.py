@@ -284,6 +284,7 @@ def truncated_svd_cross_covariance(
 
     # Compute means for implicit centering if needed
     if zero_center:
+        # Shape: (n_vars,)
         if x_is_sparse:
             X_mean = np.asarray(X.mean(axis=0)).flatten()
             Y_mean = np.asarray(Y.mean(axis=0)).flatten()
@@ -293,46 +294,125 @@ def truncated_svd_cross_covariance(
 
     # For dense matrices with zero_center, explicitly center them
     if zero_center and not x_is_sparse:
-        X = X - X_mean
-        Y = Y - Y_mean
+        # X shape: (n_obs_x, n_vars)
+        # X_mean shape: (n_vars,)
+        X = X - X_mean  # Broadcasting: (n_obs_x, n_vars) - (n_vars,) -> (n_obs_x, n_vars)
+        Y = Y - Y_mean  # Broadcasting: (n_obs_y, n_vars) - (n_vars,) -> (n_obs_y, n_vars)
 
         # Define a simple matrix multiplication for the operator
         def matvec(v):
+            # v shape: (n_obs_y,)
+            # Y.T shape: (n_vars, n_obs_y)
+            # Y.T @ v shape: (n_vars,)
+            # X shape: (n_obs_x, n_vars)
+            # X @ (Y.T @ v) shape: (n_obs_x,)
             return X @ (Y.T @ v)
 
         def rmatvec(v):
+            # v shape: (n_obs_x,)
+            # X.T shape: (n_vars, n_obs_x)
+            # X.T @ v shape: (n_vars,)
+            # Y shape: (n_obs_y, n_vars)
+            # Y @ (X.T @ v) shape: (n_obs_y,)
             return Y @ (X.T @ v)
 
     # For sparse matrices with zero_center, use implicit centering
     elif zero_center and x_is_sparse:
         # Define matrix-vector multiplication operations with implicit centering
         def matvec(v):
-            # Compute (Y-μy)ᵀ @ v implicitly
-            Yv = Y.T @ v
-            Yv_centered = Yv - (Y_mean @ v)
+            # v shape: (n_obs_y,)
 
-            # Compute (X-μx) @ ((Y-μy)ᵀ @ v) implicitly
+            # Step 1: Calculate Y^T @ v
+            # Y.T shape: (n_vars, n_obs_y)
+            # Y.T @ v shape: (n_vars,)
+            Yv = Y.T @ v
+
+            # Step 2: Calculate the mean correction term
+            # Following scanpy's approach: subtract (mean_vector * sum(v))
+            # Y_mean shape: (n_vars,)
+            # np.sum(v) is a scalar
+            # Y_mean * np.sum(v) shape: (n_vars,)
+            mean_correction = Y_mean * np.sum(v)
+
+            # Step 3: Center Y^T @ v implicitly
+            # Yv shape: (n_vars,)
+            # mean_correction shape: (n_vars,)
+            # Yv_centered shape: (n_vars,)
+            Yv_centered = Yv - mean_correction
+
+            # Step 4: Multiply X with the centered Y^T @ v
+            # X shape: (n_obs_x, n_vars)
+            # Yv_centered shape: (n_vars,)
+            # result shape: (n_obs_x,)
             result = X @ Yv_centered
-            mean_contrib = X_mean @ Yv_centered * np.sum(v)
-            return result - mean_contrib
+
+            # Step 5: Apply the mean correction for X
+            # X_mean shape: (n_vars,)
+            # Yv_centered shape: (n_vars,)
+            # X_mean @ Yv_centered is a scalar (dot product)
+            # np.ones(X.shape[0]) * (scalar) shape: (n_obs_x,)
+            # or equivalently: np.full(X.shape[0], X_mean @ Yv_centered)
+            mean_correction = X_mean @ Yv_centered
+
+            # Return the fully implicitly centered result
+            # result shape: (n_obs_x,)
+            # np.ones(X.shape[0]) * mean_correction shape: (n_obs_x,)
+            # Final shape: (n_obs_x,)
+            return result - mean_correction
 
         def rmatvec(v):
-            # Compute (X-μx)ᵀ @ v implicitly
-            Xv = X.T @ v
-            Xv_centered = Xv - (X_mean @ v)
+            # v shape: (n_obs_x,)
 
-            # Compute (Y-μy) @ ((X-μx)ᵀ @ v) implicitly
+            # Step 1: Calculate X^T @ v
+            # X.T shape: (n_vars, n_obs_x)
+            # X.T @ v shape: (n_vars,)
+            Xv = X.T @ v
+
+            # Step 2: Calculate the mean correction term
+            # X_mean shape: (n_vars,)
+            # np.sum(v) is a scalar
+            # X_mean * np.sum(v) shape: (n_vars,)
+            mean_correction = X_mean * np.sum(v)
+
+            # Step 3: Center X^T @ v implicitly
+            # Xv shape: (n_vars,)
+            # mean_correction shape: (n_vars,)
+            # Xv_centered shape: (n_vars,)
+            Xv_centered = Xv - mean_correction
+
+            # Step 4: Multiply Y with the centered X^T @ v
+            # Y shape: (n_obs_y, n_vars)
+            # Xv_centered shape: (n_vars,)
+            # result shape: (n_obs_y,)
             result = Y @ Xv_centered
-            mean_contrib = Y_mean @ Xv_centered * np.sum(v)
-            return result - mean_contrib
+
+            # Step 5: Apply the mean correction for Y
+            # Y_mean shape: (n_vars,)
+            # Xv_centered shape: (n_vars,)
+            # Y_mean @ Xv_centered is a scalar (dot product)
+            mean_correction = Y_mean @ Xv_centered
+
+            # Return the fully implicitly centered result
+            # result shape: (n_obs_y,)
+            # np.ones(Y.shape[0]) * mean_correction shape: (n_obs_y,)
+            # Final shape: (n_obs_y,)
+            return result - mean_correction
 
     # For the case with no centering, direct matrix multiplication
     else:
 
         def matvec(v):
+            # v shape: (n_obs_y,)
+            # Y.T shape: (n_vars, n_obs_y)
+            # Y.T @ v shape: (n_vars,)
+            # X @ (Y.T @ v) shape: (n_obs_x,)
             return X @ (Y.T @ v)
 
         def rmatvec(v):
+            # v shape: (n_obs_x,)
+            # X.T shape: (n_vars, n_obs_x)
+            # X.T @ v shape: (n_vars,)
+            # Y @ (X.T @ v) shape: (n_obs_y,)
             return Y @ (X.T @ v)
 
     # Create LinearOperator representing the cross-covariance matrix without materializing it
