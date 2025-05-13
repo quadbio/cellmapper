@@ -293,8 +293,6 @@ class CellMapper(CellMapperEvaluationMixin):
         if len(common_genes) == 0:
             raise ValueError("No overlapping genes found between query and reference datasets.")
 
-        logger.info("Using %d common genes for dual PCA.", len(common_genes))
-
         # Extract the expression matrices for the common genes
         if layer is None:
             X_query = self.query[:, common_genes].X
