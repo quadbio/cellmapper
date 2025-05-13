@@ -119,8 +119,10 @@ class EmbeddingMixin:
 
         # Potentially subset along the features
         mask_var = _check_mask(joint, mask_var, "var")
-        X_query = _get_obs_rep(joint[joint.obs["batch"] == "query", mask_var], layer=layer)
-        X_ref = _get_obs_rep(joint[joint.obs["batch"] == "reference", mask_var], layer=layer)
+        joint = joint[:, mask_var] if mask_var is not None else joint
+
+        X_query = _get_obs_rep(joint[joint.obs["batch"] == "query"], layer=layer)
+        X_ref = _get_obs_rep(joint[joint.obs["batch"] == "reference"], layer=layer)
 
         n_common_genes = X_query.shape[1]
         logger.info(
