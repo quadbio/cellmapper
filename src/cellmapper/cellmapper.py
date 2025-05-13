@@ -183,6 +183,7 @@ class CellMapper(CellMapperEvaluationMixin):
         key_added: str = "X_pca_dual",
         layer: str | None = None,
         zero_center: bool = True,
+        scale_with_singular: bool = True,
         random_state: int = 0,
     ) -> None:
         """
@@ -204,6 +205,9 @@ class CellMapper(CellMapperEvaluationMixin):
             Layer to use for the computation. If None, use .X.
         zero_center
             If True, center the data (implicitly for sparse matrices).
+        scale_with_singular
+            If True (default), scale the singular vectors by the square root of their
+            singular values. If False, return the raw singular vectors.
         random_state
             Random seed for reproducibility.
 
@@ -216,7 +220,7 @@ class CellMapper(CellMapperEvaluationMixin):
         -----
         This method follows the approach described in https://xinmingtu.cn/blog/2022/CCA_dual_PCA/
         to create embeddings from the SVD of the cross-covariance matrix between datasets. This is similar to
-        Seurat's CCA implementation (CITE), but it multiplies with the singular values to create the embeddings.
+        Seurat's CCA implementation (CITE), but it (optionally) multiplies with the singular values to create the embeddings.
 
         In contrast to the existing implementation in the SLAT (CITE) package, we don't compute the covariance matrix
         explicitly, which saves memory and is more efficient for large datasets.
@@ -266,10 +270,13 @@ class CellMapper(CellMapperEvaluationMixin):
         # Construct embeddings following dual PCA formulation
         # X = U * sqrt(S)
         # Y = V * sqrt(S) = (Vt.T) * sqrt(S)
-        s_sqrt = np.sqrt(s)
-
-        query_embedding = U * s_sqrt[np.newaxis, :]
-        reference_embedding = Vt.T * s_sqrt[np.newaxis, :]
+        if scale_with_singular:
+            s_sqrt = np.sqrt(s)
+            query_embedding = U * s_sqrt[np.newaxis, :]
+            reference_embedding = Vt.T * s_sqrt[np.newaxis, :]
+        else:
+            query_embedding = U
+            reference_embedding = Vt.T
 
         # Store embeddings in the AnnData objects
         self.query.obsm[key_added] = query_embedding
