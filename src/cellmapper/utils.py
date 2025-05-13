@@ -6,6 +6,7 @@ import pandas as pd
 from anndata import AnnData
 from scipy.sparse import csr_matrix, issparse
 from scipy.sparse.linalg import LinearOperator, svds
+from sklearn.utils.extmath import randomized_svd
 
 from cellmapper.logging import logger
 
@@ -222,6 +223,7 @@ def truncated_svd_cross_covariance(
     Y: np.ndarray | csr_matrix,
     n_components: int = 50,
     zero_center: bool = True,
+    implicit: bool = True,
     random_state: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -246,6 +248,10 @@ def truncated_svd_cross_covariance(
         If True (default), implicitly center the data before computing SVD.
         For sparse matrices, centering is done implicitly without densifying the matrix.
         For dense matrices, centering is done explicitly.
+    implicit
+        If True (default), use the memory-efficient implicit matrix-vector product approach.
+        If False, explicitly compute the full covariance matrix X @ Y.T, which may be
+        faster for small matrices but uses more memory.
     random_state
         Random seed for reproducibility.
 
@@ -275,6 +281,7 @@ def truncated_svd_cross_covariance(
     if x_is_sparse != y_is_sparse:
         raise TypeError("X and Y must be of the same type: both sparse or both dense")
 
+    # Continue with the implicit approach for the remaining code
     # Ensure sparse matrices are in CSR format for efficiency
     if x_is_sparse:
         if not isinstance(X, csr_matrix):
@@ -292,63 +299,73 @@ def truncated_svd_cross_covariance(
             X_mean = np.mean(X, axis=0)
             Y_mean = np.mean(Y, axis=0)
 
-    # For dense matrices with zero_center, explicitly center them
-    if zero_center and not x_is_sparse:
-        # X shape: (n_obs_x, n_vars)
-        # X_mean shape: (n_vars,)
-        X = X - X_mean
-        Y = Y - Y_mean
+    if implicit:
+        # For dense matrices with zero_center, explicitly center them
+        if zero_center and not x_is_sparse:
+            # X shape: (n_obs_x, n_vars)
+            # X_mean shape: (n_vars,)
+            X = X - X_mean
+            Y = Y - Y_mean
 
-        # Define a simple matrix multiplication for the operator
-        def matvec(v):
-            return X @ (Y.T @ v)
+            # Define a simple matrix multiplication for the operator
+            def matvec(v):
+                return X @ (Y.T @ v)
 
-        def rmatvec(v):
-            return Y @ (X.T @ v)
+            def rmatvec(v):
+                return Y @ (X.T @ v)
 
-    # For sparse matrices with zero_center, use implicit centering
-    elif zero_center and x_is_sparse:
-        corr_1 = X @ Y_mean  # Shape: (n_obs_x,)
-        corr_2 = Y @ X_mean  # Shape: (n_obs_y,)
-        corr_3 = X_mean.T @ Y_mean  # Scalar value
+        # For sparse matrices with zero_center, use implicit centering
+        elif zero_center and x_is_sparse:
+            corr_1 = X @ Y_mean  # Shape: (n_obs_x,)
+            corr_2 = Y @ X_mean  # Shape: (n_obs_y,)
+            corr_3 = X_mean.T @ Y_mean  # Scalar value
 
-        # Define matrix-vector multiplication operations with implicit centering
-        def matvec(v):
-            """Compute (X_c @ Y_c.T) @ V without materializing the full matrix."""
-            # V shape: (n_obs_y, n_cols)
+            # Define matrix-vector multiplication operations with implicit centering
+            def matvec(v):
+                """Compute (X_c @ Y_c.T) @ v without materializing the full matrix."""
+                # v shape can be (n_obs_y,) or (n_obs_y, n_cols)
 
-            # For each column, calculate the sum and apply corrections
-            v_sum = v.sum(axis=0)  # Sum of each column
-            return X @ (Y.T @ v) - np.outer(corr_1, v_sum).squeeze() - corr_2.T @ v + corr_3 * v_sum
+                # For each column, calculate the sum and apply corrections
+                v_sum = v.sum(axis=0)  # Sum of each column
+                return X @ (Y.T @ v) - np.outer(corr_1, v_sum).squeeze() - corr_2.T @ v + corr_3 * v_sum
 
-        def rmatvec(v):
-            """Compute (X_c @ Y_c.T).T @ V without materializing the full matrix."""
-            # V shape: (n_obs_x, n_cols)
+            def rmatvec(v):
+                """Compute (X_c @ Y_c.T).T @ v = Y_c @ X_c.T @ v without materializing the full matrix."""
+                # v shape can be (n_obs_x,) or (n_obs_x, n_cols)
 
-            # For each column, calculate the sum and apply corrections
-            v_sum = v.sum(axis=0)  # Sum of each column
-            return Y @ (X.T @ v) - corr_1.T @ v - np.outer(corr_2, v_sum).squeeze() + corr_3 * v_sum
+                # For each column, calculate the sum and apply corrections
+                v_sum = v.sum(axis=0)  # Sum of each column
+                return Y @ (X.T @ v) - corr_1.T @ v - np.outer(corr_2, v_sum).squeeze() + corr_3 * v_sum
 
-    # For the case with no centering, direct matrix multiplication
+        # For the case with no centering, direct matrix multiplication
+        else:
+
+            def matvec(v):
+                return X @ (Y.T @ v)
+
+            def rmatvec(v):
+                return Y @ (X.T @ v)
+
+        # Create LinearOperator representing the cross-covariance matrix without materializing it
+        XYt_op = LinearOperator(
+            shape=(X.shape[0], Y.shape[0]),
+            matvec=matvec,
+            rmatvec=rmatvec,
+            matmat=matvec,
+            rmatmat=rmatvec,
+            dtype=np.float64,
+        )
+
+        # Set random seed
+        np.random.seed(random_state)
+        random_init = np.random.rand(min(XYt_op.shape))
+
+        # Compute truncated SVD using ARPACK
+        u, s, vt = svds(XYt_op, k=n_components, v0=random_init)
+
     else:
-
-        def matvec(v):
-            return X @ (Y.T @ v)
-
-        def rmatvec(v):
-            return Y @ (X.T @ v)
-
-    # Create LinearOperator representing the cross-covariance matrix without materializing it
-    XYt_op = LinearOperator(
-        shape=(X.shape[0], Y.shape[0]), matvec=matvec, rmatvec=rmatvec, matmat=matvec, rmatmat=rmatvec, dtype=np.float64
-    )
-
-    # Set random seed
-    np.random.seed(random_state)
-    random_init = np.random.rand(min(XYt_op.shape))
-
-    # Compute truncated SVD using ARPACK
-    u, s, vt = svds(XYt_op, k=n_components, v0=random_init)
+        cov_matrix = (X - X_mean) @ (Y - Y_mean).T if zero_center else X @ Y.T
+        u, s, vt = randomized_svd(cov_matrix, n_components=n_components, random_state=random_state)
 
     # Sort singular values in descending order
     idx = np.argsort(-s)

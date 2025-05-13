@@ -60,6 +60,7 @@ class EmbeddingMixin:
         zero_center: bool = True,
         scale_with_singular: bool = True,
         random_state: int = 0,
+        implicit: bool = True,
     ) -> None:
         """
         Compute a joint embedding using dual PCA on the reference and query datasets.
@@ -90,6 +91,8 @@ class EmbeddingMixin:
             singular values. If False, return the raw singular vectors.
         random_state
             Random seed for reproducibility.
+        implicit
+            Wheter to use implicit mean centering and covariance computation.
 
         Returns
         -------
@@ -143,7 +146,12 @@ class EmbeddingMixin:
 
         # Compute the SVD of the cross-covariance matrix
         U, s, Vt = truncated_svd_cross_covariance(
-            X_query, X_ref, n_components=n_components, zero_center=zero_center, random_state=random_state
+            X_query,
+            X_ref,
+            n_components=n_components,
+            zero_center=zero_center,
+            random_state=random_state,
+            implicit=implicit,
         )
 
         logger.info("SVD of cross-covariance matrix computed successfully.")
