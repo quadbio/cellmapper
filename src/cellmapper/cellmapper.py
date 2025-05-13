@@ -8,12 +8,12 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
+from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
 from sklearn.preprocessing import OneHotEncoder
 
 from cellmapper.evaluate import CellMapperEvaluationMixin
 from cellmapper.logging import logger
-from cellmapper.utils import create_imputed_anndata
+from cellmapper.utils import create_imputed_anndata, truncated_svd_cross_covariance
 
 from .knn import Neighbors
 
@@ -137,7 +137,7 @@ class CellMapper(CellMapperEvaluationMixin):
 
         return mapping_matrix
 
-    def compute_joint_pca(self, n_components: int = 50, key_added: str = "pca_joint", **kwargs) -> None:
+    def compute_joint_pca(self, n_components: int = 50, key_added: str = "X_pca_joint", **kwargs) -> None:
         """
         Compute a joint PCA on the normalized .X matrices of query and reference, using only overlapping genes.
 
@@ -175,6 +175,126 @@ class CellMapper(CellMapperEvaluationMixin):
             "Joint PCA computed and stored as '%s' in both reference.obsm and query.obsm. "
             "Proceeding to use this as the representation for neighbor search.",
             key_added,
+        )
+
+    def compute_dual_pca(
+        self,
+        n_components: int = 50,
+        key_added: str = "X_pca_dual",
+        layer: str | None = None,
+        zero_center: bool = True,
+        random_state: int = 0,
+    ) -> None:
+        """
+        Compute a joint embedding using dual PCA on the reference and query datasets.
+
+        This method computes the singular value decomposition (SVD) of the cross-covariance matrix
+        between the reference and query datasets using an efficient implementation that doesn't
+        materialize the full cross-covariance matrix. It then constructs a joint embedding
+        based on the SVD components.
+
+        Parameters
+        ----------
+        n_components
+            Number of components to keep in the embedding.
+        key_added
+            Key under which to store the joint embedding in `.obsm` of both
+            query and reference AnnData objects.
+        layer
+            Layer to use for the computation. If None, use .X.
+        zero_center
+            If True, center the data (implicitly for sparse matrices).
+        random_state
+            Random seed for reproducibility.
+
+        Returns
+        -------
+        None
+            Embeddings are stored in the .obsm attribute of both query and reference AnnData objects.
+
+        Notes
+        -----
+        This method follows the approach described in https://xinmingtu.cn/blog/2022/CCA_dual_PCA/
+        to create embeddings from the SVD of the cross-covariance matrix between datasets. This is similar to
+        Seurat's CCA implementation (CITE), but it multiplies with the singular values to create the embeddings.
+
+        In contrast to the existing implementation in the SLAT (CITE) package, we don't compute the covariance matrix
+        explicitly, which saves memory and is more efficient for large datasets.
+
+        The implementation handles sparse matrices efficiently using implicit mean centering,
+        similar to Scanpy's PCA implementation.
+        """
+        logger.info(
+            "Computing dual PCA between query (%d cells) and reference (%d cells).",
+            self.query.n_obs,
+            self.reference.n_obs,
+        )
+
+        # Get the features that are present in both datasets
+        common_genes = np.intersect1d(self.query.var_names, self.reference.var_names)
+        if len(common_genes) == 0:
+            raise ValueError("No overlapping genes found between query and reference datasets.")
+
+        logger.info("Using %d common genes for dual PCA.", len(common_genes))
+
+        # Extract the expression matrices for the common genes
+        if layer is None:
+            X_query = self.query[:, common_genes].X
+            X_ref = self.reference[:, common_genes].X
+        else:
+            X_query = self.query[:, common_genes].layers[layer]
+            X_ref = self.reference[:, common_genes].layers[layer]
+
+        # Check sparsity types match
+        both_sparse = issparse(X_query) and issparse(X_ref)
+        both_dense = not issparse(X_query) and not issparse(X_ref)
+
+        if not (both_sparse or both_dense):
+            logger.info("Converting matrices to ensure consistent type (both sparse or both dense).")
+            if issparse(X_query) and not issparse(X_ref):
+                X_ref = csr_matrix(X_ref)
+            elif not issparse(X_query) and issparse(X_ref):
+                X_query = X_query.toarray() if hasattr(X_query, "toarray") else X_query
+
+        # Compute the SVD of the cross-covariance matrix
+        U, s, Vt = truncated_svd_cross_covariance(
+            X_query, X_ref, n_components=n_components, zero_center=zero_center, random_state=random_state
+        )
+
+        logger.info("SVD of cross-covariance matrix computed successfully.")
+
+        # Construct embeddings following dual PCA formulation
+        # X = U * sqrt(S)
+        # Y = V * sqrt(S) = (Vt.T) * sqrt(S)
+        s_sqrt = np.sqrt(s)
+
+        query_embedding = U * s_sqrt[np.newaxis, :]
+        reference_embedding = Vt.T * s_sqrt[np.newaxis, :]
+
+        # Store embeddings in the AnnData objects
+        self.query.obsm[key_added] = query_embedding
+        self.reference.obsm[key_added] = reference_embedding
+
+        # Store variance explained in uns
+        explained_variance_ratio = s / np.sum(s)
+
+        self.query.uns[f"{key_added}_params"] = {
+            "n_components": n_components,
+            "variance": s,
+            "variance_ratio": explained_variance_ratio,
+            "n_common_genes": len(common_genes),
+            "zero_center": zero_center,
+        }
+
+        # Reference dataset gets the same parameters
+        self.reference.uns[f"{key_added}_params"] = self.query.uns[f"{key_added}_params"]
+
+        logger.info(
+            "Dual PCA embeddings stored as '%s' in both reference.obsm and query.obsm. "
+            "Top %d components explain %.1f%% of the cross-covariance.",
+            key_added,
+            n_components,
+            100 * np.sum(explained_variance_ratio),
         )
 
     def compute_neighbors(
