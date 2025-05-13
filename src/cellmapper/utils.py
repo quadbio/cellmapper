@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 from scipy.sparse import csr_matrix, issparse
+from scipy.sparse.linalg import LinearOperator, svds
 
 from cellmapper.logging import logger
 
@@ -214,3 +215,144 @@ def extract_neighbors_from_distances(
             distances[i, :n_neighbors] = cell_distances
 
     return indices, distances
+
+
+def truncated_svd_cross_covariance(
+    X: np.ndarray | csr_matrix,
+    Y: np.ndarray | csr_matrix,
+    n_components: int = 50,
+    zero_center: bool = True,
+    random_state: int = 0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute truncated SVD of the cross-covariance matrix X @ Y.T efficiently.
+
+    This implementation avoids materializing the potentially large dense matrix X @ Y.T
+    by using an implicit matrix-vector product approach, similar to scanpy's PCA
+    implementation for sparse matrices. Mean-centering is also performed implicitly
+    to preserve sparsity.
+
+    Parameters
+    ----------
+    X
+        First data matrix of shape (n_obs_x, n_vars). Rows correspond to
+        cells/observations and columns to genes/variables.
+    Y
+        Second data matrix of shape (n_obs_y, n_vars). Must have the same number of
+        variables as X.
+    n_components
+        Number of singular vectors to compute. Defaults to 50.
+    zero_center
+        If True (default), implicitly center the data before computing SVD.
+        For sparse matrices, centering is done implicitly without densifying the matrix.
+        For dense matrices, centering is done explicitly.
+    random_state
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    U
+        Left singular vectors of shape (n_obs_x, n_components).
+    s
+        Singular values of shape (n_components,).
+    Vt
+        Right singular vectors of shape (n_components, n_obs_y).
+
+    Notes
+    -----
+    This function parallels scanpy's approach to handling sparse matrices in PCA
+    computation but is adapted for the cross-covariance case (X @ Y.T instead of X.T @ X).
+    """
+    # Check inputs
+    if X.shape[1] != Y.shape[1]:
+        raise ValueError(f"X and Y must have the same number of variables: X has {X.shape[1]}, Y has {Y.shape[1]}")
+
+    # Ensure sparse matrices are in CSR format for efficiency
+    if issparse(X) and not isinstance(X, csr_matrix):
+        X = X.tocsr()
+    if issparse(Y) and not isinstance(Y, csr_matrix):
+        Y = Y.tocsr()
+
+    # Compute means for implicit centering if needed
+    if zero_center:
+        if issparse(X):
+            X_mean = np.asarray(X.mean(axis=0)).flatten()
+        else:
+            X_mean = np.mean(X, axis=0)
+
+        if issparse(Y):
+            Y_mean = np.asarray(Y.mean(axis=0)).flatten()
+        else:
+            Y_mean = np.mean(Y, axis=0)
+
+    # For dense matrices with zero_center, explicitly center them
+    if zero_center and not issparse(X) and not issparse(Y):
+        X = X - X_mean
+        Y = Y - Y_mean
+
+        # Define a simple matrix multiplication for the operator
+        def matvec(v):
+            return X @ (Y.T @ v)
+
+        def rmatvec(v):
+            return Y @ (X.T @ v)
+
+    # For sparse matrices or mixed cases with zero_center, use implicit centering
+    elif zero_center and (issparse(X) or issparse(Y)):
+        # Define matrix-vector multiplication operations with implicit centering
+        def matvec(v):
+            # Compute (Y-μy)ᵀ @ v implicitly
+            Yv = Y.T @ v
+            if zero_center:
+                Yv_centered = Yv - (Y_mean @ v)
+            else:
+                Yv_centered = Yv
+
+            # Compute (X-μx) @ ((Y-μy)ᵀ @ v) implicitly
+            result = X @ Yv_centered
+            if zero_center:
+                mean_contrib = np.sum(v) * X_mean @ Yv_centered
+                result -= mean_contrib
+            return result
+
+        def rmatvec(v):
+            # Compute (X-μx)ᵀ @ v implicitly
+            Xv = X.T @ v
+            if zero_center:
+                Xv_centered = Xv - (X_mean @ v)
+            else:
+                Xv_centered = Xv
+
+            # Compute (Y-μy) @ ((X-μx)ᵀ @ v) implicitly
+            result = Y @ Xv_centered
+            if zero_center:
+                mean_contrib = np.sum(v) * Y_mean @ Xv_centered
+                result -= mean_contrib
+            return result
+
+    # For the case with no centering, direct matrix multiplication
+    else:
+
+        def matvec(v):
+            return X @ (Y.T @ v)
+
+        def rmatvec(v):
+            return Y @ (X.T @ v)
+
+    # Create LinearOperator representing the cross-covariance matrix without materializing it
+    XYt_op = LinearOperator(shape=(X.shape[0], Y.shape[0]), matvec=matvec, rmatvec=rmatvec, dtype=np.float64)
+
+    # Set random seed
+    np.random.seed(random_state)
+    random_init = np.random.rand(min(XYt_op.shape))
+
+    # Compute truncated SVD using ARPACK
+    u, s, vt = svds(XYt_op, k=n_components, v0=random_init)
+
+    # Sort singular values in descending order
+    idx = np.argsort(-s)
+    u = u[:, idx]
+    s = s[idx]
+    vt = vt[idx, :]
+
+    return u, s, vt
