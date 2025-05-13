@@ -306,6 +306,9 @@ def truncated_svd_cross_covariance(
         def rmatvec(v):
             return Y @ (X.T @ v)
 
+        matmat = matvec
+        rmatmat = rmatvec
+
     # For sparse matrices with zero_center, use implicit centering
     elif zero_center and x_is_sparse:
         corr_1 = X @ Y_mean  # Shape: (n_obs_x,)
@@ -350,6 +353,9 @@ def truncated_svd_cross_covariance(
 
         def rmatvec(v):
             return Y @ (X.T @ v)
+
+        matmat = matvec
+        rmatmat = rmatvec
 
     # Create LinearOperator representing the cross-covariance matrix without materializing it
     XYt_op = LinearOperator(
