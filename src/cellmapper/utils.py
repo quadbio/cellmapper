@@ -262,31 +262,37 @@ def truncated_svd_cross_covariance(
     -----
     This function parallels scanpy's approach to handling sparse matrices in PCA
     computation but is adapted for the cross-covariance case (X @ Y.T instead of X.T @ X).
+    Both X and Y must be of the same type (both sparse or both dense).
     """
     # Check inputs
     if X.shape[1] != Y.shape[1]:
         raise ValueError(f"X and Y must have the same number of variables: X has {X.shape[1]}, Y has {Y.shape[1]}")
 
+    # Check that X and Y are both sparse or both dense
+    x_is_sparse = issparse(X)
+    y_is_sparse = issparse(Y)
+
+    if x_is_sparse != y_is_sparse:
+        raise TypeError("X and Y must be of the same type: both sparse or both dense")
+
     # Ensure sparse matrices are in CSR format for efficiency
-    if issparse(X) and not isinstance(X, csr_matrix):
-        X = X.tocsr()
-    if issparse(Y) and not isinstance(Y, csr_matrix):
-        Y = Y.tocsr()
+    if x_is_sparse:
+        if not isinstance(X, csr_matrix):
+            X = X.tocsr()
+        if not isinstance(Y, csr_matrix):
+            Y = Y.tocsr()
 
     # Compute means for implicit centering if needed
     if zero_center:
-        if issparse(X):
+        if x_is_sparse:
             X_mean = np.asarray(X.mean(axis=0)).flatten()
-        else:
-            X_mean = np.mean(X, axis=0)
-
-        if issparse(Y):
             Y_mean = np.asarray(Y.mean(axis=0)).flatten()
         else:
+            X_mean = np.mean(X, axis=0)
             Y_mean = np.mean(Y, axis=0)
 
     # For dense matrices with zero_center, explicitly center them
-    if zero_center and not issparse(X) and not issparse(Y):
+    if zero_center and not x_is_sparse:
         X = X - X_mean
         Y = Y - Y_mean
 
@@ -297,38 +303,28 @@ def truncated_svd_cross_covariance(
         def rmatvec(v):
             return Y @ (X.T @ v)
 
-    # For sparse matrices or mixed cases with zero_center, use implicit centering
-    elif zero_center and (issparse(X) or issparse(Y)):
+    # For sparse matrices with zero_center, use implicit centering
+    elif zero_center and x_is_sparse:
         # Define matrix-vector multiplication operations with implicit centering
         def matvec(v):
             # Compute (Y-μy)ᵀ @ v implicitly
             Yv = Y.T @ v
-            if zero_center:
-                Yv_centered = Yv - (Y_mean @ v)
-            else:
-                Yv_centered = Yv
+            Yv_centered = Yv - (Y_mean @ v)
 
             # Compute (X-μx) @ ((Y-μy)ᵀ @ v) implicitly
             result = X @ Yv_centered
-            if zero_center:
-                mean_contrib = np.sum(v) * X_mean @ Yv_centered
-                result -= mean_contrib
-            return result
+            mean_contrib = X_mean @ Yv_centered * np.sum(v)
+            return result - mean_contrib
 
         def rmatvec(v):
             # Compute (X-μx)ᵀ @ v implicitly
             Xv = X.T @ v
-            if zero_center:
-                Xv_centered = Xv - (X_mean @ v)
-            else:
-                Xv_centered = Xv
+            Xv_centered = Xv - (X_mean @ v)
 
             # Compute (Y-μy) @ ((X-μx)ᵀ @ v) implicitly
             result = Y @ Xv_centered
-            if zero_center:
-                mean_contrib = np.sum(v) * Y_mean @ Xv_centered
-                result -= mean_contrib
-            return result
+            mean_contrib = Y_mean @ Xv_centered * np.sum(v)
+            return result - mean_contrib
 
     # For the case with no centering, direct matrix multiplication
     else:
