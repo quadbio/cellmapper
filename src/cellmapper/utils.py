@@ -281,6 +281,10 @@ def truncated_svd_cross_covariance(
     if x_is_sparse != y_is_sparse:
         raise TypeError("X and Y must be of the same type: both sparse or both dense")
 
+    # compute the number of samples and the scale factor
+    n_samples = X.shape[1]
+    scale_factor = 1 / (n_samples - 1)
+
     # if not implicit, always densify
     if not implicit:
         if x_is_sparse:
@@ -302,61 +306,59 @@ def truncated_svd_cross_covariance(
     if zero_center:
         # Shape: (n_vars,)
         if x_is_sparse:
-            X_mean = np.asarray(X.mean(axis=0)).flatten()
-            Y_mean = np.asarray(Y.mean(axis=0)).flatten()
+            X_mean = np.asarray(X.mean(axis=1)).flatten()
+            Y_mean = np.asarray(Y.mean(axis=1)).flatten()
         else:
-            X_mean = np.mean(X, axis=0)
-            Y_mean = np.mean(Y, axis=0)
+            X_mean = np.mean(X, axis=1)
+            Y_mean = np.mean(Y, axis=1)
 
     if implicit:
         # For dense matrices with zero_center, explicitly center them
         if zero_center and not x_is_sparse:
             # X shape: (n_obs_x, n_vars)
             # X_mean shape: (n_vars,)
-            X = X - X_mean
-            Y = Y - Y_mean
+            X = X - X_mean[:, None]
+            Y = Y - Y_mean[:, None]
 
             # Define a simple matrix multiplication for the operator
             def matvec(v):
-                return X @ (Y.T @ v)
+                term_1 = X @ (Y.T @ v)
+                return scale_factor * term_1
 
             def rmatvec(v):
-                return Y @ (X.T @ v)
+                term_1 = Y @ (X.T @ v)
+                return scale_factor * term_1
 
         # For sparse matrices with zero_center, use implicit centering
         elif zero_center and x_is_sparse:
-            corr_1 = X @ Y_mean  # Shape: (n_obs_x,)
-            corr_2 = Y @ X_mean  # Shape: (n_obs_y,)
-            corr_3 = X_mean.T @ Y_mean  # Scalar value
 
-            # Define matrix-vector multiplication operations with implicit centering
             def matvec(v):
-                """Compute (X_c @ Y_c.T) @ v without materializing the full matrix."""
-                # v shape can be (n_obs_y,) or (n_obs_y, n_cols)
+                """Compute cov(X, Y) @ v without materializing the full matrix."""
+                term_1 = X @ (Y.T @ v)
+                term_2 = n_samples * np.outer(X_mean, Y_mean @ v).squeeze()
 
-                # For each column, calculate the sum and apply corrections
-                v_sum = v.sum(axis=0)  # Sum of each column
-                return X @ (Y.T @ v) - np.outer(corr_1, v_sum).squeeze() - corr_2.T @ v + corr_3 * v_sum
+                return scale_factor * (term_1 - term_2)
 
             def rmatvec(v):
-                """Compute (X_c @ Y_c.T).T @ v = Y_c @ X_c.T @ v without materializing the full matrix."""
-                # v shape can be (n_obs_x,) or (n_obs_x, n_cols)
+                """Compute cov(X, Y).T @ v without materializing the full matrix."""
+                term_1 = Y @ (X.T @ v)
+                term_2 = n_samples * np.outer(Y_mean, X_mean @ v).squeeze()
 
-                # For each column, calculate the sum and apply corrections
-                v_sum = v.sum(axis=0)  # Sum of each column
-                return Y @ (X.T @ v) - corr_1.T @ v - np.outer(corr_2, v_sum).squeeze() + corr_3 * v_sum
+                return scale_factor * (term_1 - term_2)
 
         # For the case with no centering, direct matrix multiplication
         else:
 
             def matvec(v):
-                return X @ (Y.T @ v)
+                term_1 = X @ (Y.T @ v)
+                return scale_factor * term_1
 
             def rmatvec(v):
-                return Y @ (X.T @ v)
+                term_1 = Y @ (X.T @ v)
+                return scale_factor * term_1
 
         # Create LinearOperator representing the cross-covariance matrix without materializing it
-        XYt_op = LinearOperator(
+        cov_op = LinearOperator(
             shape=(X.shape[0], Y.shape[0]),
             matvec=matvec,
             rmatvec=rmatvec,
@@ -367,13 +369,15 @@ def truncated_svd_cross_covariance(
 
         # Set random seed
         np.random.seed(random_state)
-        random_init = np.random.rand(min(XYt_op.shape))
+        random_init = np.random.rand(min(cov_op.shape))
 
         # Compute truncated SVD using ARPACK
-        u, s, vt = svds(XYt_op, k=n_components, v0=random_init)
+        u, s, vt = svds(cov_op, k=n_components, v0=random_init)
 
     else:
-        cov_matrix = (X - X_mean) @ (Y - Y_mean).T if zero_center else X @ Y.T
+        cov_matrix = (
+            scale_factor * (X - X_mean[:, None]) @ (Y - Y_mean[:, None]).T if zero_center else scale_factor * X @ Y.T
+        )
         u, s, vt = randomized_svd(cov_matrix, n_components=n_components, random_state=random_state)
 
     # Sort singular values in descending order
