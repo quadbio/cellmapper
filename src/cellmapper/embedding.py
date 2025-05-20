@@ -58,7 +58,7 @@ class EmbeddingMixin:
         layer: str | None = None,
         mask_var: np.ndarray | str | None = None,
         zero_center: bool = True,
-        scale_with_singular: bool = True,
+        scale_with_singular: bool = False,
         random_state: int = 0,
         implicit: bool = True,
     ) -> None:
@@ -87,7 +87,7 @@ class EmbeddingMixin:
         zero_center
             If True, center the data (implicitly for sparse matrices).
         scale_with_singular
-            If True (default), scale the singular vectors by the square root of their
+            If True, scale the singular vectors by the square root of their
             singular values. If False, return the raw singular vectors.
         random_state
             Random seed for reproducibility.
@@ -103,9 +103,9 @@ class EmbeddingMixin:
         -----
         This method follows the approach described in https://xinmingtu.cn/blog/2022/CCA_dual_PCA/
         to create embeddings from the SVD of the cross-covariance matrix between datasets. This is similar to
-        Seurat's CCA implementation (CITE), but it (optionally) multiplies with the singular values to create the embeddings.
+        Seurat's CCA implementation (CITE).
 
-        In contrast to the existing implementation in the SLAT (CITE) package, we don't compute the covariance matrix
+        In contrast to the existing implementation in the SLAT (CITE) package and in Seurat, we don't compute the covariance matrix
         explicitly, which saves memory and is more efficient for large datasets.
 
         The implementation handles sparse matrices efficiently using implicit mean centering,
