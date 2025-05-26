@@ -59,6 +59,7 @@ class EmbeddingMixin:
         mask_var: np.ndarray | str | None = None,
         zero_center: bool = True,
         scale_with_singular: bool = False,
+        l2_scale: bool = True,
         random_state: int = 0,
         implicit: bool = True,
     ) -> None:
@@ -89,6 +90,8 @@ class EmbeddingMixin:
         scale_with_singular
             If True, scale the singular vectors by the square root of their
             singular values. If False, return the raw singular vectors.
+        l2_scale
+            If True, scale the matrices of singular vectors to have l2 norm of 1 per observation.
         random_state
             Random seed for reproducibility.
         implicit
@@ -153,6 +156,7 @@ class EmbeddingMixin:
             random_state=random_state,
             implicit=implicit,
         )
+        V = Vt.T
 
         logger.info("SVD of cross-covariance matrix computed successfully.")
 
@@ -161,15 +165,16 @@ class EmbeddingMixin:
         # Y = V * sqrt(S) = (Vt.T) * sqrt(S)
         if scale_with_singular:
             s_sqrt = np.sqrt(s)
-            query_embedding = U * s_sqrt[np.newaxis, :]
-            reference_embedding = Vt.T * s_sqrt[np.newaxis, :]
-        else:
-            query_embedding = U
-            reference_embedding = Vt.T
+            U = U * s_sqrt[np.newaxis, :]
+            V = V * s_sqrt[np.newaxis, :]
+
+        if l2_scale:
+            U /= np.linalg.norm(U, axis=1)[:, None]
+            V /= np.linalg.norm(V, axis=1)[:, None]
 
         # Store embeddings in the AnnData objects
-        self.query.obsm[key_added] = query_embedding
-        self.reference.obsm[key_added] = reference_embedding
+        self.query.obsm[key_added] = U
+        self.reference.obsm[key_added] = V
 
         # Store variance explained in uns
         explained_variance_ratio = s / np.sum(s)
@@ -181,6 +186,7 @@ class EmbeddingMixin:
             "n_common_genes": n_common_genes,
             "zero_center": zero_center,
             "scale_with_singular": scale_with_singular,
+            "l2_scale": l2_scale,
         }
 
         # Reference dataset gets the same parameters
