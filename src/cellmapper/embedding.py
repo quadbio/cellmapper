@@ -168,6 +168,8 @@ class EmbeddingMixin:
             U /= np.linalg.norm(U, axis=1)[:, None]
             V /= np.linalg.norm(V, axis=1)[:, None]
 
+        # everything from here on should be unified for all approaches that compute embeddings.
+
         # Store embeddings in the AnnData objects
         self.query.obsm[key_added] = U
         self.reference.obsm[key_added] = V
