@@ -11,7 +11,7 @@ from cellmapper.utils import truncated_svd_cross_covariance
 class EmbeddingMixin:
     """Mixing class to compute joint embeddings for two datasets."""
 
-    def compute_joint_pca(self, n_components: int = 50, key_added: str = "X_pca_joint", **kwargs) -> None:
+    def compute_joint_pca(self, n_components: int = 50, key_added: str = "X_pca", **kwargs) -> None:
         """
         Compute a joint PCA on the normalized .X matrices of query and reference, using only overlapping genes.
 
@@ -28,14 +28,9 @@ class EmbeddingMixin:
         -----
         This method performs an inner join on genes (variables) between the query and reference AnnData objects,
         concatenates the normalized expression matrices, and computes a joint PCA using Scanpy. The resulting
-        PCA embeddings are stored in `.obsm[key_added]` for both objects. This is a fallback and not recommended
-        for most use cases. Please provide a biologically meaningful representation if possible.
+        PCA embeddings are stored in `.obsm[key_added]` for both objects. Consider using `compute_fast_cca` for
+        improved cross-dataset integration.
         """
-        logger.warning(
-            "No representation provided (use_rep=None). "
-            "Falling back to joint PCA on normalized .X of both datasets using only overlapping genes. "
-            "This is NOT recommended for most use cases! Please provide a biologically meaningful representation."
-        )
         # Concatenate with inner join on genes
         joint = ad.concat([self.reference, self.query], join="inner", label="batch", keys=["reference", "query"])
 
@@ -51,10 +46,10 @@ class EmbeddingMixin:
             key_added,
         )
 
-    def compute_dual_pca(
+    def compute_fast_cca(
         self,
         n_components: int = 50,
-        key_added: str = "X_pca_dual",
+        key_added: str = "X_cca",
         layer: str | None = None,
         mask_var: np.ndarray | str | None = None,
         zero_center: bool = True,
@@ -64,7 +59,7 @@ class EmbeddingMixin:
         implicit: bool = True,
     ) -> None:
         """
-        Compute a joint embedding using dual PCA on the reference and query datasets.
+        Compute a joint embedding using fast CCA on the reference and query datasets.
 
         This method computes the singular value decomposition (SVD) of the cross-covariance matrix
         between the reference and query datasets using an efficient implementation that doesn't
@@ -95,7 +90,7 @@ class EmbeddingMixin:
         random_state
             Random seed for reproducibility.
         implicit
-            Wheter to use implicit mean centering and covariance computation.
+            Whether to use implicit mean centering and covariance computation.
 
         Returns
         -------
@@ -104,18 +99,19 @@ class EmbeddingMixin:
 
         Notes
         -----
-        This method follows the approach described in https://xinmingtu.cn/blog/2022/CCA_dual_PCA/
-        to create embeddings from the SVD of the cross-covariance matrix between datasets. This is similar to
-        Seurat's CCA implementation (CITE).
+        This is a fast implementation of Canonical Correlation Analysis (CCA) that computes
+        the SVD of the cross-covariance matrix between the query and reference datasets.
+        It is designed to be memory-efficient and fast, especially for large datasets.
+        The method uses an efficient SVD implementation that avoids explicitly constructing the
+        cross-covariance matrix, which can be very large for high-dimensional data.
+        The method is particularly useful for integrating datasets with potentially different
+        gene expression profiles, as it focuses on the shared variance between the two datasets.
 
-        In contrast to the existing implementation in the SLAT (CITE) package and in Seurat, we don't compute the covariance matrix
-        explicitly, which saves memory and is more efficient for large datasets.
 
-        The implementation handles sparse matrices efficiently using implicit mean centering,
-        similar to Scanpy's PCA implementation.
+        This method is a fast re-implementation of Seurat's CCA approach.
         """
         logger.info(
-            "Computing dual PCA between query (%d cells) and reference (%d cells).",
+            "Computing fast CCA between query (%d cells) and reference (%d cells).",
             self.query.n_obs,
             self.reference.n_obs,
         )
@@ -193,7 +189,7 @@ class EmbeddingMixin:
         self.reference.uns[f"{key_added}_params"] = self.query.uns[f"{key_added}_params"]
 
         logger.info(
-            "Dual PCA embeddings stored as '%s' in both reference.obsm and query.obsm. "
+            "Fast CCA embeddings stored as '%s' in both reference.obsm and query.obsm. "
             "Top %d components explain %.1f%% of the cross-covariance.",
             key_added,
             n_components,

@@ -144,32 +144,47 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
         metric: str = "euclidean",
         only_yx: bool = False,
-        joint_pca_key: str = "pca_joint",
-        n_pca_components: int = 50,
-        pca_kwargs: dict[str, Any] | None = None,
+        fallback_representation: Literal["fast_cca", "joint_pca"] = "fast_cca",
+        fallback_kwargs: dict[str, Any] | None = None,
     ) -> None:
         """
         Compute nearest neighbors between reference and query datasets.
+
+        The method computes k-nearest neighbor graphs to enable mapping between
+        datasets. If no representation is provided (`use_rep=None`), a fallback
+        representation will be computed automatically using either fast CCA
+        ,inspired by Seurat v3 :cite:`stuart2019comprehensive`), or joint PCA. In self-mapping mode,
+        a simple PCA will be computed on the query dataset.
 
         Parameters
         ----------
         n_neighbors
             Number of nearest neighbors.
         use_rep
-            Data representation based on which to find nearest neighbors. If None, a joint PCA will be computed.
+            Data representation based on which to find nearest neighbors. If None,
+            a fallback representation will be computed automatically.
         method
-            Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU, "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact neighbor search. With GPU acceleration, "faiss" is usually fastest and more memory efficient than "rapids".
-            All methods return exactly `n_neighbors` neighbors, including the reference cell itself (in self-mapping mode). For faiss and sklearn, distances to self are very small positive numbers, for rapids and sklearn, they are exactly 0.
+            Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU,
+            "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact
+            neighbor search. With GPU acceleration, "faiss" is usually fastest and more
+            memory efficient than "rapids". All methods return exactly `n_neighbors` neighbors,
+            including the reference cell itself (in self-mapping mode). For faiss and sklearn,
+            distances to self are very small positive numbers, for rapids and sklearn, they are exactly 0.
         metric
             Distance metric to use for nearest neighbors.
         only_yx
-            If True, only compute the xy neighbors. This is faster, but not suitable for Jaccard or HNOCA methods.
-        joint_pca_key
-            Key under which to store the joint PCA embeddings if use_rep is None.
-        n_pca_components
-            Number of principal components to compute for joint PCA if use_rep is None.
-        pca_kwargs
-            Additional keyword arguments to pass to scanpy's `pp.pca` function if use_rep is None.
+            If True, only compute the xy neighbors. This is faster, but not suitable for
+            Jaccard or HNOCA methods.
+        fallback_representation
+            Method to use for computing a cross-dataset representation when `use_rep=None`. Options:
+
+            - "fast_cca": Fast canonical correlation analysis, inspired by Seurat v3 :cite:`stuart2019comprehensive` and
+              SLAT :cite:`xia2023spatial`).
+            - "joint_pca": Principal component analysis on concatenated datasets.
+        fallback_kwargs
+            Additional keyword arguments to pass to the fallback representation method.
+            For "fast_cca": see :meth:`~cellmapper.EmbeddingMixin.compute_fast_cca`.
+            For "joint_pca": see :meth:`~cellmapper.EmbeddingMixin.compute_joint_pca`.
 
         Returns
         -------
@@ -183,16 +198,45 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         - ``n_neighbors``: Number of nearest neighbors.
         - ``only_yx``: Whether only yx neighbors were computed.
         """
+        # Handle backward compatibility parameters
+        if fallback_kwargs is None:
+            fallback_kwargs = {}
+
         self.only_yx = only_yx
         if use_rep is None:
-            if pca_kwargs is None:
-                pca_kwargs = {}
+            logger.warning(
+                "No representation provided (`use_rep=None`). Computing a joint representation automatically "
+                "using '%s'. For optimal results, consider pre-computing a representation and passing it to `use_rep`.",
+                fallback_representation,
+            )
+
             if self._is_self_mapping:
-                sc.pp.pca(self.query, n_comps=n_pca_components, **pca_kwargs)
-                use_rep = "X_pca"
+                # For self-mapping, use simple PCA on query dataset
+                logger.info("Self-mapping detected. Computing PCA on query dataset for representation.")
+
+                # Compute PCA on query dataset only
+                fallback_kwargs.setdefault("key_added", "X_pca")
+                sc.tl.pca(self.query, **fallback_kwargs)
+
             else:
-                self.compute_joint_pca(n_components=n_pca_components, key_added=joint_pca_key, **pca_kwargs)
-                use_rep = joint_pca_key
+                # For cross-dataset mapping, use the specified fallback method
+                if fallback_representation == "fast_cca":
+                    # use fast CCA implementation
+                    fallback_kwargs.setdefault("key_added", "X_cca")
+                    self.compute_fast_cca(**fallback_kwargs)
+                elif fallback_representation == "joint_pca":
+                    # simple PCA on concatenated datasets
+                    fallback_kwargs.setdefault("key_added", "X_pca")
+                    self.compute_joint_pca(**fallback_kwargs)
+                else:
+                    raise ValueError(
+                        f"Unknown fallback_representation: {fallback_representation}. "
+                        "Supported options are 'fast_cca' and 'joint_pca'."
+                    )
+
+            # in any case, we need to set use_rep to the key added by the fallback method
+            use_rep = fallback_kwargs["key_added"]
+
         if use_rep == "X":
             xrep = self.reference.X
             yrep = self.query.X
