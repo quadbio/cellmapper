@@ -1,45 +1,56 @@
+import numpy as np
 import pytest
-
-from cellmapper import CellMapper
 
 
 class TestEmbedding:
     """Class to test embedding functionality in CellMapper."""
 
     @pytest.mark.parametrize(
-        "n_comps,fallback_representation,fallback_kwargs,key_added",
+        "zero_center,implicit",
         [
-            (10, "joint_pca", {"svd_solver": "arpack", "key_added": "X_pca"}, "X_pca"),
-            (30, "fast_cca", {"scale_with_singular": True, "l2_scale": True, "key_added": "X_cca"}, "X_cca"),
-            (10, "fast_cca", {"key_added": "X_fast_cca"}, "X_fast_cca"),
+            (True, True),
+            (True, False),
+            (False, True),
+            (False, False),
         ],
     )
-    def test_compute_neighbors_fallback(self, cmap, n_comps, fallback_representation, fallback_kwargs, key_added):
-        cmap.compute_neighbors(
-            n_neighbors=3,
-            use_rep=None,
-            n_comps=n_comps,
-            fallback_representation=fallback_representation,
-            fallback_kwargs=fallback_kwargs,
-        )
-        assert key_added in cmap.reference.obsm
-        assert key_added in cmap.query.obsm
-        assert cmap.reference.obsm[key_added].shape[1] == n_comps
-        assert cmap.query.obsm[key_added].shape[1] == n_comps
+    def test_fast_cca_embedding(self, cmap, zero_center, implicit):
+        n_comps = 10
+        cmap.compute_fast_cca(n_comps=n_comps, key_added="X_cca", zero_center=zero_center, implicit=implicit)
+        # Check embeddings exist
+        assert "X_cca" in cmap.query.obsm
+        assert "X_cca" in cmap.reference.obsm
+        Xq = cmap.query.obsm["X_cca"]
+        Xr = cmap.reference.obsm["X_cca"]
+        # Check shapes
+        assert Xq.shape[1] == n_comps
+        assert Xr.shape[1] == n_comps
+        # Check not all zeros or NaNs
+        assert not np.allclose(Xq, 0)
+        assert not np.isnan(Xq).any()
+        assert not np.allclose(Xr, 0)
+        assert not np.isnan(Xr).any()
 
-    def test_self_mapping_without_rep(self, adata_pbmc3k):
-        """Test self-mapping when use_rep=None, testing automatic PCA computation."""
-        # Initialize with self-mapping
-        cm = CellMapper(adata_pbmc3k)
+    def test_fast_cca_vs_joint_pca(self, cmap):
+        n_comps = 8
+        cmap.compute_fast_cca(n_comps=n_comps, key_added="X_cca")
+        cmap.compute_joint_pca(n_comps=n_comps, key_added="X_pca")
+        cca = cmap.query.obsm["X_cca"]
+        pca = cmap.query.obsm["X_pca"]
+        assert cca.shape == pca.shape
+        # They should not be (almost) identical
+        assert not np.allclose(cca, pca, rtol=1e-2, atol=1e-2)
 
-        # Test with no representation provided
-        cm.compute_neighbors(n_neighbors=5, use_rep=None, n_comps=10)
-        cm.compute_mappping_matrix(method="gaussian")
-
-        # Verify joint PCA was computed
-        assert "X_pca" in adata_pbmc3k.obsm
-        assert adata_pbmc3k.obsm["X_pca"].shape[1] == 10
-
-        # Test rest of pipeline
-        cm.transfer_labels(obs_keys="leiden")
-        assert "leiden_pred" in cm.query.obs
+    def test_joint_pca_embedding(self, cmap):
+        n_comps = 12
+        cmap.compute_joint_pca(n_comps=n_comps, key_added="X_pca")
+        assert "X_pca" in cmap.query.obsm
+        assert "X_pca" in cmap.reference.obsm
+        Xq = cmap.query.obsm["X_pca"]
+        Xr = cmap.reference.obsm["X_pca"]
+        assert Xq.shape[1] == n_comps
+        assert Xr.shape[1] == n_comps
+        assert not np.allclose(Xq, 0)
+        assert not np.isnan(Xq).any()
+        assert not np.allclose(Xr, 0)
+        assert not np.isnan(Xr).any()

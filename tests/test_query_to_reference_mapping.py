@@ -234,3 +234,24 @@ class TestQueryToReferenceMapping:
         # Check that new metadata is reflected in the imputed data
         assert test_key in cmap.query_imputed.obs
         assert cmap.query_imputed.obs[test_key].iloc[0] == 1
+
+    @pytest.mark.parametrize(
+        "n_comps,fallback_representation,fallback_kwargs,key_added",
+        [
+            (10, "joint_pca", {"svd_solver": "arpack", "key_added": "X_pca"}, "X_pca"),
+            (30, "fast_cca", {"scale_with_singular": True, "l2_scale": True, "key_added": "X_cca"}, "X_cca"),
+            (10, "fast_cca", {"key_added": "X_fast_cca"}, "X_fast_cca"),
+        ],
+    )
+    def test_compute_neighbors_fallback(self, cmap, n_comps, fallback_representation, fallback_kwargs, key_added):
+        cmap.compute_neighbors(
+            n_neighbors=3,
+            use_rep=None,
+            n_comps=n_comps,
+            fallback_representation=fallback_representation,
+            fallback_kwargs=fallback_kwargs,
+        )
+        assert key_added in cmap.reference.obsm
+        assert key_added in cmap.query.obsm
+        assert cmap.reference.obsm[key_added].shape[1] == n_comps
+        assert cmap.query.obsm[key_added].shape[1] == n_comps

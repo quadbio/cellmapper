@@ -189,3 +189,20 @@ class TestSelfMapping:
 
         # The results should be different (excluding self changes the neighborhood)
         assert not adata_spatial.obs["leiden_with_self"].equals(adata_spatial.obs["leiden_without_self"])
+
+    def test_self_mapping_without_rep(self, adata_pbmc3k):
+        """Test self-mapping when use_rep=None, testing automatic PCA computation."""
+        # Initialize with self-mapping
+        cm = CellMapper(adata_pbmc3k)
+
+        # Test with no representation provided
+        cm.compute_neighbors(n_neighbors=5, use_rep=None, n_comps=10)
+        cm.compute_mappping_matrix(method="gaussian")
+
+        # Verify joint PCA was computed
+        assert "X_pca" in adata_pbmc3k.obsm
+        assert adata_pbmc3k.obsm["X_pca"].shape[1] == 10
+
+        # Test rest of pipeline
+        cm.transfer_labels(obs_keys="leiden")
+        assert "leiden_pred" in cm.query.obs
