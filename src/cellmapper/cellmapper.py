@@ -141,12 +141,12 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self,
         n_neighbors: int = 30,
         use_rep: str | None = None,
+        n_comps: int | None = None,
         method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
         metric: str = "euclidean",
         only_yx: bool = False,
         fallback_representation: Literal["fast_cca", "joint_pca"] = "fast_cca",
         fallback_kwargs: dict[str, Any] | None = None,
-        n_comps: int | None = None,
     ) -> None:
         """
         Compute nearest neighbors between reference and query datasets.
@@ -218,15 +218,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
             if self._is_self_mapping:
                 logger.info("Self-mapping detected. Computing PCA on query dataset for representation.")
-                key_added = "X_pca"
-                sc.tl.pca(self.query, n_comps=n_comps, key_added=key_added)
+                key_added = fallback_kwargs.pop("key_added", "X_pca")
+                sc.tl.pca(self.query, n_comps=n_comps, key_added=key_added, **fallback_kwargs)
             else:
                 if fallback_representation == "fast_cca":
-                    key_added = "X_cca"
-                    self.compute_fast_cca(n_comps=n_comps, key_added=key_added)
+                    key_added = fallback_kwargs.pop("key_added", "X_cca")
+                    self.compute_fast_cca(n_comps=n_comps, key_added=key_added, **fallback_kwargs)
                 elif fallback_representation == "joint_pca":
-                    key_added = "X_pca"
-                    self.compute_joint_pca(n_comps=n_comps, key_added=key_added)
+                    key_added = fallback_kwargs.pop("key_added", "X_pca")
+                    self.compute_joint_pca(n_comps=n_comps, key_added=key_added, **fallback_kwargs)
                 else:
                     raise ValueError(
                         f"Unknown fallback_representation: {fallback_representation}. "
