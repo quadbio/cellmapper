@@ -13,7 +13,7 @@ from sklearn.preprocessing import OneHotEncoder
 from cellmapper.embedding import EmbeddingMixin
 from cellmapper.evaluate import EvaluationMixin
 from cellmapper.logging import logger
-from cellmapper.utils import create_imputed_anndata
+from cellmapper.utils import create_imputed_anndata, get_n_comps
 
 from .knn import Neighbors
 
@@ -146,6 +146,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         only_yx: bool = False,
         fallback_representation: Literal["fast_cca", "joint_pca"] = "fast_cca",
         fallback_kwargs: dict[str, Any] | None = None,
+        n_comps: int | None = None,
     ) -> None:
         """
         Compute nearest neighbors between reference and query datasets.
@@ -163,6 +164,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         use_rep
             Data representation based on which to find nearest neighbors. If None,
             a fallback representation will be computed automatically.
+        n_comps
+            Number of components to use. If a pre-computed representation is provided via `use_rep`,
+            we will use the number of components from that representation. Otherwiese, if `use_rep=None`,
+            we will compute the given number of components using the fallback representation method.
         method
             Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU,
             "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact
@@ -203,6 +208,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             fallback_kwargs = {}
 
         self.only_yx = only_yx
+
         if use_rep is None:
             logger.warning(
                 "No representation provided (`use_rep=None`). Computing a joint representation automatically "
@@ -211,38 +217,36 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             )
 
             if self._is_self_mapping:
-                # For self-mapping, use simple PCA on query dataset
                 logger.info("Self-mapping detected. Computing PCA on query dataset for representation.")
-
-                # Compute PCA on query dataset only
-                fallback_kwargs.setdefault("key_added", "X_pca")
-                sc.tl.pca(self.query, **fallback_kwargs)
-
+                key_added = "X_pca"
+                sc.tl.pca(self.query, n_comps=n_comps, key_added=key_added)
             else:
-                # For cross-dataset mapping, use the specified fallback method
                 if fallback_representation == "fast_cca":
-                    # use fast CCA implementation
-                    fallback_kwargs.setdefault("key_added", "X_cca")
-                    self.compute_fast_cca(**fallback_kwargs)
+                    key_added = "X_cca"
+                    self.compute_fast_cca(n_comps=n_comps, key_added=key_added)
                 elif fallback_representation == "joint_pca":
-                    # simple PCA on concatenated datasets
-                    fallback_kwargs.setdefault("key_added", "X_pca")
-                    self.compute_joint_pca(**fallback_kwargs)
+                    key_added = "X_pca"
+                    self.compute_joint_pca(n_comps=n_comps, key_added=key_added)
                 else:
                     raise ValueError(
                         f"Unknown fallback_representation: {fallback_representation}. "
                         "Supported options are 'fast_cca' and 'joint_pca'."
                     )
+            use_rep = key_added
 
-            # in any case, we need to set use_rep to the key added by the fallback method
-            use_rep = fallback_kwargs["key_added"]
-
+        # Extract the representation from the query and reference datasets
         if use_rep == "X":
             xrep = self.reference.X
             yrep = self.query.X
         else:
             xrep = self.reference.obsm[use_rep]
             yrep = self.query.obsm[use_rep]
+
+        # handle the number of components
+        n_comps = get_n_comps(n_comps, n_vars=xrep.shape[1])
+        xrep = xrep[:, :n_comps]
+        yrep = yrep[:, :n_comps]
+
         self.knn = Neighbors(np.ascontiguousarray(xrep), np.ascontiguousarray(yrep))
         self.knn.compute_neighbors(n_neighbors=n_neighbors, method=method, metric=metric, only_yx=only_yx)
 

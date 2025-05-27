@@ -5,19 +5,19 @@ from scanpy.get import _check_mask, _get_obs_rep
 from scipy.sparse import csr_matrix, issparse
 
 from cellmapper.logging import logger
-from cellmapper.utils import truncated_svd_cross_covariance
+from cellmapper.utils import get_n_comps, truncated_svd_cross_covariance
 
 
 class EmbeddingMixin:
     """Mixing class to compute joint embeddings for two datasets."""
 
-    def compute_joint_pca(self, n_components: int = 50, key_added: str = "X_pca", **kwargs) -> None:
+    def compute_joint_pca(self, n_comps: int | None = None, key_added: str = "X_pca", **kwargs) -> None:
         """
         Compute a joint PCA on the normalized .X matrices of query and reference, using only overlapping genes.
 
         Parameters
         ----------
-        n_components
+        n_comps
             Number of principal components to compute.
         key_added
             Key under which to store the joint PCA embeddings in `.obsm` of both query and reference AnnData objects.
@@ -35,7 +35,7 @@ class EmbeddingMixin:
         joint = ad.concat([self.reference, self.query], join="inner", label="batch", keys=["reference", "query"])
 
         # Compute PCA using scanpy
-        sc.pp.pca(joint, n_comps=n_components, **kwargs)
+        sc.pp.pca(joint, n_comps=n_comps, **kwargs)
 
         # assign back to AnnData objects
         self._set_embedding(
@@ -43,13 +43,13 @@ class EmbeddingMixin:
             X_ref=joint.obsm["X_pca"][joint.obs["batch"] == "reference"],
             key_added=key_added,
             method="fast_cca",
-            n_components=n_components,
+            n_comps=n_comps,
             n_common_genes=joint.n_vars,
         )
 
     def compute_fast_cca(
         self,
-        n_components: int = 50,
+        n_comps: int | None = None,
         key_added: str = "X_cca",
         layer: str | None = None,
         mask_var: np.ndarray | str | None = None,
@@ -69,7 +69,7 @@ class EmbeddingMixin:
 
         Parameters
         ----------
-        n_components
+        n_comps
             Number of components to keep in the embedding.
         key_added
             Key under which to store the joint embedding in `.obsm` of both
@@ -133,6 +133,9 @@ class EmbeddingMixin:
             n_common_genes,
         )
 
+        # determine number of components to keep
+        n_comps = get_n_comps(n_comps, n_vars=n_common_genes)
+
         # Check sparsity types match
         both_sparse = issparse(X_query) and issparse(X_ref)
         both_dense = not issparse(X_query) and not issparse(X_ref)
@@ -148,7 +151,7 @@ class EmbeddingMixin:
         U, s, Vt = truncated_svd_cross_covariance(
             X_query,
             X_ref,
-            n_components=n_components,
+            n_comps=n_comps,
             zero_center=zero_center,
             random_state=random_state,
             implicit=implicit,
@@ -175,7 +178,7 @@ class EmbeddingMixin:
             X_ref=V,
             key_added=key_added,
             method="fast_cca",
-            n_components=n_components,
+            n_comps=n_comps,
             n_common_genes=n_common_genes,
         )
 
@@ -185,7 +188,7 @@ class EmbeddingMixin:
         X_ref: np.ndarray,
         key_added: str,
         method: str,
-        n_components: int,
+        n_comps: int,
         n_common_genes: int,
     ) -> None:
         """
@@ -209,7 +212,7 @@ class EmbeddingMixin:
         )
 
         params = {
-            "n_components": n_components,
+            "n_comps": n_comps,
             "n_common_genes": n_common_genes,
             "method": method,
         }

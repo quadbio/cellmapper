@@ -8,6 +8,7 @@ from scipy.sparse import csr_matrix, issparse
 from scipy.sparse.linalg import LinearOperator, svds
 from sklearn.utils.extmath import randomized_svd
 
+from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 
 
@@ -218,10 +219,18 @@ def extract_neighbors_from_distances(
     return indices, distances
 
 
+# Determine the number of components to compute
+def get_n_comps(n_comps: int | None, n_vars: int) -> int:
+    """Determine the number of components to compute."""
+    if n_comps is None:
+        return min(n_vars, PackageConstants.n_comps)
+    return min(n_comps, n_vars)
+
+
 def truncated_svd_cross_covariance(
     X: np.ndarray | csr_matrix,
     Y: np.ndarray | csr_matrix,
-    n_components: int = 50,
+    n_comps: int = 50,
     zero_center: bool = True,
     implicit: bool = True,
     random_state: int = 0,
@@ -242,7 +251,7 @@ def truncated_svd_cross_covariance(
     Y
         Second data matrix of shape (n_obs_y, n_vars). Must have the same number of
         variables as X.
-    n_components
+    n_comps
         Number of singular vectors to compute. Defaults to 50.
     zero_center
         If True (default), implicitly center the data before computing SVD.
@@ -258,11 +267,11 @@ def truncated_svd_cross_covariance(
     Returns
     -------
     U
-        Left singular vectors of shape (n_obs_x, n_components).
+        Left singular vectors of shape (n_obs_x, n_comps).
     s
-        Singular values of shape (n_components,).
+        Singular values of shape (n_comps,).
     Vt
-        Right singular vectors of shape (n_components, n_obs_y).
+        Right singular vectors of shape (n_comps, n_obs_y).
 
     Notes
     -----
@@ -372,13 +381,13 @@ def truncated_svd_cross_covariance(
         random_init = np.random.rand(min(cov_op.shape))
 
         # Compute truncated SVD using ARPACK
-        u, s, vt = svds(cov_op, k=n_components, v0=random_init)
+        u, s, vt = svds(cov_op, k=n_comps, v0=random_init)
 
     else:
         cov_matrix = (
             scale_factor * (X - X_mean[:, None]) @ (Y - Y_mean[:, None]).T if zero_center else scale_factor * X @ Y.T
         )
-        u, s, vt = randomized_svd(cov_matrix, n_components=n_components, random_state=random_state)
+        u, s, vt = randomized_svd(cov_matrix, n_components=n_comps, random_state=random_state)
 
     # Sort singular values in descending order
     idx = np.argsort(-s)
