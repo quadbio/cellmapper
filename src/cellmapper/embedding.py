@@ -37,13 +37,14 @@ class EmbeddingMixin:
         # Compute PCA using scanpy
         sc.pp.pca(joint, n_comps=n_components, **kwargs)
 
-        # Assign PCA embeddings back to each object using the batch key
-        self.reference.obsm[key_added] = joint.obsm["X_pca"][joint.obs["batch"] == "reference"]
-        self.query.obsm[key_added] = joint.obsm["X_pca"][joint.obs["batch"] == "query"]
-        logger.info(
-            "Joint PCA computed and stored as '%s' in both reference.obsm and query.obsm. "
-            "Proceeding to use this as the representation for neighbor search.",
-            key_added,
+        # assign back to AnnData objects
+        self._set_embedding(
+            X_query=joint.obsm["X_pca"][joint.obs["batch"] == "query"],
+            X_ref=joint.obsm["X_pca"][joint.obs["batch"] == "reference"],
+            key_added=key_added,
+            method="fast_cca",
+            n_components=n_components,
+            n_common_genes=joint.n_vars,
         )
 
     def compute_fast_cca(
@@ -168,32 +169,57 @@ class EmbeddingMixin:
             U /= np.linalg.norm(U, axis=1)[:, None]
             V /= np.linalg.norm(V, axis=1)[:, None]
 
-        # everything from here on should be unified for all approaches that compute embeddings.
+        # assign back to AnnData objects
+        self._set_embedding(
+            X_query=U,
+            X_ref=V,
+            key_added=key_added,
+            method="fast_cca",
+            n_components=n_components,
+            n_common_genes=n_common_genes,
+        )
 
-        # Store embeddings in the AnnData objects
-        self.query.obsm[key_added] = U
-        self.reference.obsm[key_added] = V
+    def _set_embedding(
+        self,
+        X_query: np.ndarray,
+        X_ref: np.ndarray,
+        key_added: str,
+        method: str,
+        n_components: int,
+        n_common_genes: int,
+    ) -> None:
+        """
+        Set the joint embedding in the query and reference AnnData objects.
 
-        # Store variance explained in uns
-        explained_variance_ratio = s / np.sum(s)
+        Parameters
+        ----------
+        X_query
+            Joint embedding for the query dataset.
+        X_ref
+            Joint embedding for the reference dataset.
+        key_added
+            Key under which to store the joint embedding in `.obsm` of both
+            query and reference AnnData objects.
+        """
+        self.query.obsm[key_added] = X_query
+        self.reference.obsm[key_added] = X_ref
+        logger.info(
+            "Joint embedding stored as '%s' in both reference.obsm and query.obsm.",
+            key_added,
+        )
 
-        self.query.uns[f"{key_added}_params"] = {
+        params = {
             "n_components": n_components,
-            "variance": s,
-            "variance_ratio": explained_variance_ratio,
             "n_common_genes": n_common_genes,
-            "zero_center": zero_center,
-            "scale_with_singular": scale_with_singular,
-            "l2_scale": l2_scale,
+            "method": method,
         }
 
         # Reference dataset gets the same parameters
-        self.reference.uns[f"{key_added}_params"] = self.query.uns[f"{key_added}_params"]
+        self.reference.uns[f"{key_added}_params"] = params
+        self.query.uns[f"{key_added}_params"] = params
 
         logger.info(
-            "Fast CCA embeddings stored as '%s' in both reference.obsm and query.obsm. "
-            "Top %d components explain %.1f%% of the cross-covariance.",
+            "Embedding computed with method '%s' stored as '%s' in both reference.obsm and query.obsm. ",
+            method,
             key_added,
-            n_components,
-            100 * np.sum(explained_variance_ratio),
         )
