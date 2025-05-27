@@ -16,6 +16,7 @@ def assert_adjacency_equal(neigh1, neigh2, attrs=("xx", "yy", "xy", "yx")):
 class TestNeighbors:
     @pytest.mark.parametrize("only_yx", [False, True])
     def test_neighbors_sklearn_vs_pynndescent(self, small_data, only_yx):
+        pytest.importorskip("pynndescent")
         x, y = small_data
         n_neighbors = 3
         # sklearn

@@ -4,7 +4,6 @@ from typing import Literal
 
 import numpy as np
 import sklearn.neighbors
-from pynndescent import NNDescent
 from scipy.sparse import csr_matrix
 
 from cellmapper.check import check_deps
@@ -441,6 +440,9 @@ class Neighbors:
                 yx_results = xnn.kneighbors(self.yrep)
 
             elif method == "pynndescent":
+                check_deps("pynndescent")
+                from pynndescent import NNDescent
+
                 xnn = NNDescent(self.xrep, metric=metric, n_jobs=-1, random_state=random_state)
 
                 if only_yx:

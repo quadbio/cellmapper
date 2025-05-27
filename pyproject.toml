@@ -27,7 +27,6 @@ dependencies = [
   "numpy",
   "packaging",
   "pandas",
-  "pynndescent",
   "rich",
   "scanpy",
   "scikit-learn",
