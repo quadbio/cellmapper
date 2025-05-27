@@ -173,8 +173,8 @@ skip = [
   "docs/notebooks/example.ipynb",
 ]
 
-[tool.uv]
-constraint-dependencies = [
-  "llvmlite>0.43.0",
-  "numba>=0.58.0",
-]
+# [tool.uv]
+# constraint-dependencies = [
+#   "llvmlite>0.43.0",
+#   "numba>=0.58.0",
+# ]
