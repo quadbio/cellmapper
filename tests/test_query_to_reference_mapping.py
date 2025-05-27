@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy.sparse import issparse
 
-from cellmapper.cellmapper import CellMapper
+from cellmapper.model.cellmapper import CellMapper
 
 
 def assert_metrics_close(actual: dict, expected: dict, atol=1e-3):

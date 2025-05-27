@@ -1,7 +1,7 @@
 import pytest
 import scanpy as sc
 
-from cellmapper.cellmapper import CellMapper
+from cellmapper.model.cellmapper import CellMapper
 
 
 class TestSelfMapping:

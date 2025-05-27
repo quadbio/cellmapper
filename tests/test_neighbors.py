@@ -3,7 +3,7 @@ import pytest
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
-from cellmapper.knn import Neighbors
+from cellmapper.model.knn import Neighbors
 
 
 def assert_adjacency_equal(neigh1, neigh2, attrs=("xx", "yy", "xy", "yx")):

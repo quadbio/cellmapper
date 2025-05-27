@@ -10,12 +10,11 @@ from anndata import AnnData
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
 from sklearn.preprocessing import OneHotEncoder
 
-from cellmapper.embedding import EmbeddingMixin
-from cellmapper.evaluate import EvaluationMixin
 from cellmapper.logging import logger
+from cellmapper.model.embedding import EmbeddingMixin
+from cellmapper.model.evaluate import EvaluationMixin
+from cellmapper.model.knn import Neighbors
 from cellmapper.utils import create_imputed_anndata, get_n_comps
-
-from .knn import Neighbors
 
 
 class CellMapper(EvaluationMixin, EmbeddingMixin):

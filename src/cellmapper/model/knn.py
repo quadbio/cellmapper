@@ -7,10 +7,9 @@ import sklearn.neighbors
 from pynndescent import NNDescent
 from scipy.sparse import csr_matrix
 
+from cellmapper.check import check_deps
 from cellmapper.logging import logger
-
-from .check import check_deps
-from .utils import extract_neighbors_from_distances
+from cellmapper.utils import extract_neighbors_from_distances
 
 
 @dataclass
