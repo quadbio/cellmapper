@@ -63,6 +63,7 @@ optional-dependencies.test = [
 optional-dependencies.tutorials = [
   "cellmapper",
   "harmony-pytorch",
+  "igraph",
   "netgraph",
   "python-louvain",
   "scvi-tools",

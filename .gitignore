@@ -20,5 +20,6 @@ __pycache__/
 /docs/_build/
 .ipynb_checkpoints/
 
-# datasets
+# datasets and models
 *.h5ad
+*.pt
