@@ -63,12 +63,14 @@ INSTALL_HINTS = types.SimpleNamespace(
     "https://docs.rapids.ai/install/.",
     faiss="To speed up k-NN search on GPU, you may install faiss following the guide from "
     "https://github.com/facebookresearch/faiss/blob/main/INSTALL.md",
+    pynndescent="To use fast approximate k-NN search, install pynndescent: pip install pynndescent",
 )
 
 CHECKERS = {
     "cuml": Checker("cuml", vmin=None, install_hint=INSTALL_HINTS.cuml),
     "cupy": Checker("cupy", vmin=None, install_hint=INSTALL_HINTS.cupy),
     "faiss": Checker("faiss", package_name="faiss", vmin="1.7.0", install_hint=INSTALL_HINTS.faiss),
+    "pynndescent": Checker("pynndescent", vmin=None, install_hint=INSTALL_HINTS.pynndescent),
 }
 
 

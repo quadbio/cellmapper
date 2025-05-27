@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
 
-from cellmapper.utils import extract_neighbors_from_distances
+from cellmapper.utils import extract_neighbors_from_distances, truncated_svd_cross_covariance
 
 
 class TestExtractNeighborsFromDistances:
@@ -130,3 +130,68 @@ class TestExtractNeighborsFromDistances:
             assert i not in indices_without_self[i]
             # Check that no zero distances are present
             assert np.all(distances_without_self[i] > 0)
+
+
+class TestTruncatedSVDCrossCovariance:
+    """Tests for the truncated_svd_cross_covariance function."""
+
+    @pytest.mark.parametrize(
+        "sparse,zero_center,implicit",
+        [
+            (False, True, True),
+            (False, True, False),
+            (False, False, True),
+            (False, False, False),
+            (True, True, True),
+            (True, True, False),
+            (True, False, True),
+            (True, False, False),
+        ],
+    )
+    def test_dense_vs_sparse_and_centering(self, sparse, zero_center, implicit):
+        np.random.seed(42)
+        n_obs_x, n_obs_y, n_vars, n_comps = 20, 18, 10, 5
+        X = np.random.randn(n_obs_x, n_vars)
+        Y = np.random.randn(n_obs_y, n_vars)
+        if sparse:
+            X = csr_matrix(X)
+            Y = csr_matrix(Y)
+        U, s, Vt = truncated_svd_cross_covariance(
+            X, Y, n_comps=n_comps, zero_center=zero_center, implicit=implicit, random_state=42
+        )
+        # Check shapes
+        assert U.shape == (n_obs_x, n_comps)
+        assert s.shape == (n_comps,)
+        assert Vt.shape == (n_comps, n_obs_y)
+        # Check singular values are sorted
+        assert np.all(np.diff(s) <= 0)
+
+    def test_consistency_dense_sparse(self):
+        np.random.seed(0)
+        n_obs_x, n_obs_y, n_vars, n_comps = 15, 12, 8, 4
+        X = np.random.randn(n_obs_x, n_vars)
+        Y = np.random.randn(n_obs_y, n_vars)
+        # Dense, implicit centering
+        U1, s1, Vt1 = truncated_svd_cross_covariance(
+            X, Y, n_comps=n_comps, zero_center=True, implicit=True, random_state=0
+        )
+        # Sparse, implicit centering
+        Xs = csr_matrix(X)
+        Ys = csr_matrix(Y)
+        U2, s2, Vt2 = truncated_svd_cross_covariance(
+            Xs, Ys, n_comps=n_comps, zero_center=True, implicit=True, random_state=0
+        )
+        # Compare singular values (allowing some tolerance)
+        np.testing.assert_allclose(np.sort(s1), np.sort(s2), rtol=1e-2, atol=1e-2)
+
+    def test_error_on_shape_mismatch(self):
+        X = np.random.randn(10, 5)
+        Y = np.random.randn(8, 4)
+        with pytest.raises(ValueError, match="same number of variables"):
+            truncated_svd_cross_covariance(X, Y)
+
+    def test_error_on_type_mismatch(self):
+        X = np.random.randn(10, 5)
+        Y = csr_matrix(np.random.randn(8, 5))
+        with pytest.raises(TypeError, match="same type"):
+            truncated_svd_cross_covariance(X, Y)

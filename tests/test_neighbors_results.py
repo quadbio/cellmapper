@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
 
-from cellmapper.knn import NeighborsResults
+from cellmapper.model.knn import NeighborsResults
 
 
 class TestNeighborsResults:
