@@ -23,12 +23,12 @@ classifiers = [
 ]
 dynamic = [ "version" ]
 dependencies = [
-  "anndata",
+  "anndata>=0.11",
   "numpy",
   "packaging",
   "pandas",
   "rich",
-  "scanpy",
+  "scanpy>=1.11",
   "scikit-learn",
   "scipy",
   # for debug logging (referenced from the issue template)
