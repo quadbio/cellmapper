@@ -309,6 +309,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         """
         Transfer discrete labels from reference dataset to query dataset for one or more keys.
 
+        .. deprecated::
+            Use :meth:`map_obs` instead. This method will be removed in a future version.
+
         Parameters
         ----------
         obs_keys
@@ -328,50 +331,20 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         - ``query.obs``: Contains the transferred labels and their confidence scores.
         """
-        if self.mapping_matrix is None:
-            raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
+        import warnings
+
+        warnings.warn(
+            "transfer_labels is deprecated and will be removed in a future version. "
+            "Use map_obs instead for single keys or call map_obs in a loop for multiple keys.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if isinstance(obs_keys, str):
             obs_keys = [obs_keys]
 
-        self.prediction_postfix = prediction_postfix
-        self.confidence_postfix = confidence_postfix
-
-        # Loop over each observation key and perform label transfer
         for key in obs_keys:
-            logger.info("Predicting labels for key '%s'.", key)
-            onehot = OneHotEncoder(dtype=np.float32)
-            xtab = onehot.fit_transform(
-                self.reference.obs[[key]],
-            )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
-            ytab = self.mapping_matrix @ xtab  # shape = (n_query_cells x n_categories), sparse crs matrix, float32
-
-            pred = pd.Series(
-                data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1],
-                index=self.query.obs_names,
-                dtype=self.reference.obs[key].dtype,
-            )
-            conf = pd.Series(
-                ytab.max(axis=1).toarray().ravel(),
-                index=self.query.obs_names,
-            )
-
-            self.query.obs[f"{key}_{self.prediction_postfix}"] = pred
-            self.query.obs[f"{key}_{self.confidence_postfix}"] = conf
-
-            # Add colors if available
-            if f"{key}_colors" in self.reference.uns:
-                color_lookup = dict(
-                    zip(self.reference.obs[key].cat.categories, self.reference.uns[f"{key}_colors"], strict=True)
-                )
-                self.query.uns[f"{key}_{self.prediction_postfix}_colors"] = [
-                    color_lookup.get(cat, "#000000") for cat in pred.cat.categories
-                ]
-
-            logger.info("Labels transferred and stored in query.obs['%s'].", f"{key}_{self.prediction_postfix}")
-
-            # Free memory explicitly
-            del onehot, xtab, ytab, pred, conf
-            gc.collect()
+            self.map_obs(key, prediction_postfix=prediction_postfix, confidence_postfix=confidence_postfix)
 
     def transfer_embeddings(self, obsm_keys: str | list[str], prediction_postfix: str = "pred") -> None:
         """
@@ -587,3 +560,109 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             distances_matrix.shape[0],
             self.knn.xx.n_neighbors,
         )
+
+    def map_obs(self, key: str, prediction_postfix: str = "pred", confidence_postfix: str = "conf") -> None:
+        """
+        Map observation data from reference dataset to query dataset.
+
+        Automatically detects whether the data is categorical or numerical and applies
+        the appropriate mapping strategy. For categorical data, uses one-hot encoding
+        followed by matrix multiplication and argmax. For numerical data, uses direct
+        matrix multiplication.
+
+        Parameters
+        ----------
+        key
+            Key in ``reference.obs`` to be transferred into ``query.obs``
+        prediction_postfix
+            Postfix added to create new keys in ``query.obs`` for the transferred data
+        confidence_postfix
+            Postfix added to create new keys in ``query.obs`` for confidence scores
+            (only applicable for categorical data)
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``query.obs``: Contains the transferred data and confidence scores (for categorical data).
+        """
+        if self.mapping_matrix is None:
+            raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
+
+        if key not in self.reference.obs.columns:
+            raise KeyError(f"Key '{key}' not found in reference.obs")
+
+        # Set postfix attributes for compatibility with evaluation methods
+        self.prediction_postfix = prediction_postfix
+        self.confidence_postfix = confidence_postfix
+
+        reference_data = self.reference.obs[key]
+
+        # Detect data type
+        is_categorical = (
+            isinstance(reference_data.dtype, pd.CategoricalDtype)
+            or pd.api.types.is_object_dtype(reference_data)
+            or pd.api.types.is_string_dtype(reference_data)
+        )
+
+        if is_categorical:
+            logger.info("Mapping categorical data for key '%s' using one-hot encoding.", key)
+            self._map_obs_categorical(key, prediction_postfix, confidence_postfix)
+        else:
+            logger.info("Mapping numerical data for key '%s' using direct matrix multiplication.", key)
+            self._map_obs_numerical(key, prediction_postfix)
+
+    def _map_obs_categorical(self, key: str, prediction_postfix: str, confidence_postfix: str) -> None:
+        """Map categorical observation data using one-hot encoding."""
+        onehot = OneHotEncoder(dtype=np.float32)
+        xtab = onehot.fit_transform(
+            self.reference.obs[[key]],
+        )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
+        ytab = self.mapping_matrix @ xtab  # shape = (n_query_cells x n_categories), sparse csr matrix, float32
+
+        pred = pd.Series(
+            data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1],
+            index=self.query.obs_names,
+            dtype=self.reference.obs[key].dtype,
+        )
+        conf = pd.Series(
+            ytab.max(axis=1).toarray().ravel(),
+            index=self.query.obs_names,
+        )
+
+        self.query.obs[f"{key}_{prediction_postfix}"] = pred
+        self.query.obs[f"{key}_{confidence_postfix}"] = conf
+
+        # Add colors if available
+        if f"{key}_colors" in self.reference.uns:
+            color_lookup = dict(
+                zip(self.reference.obs[key].cat.categories, self.reference.uns[f"{key}_colors"], strict=True)
+            )
+            self.query.uns[f"{key}_{prediction_postfix}_colors"] = [
+                color_lookup.get(cat, "#000000") for cat in pred.cat.categories
+            ]
+
+        logger.info("Categorical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
+
+        # Free memory explicitly
+        del onehot, xtab, ytab, pred, conf
+        gc.collect()
+
+    def _map_obs_numerical(self, key: str, prediction_postfix: str) -> None:
+        """Map numerical observation data using direct matrix multiplication."""
+        reference_values = np.array(self.reference.obs[key]).reshape(-1, 1)  # shape = (n_reference_cells, 1)
+        mapped_values = self.mapping_matrix @ reference_values  # shape = (n_query_cells, 1)
+
+        pred = pd.Series(
+            data=mapped_values.ravel(),
+            index=self.query.obs_names,
+            dtype=self.reference.obs[key].dtype,
+        )
+
+        self.query.obs[f"{key}_{prediction_postfix}"] = pred
+
+        logger.info("Numerical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
