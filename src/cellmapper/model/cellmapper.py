@@ -249,7 +249,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.knn = Neighbors(np.ascontiguousarray(xrep), np.ascontiguousarray(yrep))
         self.knn.compute_neighbors(n_neighbors=n_neighbors, method=method, metric=metric, only_yx=only_yx)
 
-    def compute_mappping_matrix(
+    def compute_mapping_matrix(
         self,
         method: Literal["jaccard", "gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"] = "gaussian",
     ) -> None:
@@ -532,7 +532,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.compute_neighbors(
             n_neighbors=n_neighbors, use_rep=use_rep, method=knn_method, metric=metric, only_yx=only_yx
         )
-        self.compute_mappping_matrix(method=mapping_method)
+        self.compute_mapping_matrix(method=mapping_method)
         if obs_keys is not None:
             self.transfer_labels(obs_keys=obs_keys, prediction_postfix=prediction_postfix)
         if obsm_keys is not None:

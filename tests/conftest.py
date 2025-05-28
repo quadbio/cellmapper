@@ -177,7 +177,7 @@ def cmap(query_reference_adata):
 
     # Compute neighbors and mapping matrix
     cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-    cmap.compute_mappping_matrix(method="gaussian")
+    cmap.compute_mapping_matrix(method="gaussian")
 
     return cmap
 

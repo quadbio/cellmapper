@@ -43,7 +43,7 @@ class TestSelfMapping:
 
         # Test with typical parameters
         cm.compute_neighbors(n_neighbors=5, use_rep="X_pca")
-        cm.compute_mappping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gaussian")
 
         # Test label transfer
         cm.transfer_labels(obs_keys="leiden")
@@ -83,7 +83,7 @@ class TestSelfMapping:
         assert cm.knn.xx.n_neighbors + 1 == n_neighbors
 
         # Test the full pipeline with precomputed distances
-        cm.compute_mappping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gaussian")
         cm.transfer_labels(obs_keys="leiden")
 
         assert "leiden_pred" in cm.query.obs
@@ -142,7 +142,7 @@ class TestSelfMapping:
             ).all()
 
         # Test the mapping pipeline
-        cm.compute_mappping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gaussian")
         cm.transfer_labels(obs_keys="leiden")
 
         assert "leiden_pred" in cm.query.obs
@@ -176,8 +176,8 @@ class TestSelfMapping:
             assert i not in cm_without_self.knn.xx.indices[i]
 
         # Both should work with the rest of the pipeline
-        cm_with_self.compute_mappping_matrix(method="gaussian")
-        cm_without_self.compute_mappping_matrix(method="gaussian")
+        cm_with_self.compute_mapping_matrix(method="gaussian")
+        cm_without_self.compute_mapping_matrix(method="gaussian")
 
         # Compute label transfer for both
         cm_with_self.transfer_labels(obs_keys="leiden", prediction_postfix="with_self")
@@ -197,7 +197,7 @@ class TestSelfMapping:
 
         # Test with no representation provided
         cm.compute_neighbors(n_neighbors=5, use_rep=None, n_comps=10)
-        cm.compute_mappping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gaussian")
 
         # Verify joint PCA was computed
         assert "X_pca" in adata_pbmc3k.obsm
