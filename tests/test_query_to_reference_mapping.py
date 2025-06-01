@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from scipy.sparse import issparse
+from scipy.stats import pearsonr
 
 from cellmapper.model.cellmapper import CellMapper
 
@@ -255,3 +256,52 @@ class TestQueryToReferenceMapping:
         assert key_added in cmap.query.obsm
         assert cmap.reference.obsm[key_added].shape[1] == n_comps
         assert cmap.query.obsm[key_added].shape[1] == n_comps
+
+    def test_map_obs_numerical_data_type_detection(self, query_reference_adata):
+        """Test that numerical data types are correctly detected in map_obs."""
+        query, reference = query_reference_adata
+
+        # Add some numerical data to reference
+        reference.obs["numerical_score"] = np.random.rand(reference.n_obs)
+        reference.obs["integer_score"] = np.random.randint(0, 100, reference.n_obs)
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
+        cmap.compute_mapping_matrix(method="gaussian")
+
+        # Test float and integer data
+        for key in ["numerical_score", "integer_score"]:
+            cmap.map_obs(key=key)
+            assert f"{key}_pred" in cmap.query.obs
+            assert cmap.query.obs[f"{key}_pred"].dtype.kind == "f"
+
+    def test_map_obs_pseudotime_cross_mapping(self, query_reference_adata):
+        """Test mapping pseudotime values in cross-mapping mode - should still have reasonable correlation."""
+        query, reference = query_reference_adata
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
+        cmap.compute_mapping_matrix(method="gaussian")
+
+        # Map pseudotime
+        cmap.map_obs(key="dpt_pseudotime")
+
+        # Check that pseudotime was mapped
+        assert "dpt_pseudotime_pred" in cmap.query.obs
+        assert cmap.query.obs["dpt_pseudotime_pred"].dtype == reference.obs["dpt_pseudotime"].dtype
+
+        # Check correlation between actual and predicted pseudotime in query subset
+        # (Note: query is a subset of the original data, so we can compare)
+        query_original_pt = query.obs["dpt_pseudotime"]
+        query_predicted_pt = cmap.query.obs["dpt_pseudotime_pred"]
+
+        correlation, _ = pearsonr(query_original_pt, query_predicted_pt)
+        print(f"Cross-mapping pseudotime correlation: {correlation:.4f}")
+
+        # Cross-mapping should still have reasonably high correlation, though lower than self-mapping
+        assert correlation > 0.9, f"Cross-mapping pseudotime correlation too low: {correlation}"
+
+        # Verify no confidence scores for numerical data
+        assert "dpt_pseudotime_conf" not in cmap.query.obs

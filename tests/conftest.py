@@ -59,6 +59,15 @@ def adata_pbmc3k(precomputed_leiden):
     # PCA
     sc.tl.pca(adata, mask_var="highly_variable")
 
+    # Compute diffusion pseudotime for testing numerical obs mapping
+    # First compute neighbors and diffusion map
+    sc.pp.neighbors(adata, n_neighbors=15, use_rep="X_pca")
+    sc.tl.diffmap(adata)
+
+    # Set root cell for pseudotime computation (use first cell)
+    adata.uns["iroot"] = 0
+    sc.tl.dpt(adata)
+
     # Load precomputed leiden clustering
     adata.obs["leiden"] = precomputed_leiden.astype("str").astype("category")
 

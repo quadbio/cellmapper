@@ -209,17 +209,18 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.only_yx = only_yx
 
         if use_rep is None:
-            logger.warning(
-                "No representation provided (`use_rep=None`). Computing a joint representation automatically "
-                "using '%s'. For optimal results, consider pre-computing a representation and passing it to `use_rep`.",
-                fallback_representation,
-            )
-
             if self._is_self_mapping:
-                logger.info("Self-mapping detected. Computing PCA on query dataset for representation.")
+                logger.warning(
+                    "No representation provided (`use_rep=None`) and self-mapping mode detected. Computing a joint representation automatically using PCA."
+                )
                 key_added = fallback_kwargs.pop("key_added", "X_pca")
                 sc.tl.pca(self.query, n_comps=n_comps, key_added=key_added, **fallback_kwargs)
             else:
+                logger.warning(
+                    "No representation provided (`use_rep=None`). Computing a joint representation automatically "
+                    "using '%s'. For optimal results, consider pre-computing a representation and passing it to `use_rep`.",
+                    fallback_representation,
+                )
                 if fallback_representation == "fast_cca":
                     key_added = fallback_kwargs.pop("key_added", "X_cca")
                     self.compute_fast_cca(n_comps=n_comps, key_added=key_added, **fallback_kwargs)
@@ -612,7 +613,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 zip(self.reference.obs[key].cat.categories, self.reference.uns[f"{key}_colors"], strict=True)
             )
             self.query.uns[f"{key}_{prediction_postfix}_colors"] = [
-                color_lookup.get(cat, "#000000") for cat in pred.cat.categories
+                color_lookup.get(cat, "#383838") for cat in pred.cat.categories
             ]
 
         logger.info("Categorical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
@@ -629,7 +630,6 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         pred = pd.Series(
             data=mapped_values.ravel(),
             index=self.query.obs_names,
-            dtype=self.reference.obs[key].dtype,
         )
 
         self.query.obs[f"{key}_{prediction_postfix}"] = pred

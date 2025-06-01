@@ -19,6 +19,7 @@ __pycache__/
 /docs/generated/
 /docs/_build/
 .ipynb_checkpoints/
+/docs/notebooks/tutorials/test_adata.ipynb
 
 # datasets and models
 *.h5ad

@@ -53,7 +53,7 @@ With a joint embedding in ``.obsm["X_joint"]`` at hand, the simplest way to use 
 ```Python
 from cellmapper import CellMapper
 
-cmap = CellMapper(query, reference).fit(
+cmap = CellMapper(query, reference).map(
     use_rep="X_joint", obs_keys="celltype", obsm_keys="X_umap", layer_key="X"
     )
 ```
