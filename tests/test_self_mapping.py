@@ -1,6 +1,5 @@
 import pytest
 import scanpy as sc
-from scipy.stats import pearsonr
 
 from cellmapper.model.cellmapper import CellMapper
 
@@ -16,26 +15,26 @@ class TestSelfMapping:
         assert cm.reference is adata_pbmc3k
         assert cm.query is adata_pbmc3k
 
-    def test_identity_mapping_categorical(self, adata_pbmc3k):
+    @pytest.mark.parametrize("obs_key", ["leiden", "dpt_pseudotime"])
+    def test_identity_mapping(self, adata_pbmc3k, obs_key):
         """Test that with n_neighbors=1, self-mapping preserves original labels exactly."""
         # Initialize with self-mapping
         cm = CellMapper(adata_pbmc3k)
         cm.map(
             knn_method="sklearn",
             mapping_method="jaccard",
-            obs_keys="leiden",
+            obs_keys=obs_key,
             use_rep="X_pca",
             n_neighbors=1,
-            prediction_postfix="transfer",
+            prediction_postfix="pred",
         )
 
         # With n_neighbors=1, labels should be perfectly preserved
-        assert "leiden_transfer" in adata_pbmc3k.obs
-        assert len(adata_pbmc3k.obs["leiden_transfer"]) == len(adata_pbmc3k.obs["leiden"])
-        # Check that all predicted labels are valid categories
-        assert set(adata_pbmc3k.obs["leiden_transfer"].cat.categories) <= set(adata_pbmc3k.obs["leiden"].cat.categories)
+        assert f"{obs_key}_pred" in adata_pbmc3k.obs
+        assert len(adata_pbmc3k.obs[f"{obs_key}_pred"]) == len(adata_pbmc3k.obs[obs_key])
+
         # Labels should match exactly when n_neighbors=1
-        assert adata_pbmc3k.obs["leiden_transfer"].equals(adata_pbmc3k.obs["leiden"])
+        assert adata_pbmc3k.obs[f"{obs_key}_pred"].equals(adata_pbmc3k.obs[obs_key])
 
     def test_all_operations_self_mapping(self, adata_pbmc3k):
         """Test the full pipeline in self-mapping mode."""
@@ -207,25 +206,3 @@ class TestSelfMapping:
         # Test rest of pipeline
         cm.map_obs(key="leiden")
         assert "leiden_pred" in cm.query.obs
-
-    def test_map_obs_pseudotime_self_mapping(self, adata_pbmc3k):
-        """Test mapping pseudotime values in self-mapping mode - should have very high correlation."""
-        # Create self-mapping scenario
-        cmap = CellMapper(query=adata_pbmc3k, reference=adata_pbmc3k)
-        cmap.compute_neighbors(n_neighbors=1, use_rep="X_pca", method="sklearn")
-        cmap.compute_mapping_matrix(method="jaccard")
-
-        # Map pseudotime
-        cmap.map_obs(key="dpt_pseudotime")
-
-        # In self-mapping with 1 neighbor, correlation should be very high (around 0.99)
-        correlation, _ = pearsonr(
-            adata_pbmc3k.obs["dpt_pseudotime"],
-            cmap.query.obs["dpt_pseudotime_pred"],
-        )
-
-        cmap.query.obs["dpt_pseudotime"].equals(cmap.query.obs["dpt_pseudotime_pred"])
-
-        assert correlation > 0.99, f"Self-mapping pseudotime correlation too low: {correlation}"
-        assert "dpt_pseudotime_pred" in cmap.query.obs
-        assert "dpt_pseudotime_conf" not in cmap.query.obs  # No confidence for numerical data

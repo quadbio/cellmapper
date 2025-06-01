@@ -298,10 +298,9 @@ class TestQueryToReferenceMapping:
         query_predicted_pt = cmap.query.obs["dpt_pseudotime_pred"]
 
         correlation, _ = pearsonr(query_original_pt, query_predicted_pt)
-        print(f"Cross-mapping pseudotime correlation: {correlation:.4f}")
 
         # Cross-mapping should still have reasonably high correlation, though lower than self-mapping
-        assert correlation > 0.9, f"Cross-mapping pseudotime correlation too low: {correlation}"
+        assert correlation > 0.99, f"Cross-mapping pseudotime correlation too low: {correlation}"
 
         # Verify no confidence scores for numerical data
         assert "dpt_pseudotime_conf" not in cmap.query.obs
