@@ -156,7 +156,7 @@ class EvaluationMixin:
 
         if pred_postfix is None or conf_postfix is None:
             raise ValueError(
-                "Label transfer has not been performed. Either call transfer_labels() first "
+                "Label transfer has not been performed. Either call map_obs() first "
                 "or provide prediction_postfix and confidence_postfix parameters."
             )
 
@@ -219,7 +219,7 @@ class EvaluationMixin:
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
         """
         if self.prediction_postfix is None or self.confidence_postfix is None:
-            raise ValueError("Label transfer has not been performed. Call transfer_labels() first.")
+            raise ValueError("Label transfer has not been performed. Call map_obs() first.")
 
         # Extract true and predicted labels
         y_true = self.query.obs[label_key].dropna()

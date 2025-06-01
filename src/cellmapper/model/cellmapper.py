@@ -303,49 +303,6 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
 
-    def transfer_labels(
-        self, obs_keys: str | list[str], prediction_postfix: str = "pred", confidence_postfix: str = "conf"
-    ) -> None:
-        """
-        Transfer discrete labels from reference dataset to query dataset for one or more keys.
-
-        .. deprecated::
-            Use :meth:`map_obs` instead. This method will be removed in a future version.
-
-        Parameters
-        ----------
-        obs_keys
-            One or more keys in ``reference.obs`` to be transferred into ``query.obs`` (must be discrete)
-        prediction_postfix
-            New ``query.obs`` key added for the transferred labels, by default ``{obs_key}_pred`` for each obs_key.
-        confidence_postfix
-            New ``query.obs`` key added for the transferred label confidence, by default ``{obs_key}_conf`` for each obs_key.
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Updates the following attributes:
-
-        - ``query.obs``: Contains the transferred labels and their confidence scores.
-        """
-        import warnings
-
-        warnings.warn(
-            "transfer_labels is deprecated and will be removed in a future version. "
-            "Use map_obs instead for single keys or call map_obs in a loop for multiple keys.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        if isinstance(obs_keys, str):
-            obs_keys = [obs_keys]
-
-        for key in obs_keys:
-            self.map_obs(key, prediction_postfix=prediction_postfix, confidence_postfix=confidence_postfix)
-
     def transfer_embeddings(self, obsm_keys: str | list[str], prediction_postfix: str = "pred") -> None:
         """
         Transfer embeddings from reference dataset to query dataset for one or more keys.
@@ -507,7 +464,12 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         )
         self.compute_mapping_matrix(method=mapping_method)
         if obs_keys is not None:
-            self.transfer_labels(obs_keys=obs_keys, prediction_postfix=prediction_postfix)
+            # Handle both single key and list of keys for backward compatibility
+            if isinstance(obs_keys, str):
+                self.map_obs(key=obs_keys, prediction_postfix=prediction_postfix)
+            else:
+                for obs_key in obs_keys:
+                    self.map_obs(key=obs_key, prediction_postfix=prediction_postfix)
         if obsm_keys is not None:
             self.transfer_embeddings(obsm_keys=obsm_keys, prediction_postfix=prediction_postfix)
         if layer_key is not None:

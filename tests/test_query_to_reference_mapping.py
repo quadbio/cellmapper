@@ -18,7 +18,7 @@ class TestQueryToReferenceMapping:
     """Tests for query-to-reference mapping functionality in CellMapper."""
 
     def test_label_transfer(self, cmap, expected_label_transfer_metrics):
-        cmap.transfer_labels(obs_keys="leiden")
+        cmap.map_obs(key="leiden")
         cmap.evaluate_label_transfer(label_key="leiden")
         assert_metrics_close(cmap.label_transfer_metrics, expected_label_transfer_metrics)
 
@@ -71,7 +71,7 @@ class TestQueryToReferenceMapping:
             assert cmap.query_imputed is not None
             assert cmap.query_imputed.X.shape[0] == cmap.query.n_obs
 
-    def test_transfer_labels_self_mapping(self, query_reference_adata):
+    def test_map_obs_self_mapping(self, query_reference_adata):
         """Check mapping to self."""
         _, reference = query_reference_adata
         cm = CellMapper(reference, reference)
