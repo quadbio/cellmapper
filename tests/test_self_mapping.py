@@ -19,7 +19,7 @@ class TestSelfMapping:
         """Test that with n_neighbors=1, self-mapping preserves original labels exactly."""
         # Initialize with self-mapping
         cm = CellMapper(adata_pbmc3k)
-        cm.fit(
+        cm.map(
             knn_method="sklearn",
             mapping_method="jaccard",
             obs_keys="leiden",
@@ -51,11 +51,11 @@ class TestSelfMapping:
         # With n_neighbors>1, self-mapped labels might not be 100% identical
 
         # Test embedding transfer
-        cm.transfer_embeddings(obsm_keys="X_pca")
+        cm.map_obsm(key="X_pca")
         assert "X_pca_pred" in cm.query.obsm
 
         # Test expression transfer
-        cm.transfer_expression(layer_key="X")
+        cm.map_layers(key="X")
         assert cm.query_imputed is not None
 
         # Test evaluation functions

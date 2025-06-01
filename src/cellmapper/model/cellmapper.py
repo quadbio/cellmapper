@@ -303,16 +303,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
 
-    def transfer_embeddings(self, obsm_keys: str | list[str], prediction_postfix: str = "pred") -> None:
+    def map_obsm(self, key: str, prediction_postfix: str = "pred") -> None:
         """
-        Transfer embeddings from reference dataset to query dataset for one or more keys.
+        Map embeddings from reference dataset to query dataset.
+
+        Uses matrix multiplication to transfer embeddings from the reference
+        dataset to the query dataset.
 
         Parameters
         ----------
-        obsm_keys
-            One or more keys in ``reference.obsm`` storing the embeddings to be transferred.
+        key
+            Key in ``reference.obsm`` storing the embeddings to be transferred
         prediction_postfix
-            Postfix to append to the output keys in ``query.obsm`` where the transferred embeddings will be stored.
+            Postfix to append to the output key in ``query.obsm`` where the transferred embeddings will be stored
 
         Returns
         -------
@@ -327,30 +330,29 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if self.mapping_matrix is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
-        if isinstance(obsm_keys, str):
-            obsm_keys = [obsm_keys]
+        logger.info("Mapping embeddings for key '%s'.", key)
 
-        for key in obsm_keys:
-            logger.info("Transferring embeddings for key '%s'.", key)
+        # Perform matrix multiplication to transfer embeddings
+        reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
+        query_embeddings = self.mapping_matrix @ reference_embeddings  # shape = (n_query_cells x n_embedding_dims)
 
-            # Perform matrix multiplication to transfer embeddings
-            reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
-            query_embeddings = self.mapping_matrix @ reference_embeddings  # shape = (n_query_cells x n_embedding_dims)
+        # Store the transferred embeddings in query.obsm
+        output_key = f"{key}_{prediction_postfix}"
+        self.query.obsm[output_key] = query_embeddings
 
-            # Store the transferred embeddings in query.obsm
-            output_key = f"{key}_{prediction_postfix}"
-            self.query.obsm[output_key] = query_embeddings
+        logger.info("Embeddings mapped and stored in query.obsm['%s'].", output_key)
 
-            logger.info("Embeddings transferred and stored in query.obsm['%s'].", output_key)
-
-    def transfer_expression(self, layer_key: str) -> None:
+    def map_layers(self, key: str) -> None:
         """
-        Transfer expression values (e.g., .X or entries from .layers) from reference dataset to a new imputed query AnnData object.
+        Map expression values from reference dataset to query dataset.
+
+        Transfers expression values (e.g., .X or entries from .layers) from reference
+        dataset to a new imputed query AnnData object using matrix multiplication.
 
         Parameters
         ----------
-        layer_key
-            Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``.
+        key
+            Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``
 
         Returns
         -------
@@ -364,16 +366,16 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if self.mapping_matrix is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
-        logger.info("Transferring layer for key '%s'.", layer_key)
+        logger.info("Mapping layer for key '%s'.", key)
         # Get the reference layer (or .X if key is "X")
-        reference_layer = self.reference.X if layer_key == "X" else self.reference.layers[layer_key]
+        reference_layer = self.reference.X if key == "X" else self.reference.layers[key]
         query_layer = self.mapping_matrix @ reference_layer  # shape = (n_query_cells x n_reference_features)
 
         # Create query_imputed using the property setter for consistent behavior
         self.query_imputed = query_layer
 
         # Create base message and conditionally add note about feature spaces for non-self-mapping
-        message = f"Imputed expression for layer '{layer_key}' stored in query_imputed.X."
+        message = f"Expression for layer '{key}' mapped and stored in query_imputed.X."
         if not self._is_self_mapping:
             message += f"\nNote: The feature space matches the reference (n_vars={self.reference.n_vars}), not the query (n_vars={self.query.n_vars})."
 
@@ -420,7 +422,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             expression_data=value, query_adata=self.query, reference_adata=self.reference
         )
 
-    def fit(
+    def map(
         self,
         obs_keys: str | list[str] | None = None,
         obsm_keys: str | list[str] | None = None,
@@ -434,16 +436,16 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         prediction_postfix: str = "pred",
     ) -> "CellMapper":
         """
-        Fit the CellMapper model.
+        Map data from reference to query datasets.
 
         Parameters
         ----------
         obs_keys
-            One or more keys in ``reference.obs`` to be transferred into ``query.obs`` (must be discrete)
+            One or more keys in ``reference.obs`` to be mapped into ``query.obs``.
         obsm_keys
-            One or more keys in ``reference.obsm`` storing the embeddings to be transferred.
+            One or more keys in ``reference.obsm`` storing the embeddings to be mapped.
         layer_key
-            Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``.
+            Key in ``reference.layers`` to be mapped. Use "X" to map ``reference.X``.
         n_neighbors
             Number of nearest neighbors.
         use_rep
@@ -457,7 +459,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         mapping_method
             Method to use for computing the mapping matrix.
         prediction_postfix
-            Postfix added to create new keys in ``query.obs`` for the transferred labels or in ``query.obsm`` for the transferred embeddings.
+            Postfix added to create new keys in ``query.obs`` for the mapped labels or in ``query.obsm`` for the mapped embeddings.
         """
         self.compute_neighbors(
             n_neighbors=n_neighbors, use_rep=use_rep, method=knn_method, metric=metric, only_yx=only_yx
@@ -471,9 +473,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 for obs_key in obs_keys:
                     self.map_obs(key=obs_key, prediction_postfix=prediction_postfix)
         if obsm_keys is not None:
-            self.transfer_embeddings(obsm_keys=obsm_keys, prediction_postfix=prediction_postfix)
+            # Handle both single key and list of keys for backward compatibility
+            if isinstance(obsm_keys, str):
+                self.map_obsm(key=obsm_keys, prediction_postfix=prediction_postfix)
+            else:
+                for obsm_key in obsm_keys:
+                    self.map_obsm(key=obsm_key, prediction_postfix=prediction_postfix)
         if layer_key is not None:
-            self.transfer_expression(layer_key=layer_key)
+            self.map_layers(key=layer_key)
         if obs_keys is None and obsm_keys is None and layer_key is None:
             logger.warning(
                 "Neither ``obs_keys``, ``obsm_keys`` or ``layer_key`` provided. No labels, embeddings or layers were transferred. "

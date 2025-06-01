@@ -23,12 +23,12 @@ class TestQueryToReferenceMapping:
         assert_metrics_close(cmap.label_transfer_metrics, expected_label_transfer_metrics)
 
     def test_embedding_transfer(self, cmap):
-        cmap.transfer_embeddings(obsm_keys="X_pca")
+        cmap.map_obsm(key="X_pca")
         assert "X_pca_pred" in cmap.query.obsm
         assert cmap.query.obsm["X_pca_pred"].shape[0] == cmap.query.n_obs
 
     def test_expression_transfer(self, cmap, expected_expression_transfer_metrics):
-        cmap.transfer_expression(layer_key="X")
+        cmap.map_layers(key="X")
         cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
         assert_metrics_close(cmap.expression_transfer_metrics, expected_expression_transfer_metrics)
 
@@ -41,7 +41,7 @@ class TestQueryToReferenceMapping:
 
     @pytest.mark.parametrize("layer_key", ["X", "counts"])
     def test_expression_transfer_layers(self, cmap, layer_key):
-        cmap.transfer_expression(layer_key=layer_key)
+        cmap.map_layers(key=layer_key)
         assert cmap.query_imputed is not None
         assert cmap.query_imputed.X.shape[0] == cmap.query.n_obs
 
@@ -58,7 +58,7 @@ class TestQueryToReferenceMapping:
         ],
     )
     def test_fit_various_combinations(self, cmap, obs_keys, obsm_keys, layer_key):
-        cmap.fit(obs_keys=obs_keys, obsm_keys=obsm_keys, layer_key=layer_key)
+        cmap.map(obs_keys=obs_keys, obsm_keys=obsm_keys, layer_key=layer_key)
         if obs_keys is not None:
             keys = [obs_keys] if isinstance(obs_keys, str) else obs_keys
             for key in keys:
@@ -75,7 +75,7 @@ class TestQueryToReferenceMapping:
         """Check mapping to self."""
         _, reference = query_reference_adata
         cm = CellMapper(reference, reference)
-        cm.fit(
+        cm.map(
             knn_method="sklearn",
             mapping_method="jaccard",
             obs_keys="leiden",
@@ -174,13 +174,13 @@ class TestQueryToReferenceMapping:
         with pytest.raises(TypeError):
             cmap.query_imputed = [1, 2, 3]
 
-    def test_query_imputed_integration_with_transfer_expression(self, cmap, random_imputed_data):
-        """Test that transfer_expression correctly uses the query_imputed property."""
+    def test_query_imputed_integration_with_map_layers(self, cmap, random_imputed_data):
+        """Test that map_layers correctly uses the query_imputed property."""
         # First check query_imputed is None
         assert cmap.query_imputed is None
 
-        # Transfer expression
-        cmap.transfer_expression(layer_key="X")
+        # Map expression
+        cmap.map_layers(key="X")
 
         # Verify query_imputed was set
         assert cmap.query_imputed is not None

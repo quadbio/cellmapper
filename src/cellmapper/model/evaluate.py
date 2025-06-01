@@ -336,7 +336,7 @@ class EvaluationMixin:
         """
         if self.query_imputed is None:
             raise ValueError(
-                "Imputed query data not found. Either run transfer_expression() first or set query_imputed manually."
+                "Imputed query data not found. Either run map_layers() first or set query_imputed manually."
             )
         shared_genes = list(self.query_imputed.var_names.intersection(self.query.var_names))
         if len(shared_genes) == 0:
