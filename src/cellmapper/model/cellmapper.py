@@ -209,17 +209,18 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.only_yx = only_yx
 
         if use_rep is None:
-            logger.warning(
-                "No representation provided (`use_rep=None`). Computing a joint representation automatically "
-                "using '%s'. For optimal results, consider pre-computing a representation and passing it to `use_rep`.",
-                fallback_representation,
-            )
-
             if self._is_self_mapping:
-                logger.info("Self-mapping detected. Computing PCA on query dataset for representation.")
+                logger.warning(
+                    "No representation provided (`use_rep=None`) and self-mapping mode detected. Computing a joint representation automatically using PCA."
+                )
                 key_added = fallback_kwargs.pop("key_added", "X_pca")
                 sc.tl.pca(self.query, n_comps=n_comps, key_added=key_added, **fallback_kwargs)
             else:
+                logger.warning(
+                    "No representation provided (`use_rep=None`). Computing a joint representation automatically "
+                    "using '%s'. For optimal results, consider pre-computing a representation and passing it to `use_rep`.",
+                    fallback_representation,
+                )
                 if fallback_representation == "fast_cca":
                     key_added = fallback_kwargs.pop("key_added", "X_cca")
                     self.compute_fast_cca(n_comps=n_comps, key_added=key_added, **fallback_kwargs)
@@ -303,86 +304,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
 
-    def transfer_labels(
-        self, obs_keys: str | list[str], prediction_postfix: str = "pred", confidence_postfix: str = "conf"
-    ) -> None:
+    def map_obsm(self, key: str, prediction_postfix: str = "pred") -> None:
         """
-        Transfer discrete labels from reference dataset to query dataset for one or more keys.
+        Map embeddings from reference dataset to query dataset.
+
+        Uses matrix multiplication to transfer embeddings from the reference
+        dataset to the query dataset.
 
         Parameters
         ----------
-        obs_keys
-            One or more keys in ``reference.obs`` to be transferred into ``query.obs`` (must be discrete)
+        key
+            Key in ``reference.obsm`` storing the embeddings to be transferred
         prediction_postfix
-            New ``query.obs`` key added for the transferred labels, by default ``{obs_key}_pred`` for each obs_key.
-        confidence_postfix
-            New ``query.obs`` key added for the transferred label confidence, by default ``{obs_key}_conf`` for each obs_key.
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        Updates the following attributes:
-
-        - ``query.obs``: Contains the transferred labels and their confidence scores.
-        """
-        if self.mapping_matrix is None:
-            raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
-        if isinstance(obs_keys, str):
-            obs_keys = [obs_keys]
-
-        self.prediction_postfix = prediction_postfix
-        self.confidence_postfix = confidence_postfix
-
-        # Loop over each observation key and perform label transfer
-        for key in obs_keys:
-            logger.info("Predicting labels for key '%s'.", key)
-            onehot = OneHotEncoder(dtype=np.float32)
-            xtab = onehot.fit_transform(
-                self.reference.obs[[key]],
-            )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
-            ytab = self.mapping_matrix @ xtab  # shape = (n_query_cells x n_categories), sparse crs matrix, float32
-
-            pred = pd.Series(
-                data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1],
-                index=self.query.obs_names,
-                dtype=self.reference.obs[key].dtype,
-            )
-            conf = pd.Series(
-                ytab.max(axis=1).toarray().ravel(),
-                index=self.query.obs_names,
-            )
-
-            self.query.obs[f"{key}_{self.prediction_postfix}"] = pred
-            self.query.obs[f"{key}_{self.confidence_postfix}"] = conf
-
-            # Add colors if available
-            if f"{key}_colors" in self.reference.uns:
-                color_lookup = dict(
-                    zip(self.reference.obs[key].cat.categories, self.reference.uns[f"{key}_colors"], strict=True)
-                )
-                self.query.uns[f"{key}_{self.prediction_postfix}_colors"] = [
-                    color_lookup.get(cat, "#000000") for cat in pred.cat.categories
-                ]
-
-            logger.info("Labels transferred and stored in query.obs['%s'].", f"{key}_{self.prediction_postfix}")
-
-            # Free memory explicitly
-            del onehot, xtab, ytab, pred, conf
-            gc.collect()
-
-    def transfer_embeddings(self, obsm_keys: str | list[str], prediction_postfix: str = "pred") -> None:
-        """
-        Transfer embeddings from reference dataset to query dataset for one or more keys.
-
-        Parameters
-        ----------
-        obsm_keys
-            One or more keys in ``reference.obsm`` storing the embeddings to be transferred.
-        prediction_postfix
-            Postfix to append to the output keys in ``query.obsm`` where the transferred embeddings will be stored.
+            Postfix to append to the output key in ``query.obsm`` where the transferred embeddings will be stored
 
         Returns
         -------
@@ -397,30 +331,29 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if self.mapping_matrix is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
-        if isinstance(obsm_keys, str):
-            obsm_keys = [obsm_keys]
+        logger.info("Mapping embeddings for key '%s'.", key)
 
-        for key in obsm_keys:
-            logger.info("Transferring embeddings for key '%s'.", key)
+        # Perform matrix multiplication to transfer embeddings
+        reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
+        query_embeddings = self.mapping_matrix @ reference_embeddings  # shape = (n_query_cells x n_embedding_dims)
 
-            # Perform matrix multiplication to transfer embeddings
-            reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
-            query_embeddings = self.mapping_matrix @ reference_embeddings  # shape = (n_query_cells x n_embedding_dims)
+        # Store the transferred embeddings in query.obsm
+        output_key = f"{key}_{prediction_postfix}"
+        self.query.obsm[output_key] = query_embeddings
 
-            # Store the transferred embeddings in query.obsm
-            output_key = f"{key}_{prediction_postfix}"
-            self.query.obsm[output_key] = query_embeddings
+        logger.info("Embeddings mapped and stored in query.obsm['%s'].", output_key)
 
-            logger.info("Embeddings transferred and stored in query.obsm['%s'].", output_key)
-
-    def transfer_expression(self, layer_key: str) -> None:
+    def map_layers(self, key: str) -> None:
         """
-        Transfer expression values (e.g., .X or entries from .layers) from reference dataset to a new imputed query AnnData object.
+        Map expression values from reference dataset to query dataset.
+
+        Transfers expression values (e.g., .X or entries from .layers) from reference
+        dataset to a new imputed query AnnData object using matrix multiplication.
 
         Parameters
         ----------
-        layer_key
-            Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``.
+        key
+            Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``
 
         Returns
         -------
@@ -434,16 +367,16 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if self.mapping_matrix is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
-        logger.info("Transferring layer for key '%s'.", layer_key)
+        logger.info("Mapping layer for key '%s'.", key)
         # Get the reference layer (or .X if key is "X")
-        reference_layer = self.reference.X if layer_key == "X" else self.reference.layers[layer_key]
+        reference_layer = self.reference.X if key == "X" else self.reference.layers[key]
         query_layer = self.mapping_matrix @ reference_layer  # shape = (n_query_cells x n_reference_features)
 
         # Create query_imputed using the property setter for consistent behavior
         self.query_imputed = query_layer
 
         # Create base message and conditionally add note about feature spaces for non-self-mapping
-        message = f"Imputed expression for layer '{layer_key}' stored in query_imputed.X."
+        message = f"Expression for layer '{key}' mapped and stored in query_imputed.X."
         if not self._is_self_mapping:
             message += f"\nNote: The feature space matches the reference (n_vars={self.reference.n_vars}), not the query (n_vars={self.query.n_vars})."
 
@@ -490,7 +423,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             expression_data=value, query_adata=self.query, reference_adata=self.reference
         )
 
-    def fit(
+    def map(
         self,
         obs_keys: str | list[str] | None = None,
         obsm_keys: str | list[str] | None = None,
@@ -504,16 +437,16 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         prediction_postfix: str = "pred",
     ) -> "CellMapper":
         """
-        Fit the CellMapper model.
+        Map data from reference to query datasets.
 
         Parameters
         ----------
         obs_keys
-            One or more keys in ``reference.obs`` to be transferred into ``query.obs`` (must be discrete)
+            One or more keys in ``reference.obs`` to be mapped into ``query.obs``.
         obsm_keys
-            One or more keys in ``reference.obsm`` storing the embeddings to be transferred.
+            One or more keys in ``reference.obsm`` storing the embeddings to be mapped.
         layer_key
-            Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``.
+            Key in ``reference.layers`` to be mapped. Use "X" to map ``reference.X``.
         n_neighbors
             Number of nearest neighbors.
         use_rep
@@ -527,18 +460,28 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         mapping_method
             Method to use for computing the mapping matrix.
         prediction_postfix
-            Postfix added to create new keys in ``query.obs`` for the transferred labels or in ``query.obsm`` for the transferred embeddings.
+            Postfix added to create new keys in ``query.obs`` for the mapped labels or in ``query.obsm`` for the mapped embeddings.
         """
         self.compute_neighbors(
             n_neighbors=n_neighbors, use_rep=use_rep, method=knn_method, metric=metric, only_yx=only_yx
         )
         self.compute_mapping_matrix(method=mapping_method)
         if obs_keys is not None:
-            self.transfer_labels(obs_keys=obs_keys, prediction_postfix=prediction_postfix)
+            # Handle both single key and list of keys for backward compatibility
+            if isinstance(obs_keys, str):
+                self.map_obs(key=obs_keys, prediction_postfix=prediction_postfix)
+            else:
+                for obs_key in obs_keys:
+                    self.map_obs(key=obs_key, prediction_postfix=prediction_postfix)
         if obsm_keys is not None:
-            self.transfer_embeddings(obsm_keys=obsm_keys, prediction_postfix=prediction_postfix)
+            # Handle both single key and list of keys for backward compatibility
+            if isinstance(obsm_keys, str):
+                self.map_obsm(key=obsm_keys, prediction_postfix=prediction_postfix)
+            else:
+                for obsm_key in obsm_keys:
+                    self.map_obsm(key=obsm_key, prediction_postfix=prediction_postfix)
         if layer_key is not None:
-            self.transfer_expression(layer_key=layer_key)
+            self.map_layers(key=layer_key)
         if obs_keys is None and obsm_keys is None and layer_key is None:
             logger.warning(
                 "Neither ``obs_keys``, ``obsm_keys`` or ``layer_key`` provided. No labels, embeddings or layers were transferred. "
@@ -587,3 +530,108 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             distances_matrix.shape[0],
             self.knn.xx.n_neighbors,
         )
+
+    def map_obs(self, key: str, prediction_postfix: str = "pred", confidence_postfix: str = "conf") -> None:
+        """
+        Map observation data from reference dataset to query dataset.
+
+        Automatically detects whether the data is categorical or numerical and applies
+        the appropriate mapping strategy. For categorical data, uses one-hot encoding
+        followed by matrix multiplication and argmax. For numerical data, uses direct
+        matrix multiplication.
+
+        Parameters
+        ----------
+        key
+            Key in ``reference.obs`` to be transferred into ``query.obs``
+        prediction_postfix
+            Postfix added to create new keys in ``query.obs`` for the transferred data
+        confidence_postfix
+            Postfix added to create new keys in ``query.obs`` for confidence scores
+            (only applicable for categorical data)
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``query.obs``: Contains the transferred data and confidence scores (for categorical data).
+        """
+        if self.mapping_matrix is None:
+            raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
+
+        if key not in self.reference.obs.columns:
+            raise KeyError(f"Key '{key}' not found in reference.obs")
+
+        # Set postfix attributes for compatibility with evaluation methods
+        self.prediction_postfix = prediction_postfix
+        self.confidence_postfix = confidence_postfix
+
+        reference_data = self.reference.obs[key]
+
+        # Detect data type
+        is_categorical = (
+            isinstance(reference_data.dtype, pd.CategoricalDtype)
+            or pd.api.types.is_object_dtype(reference_data)
+            or pd.api.types.is_string_dtype(reference_data)
+        )
+
+        if is_categorical:
+            logger.info("Mapping categorical data for key '%s' using one-hot encoding.", key)
+            self._map_obs_categorical(key, prediction_postfix, confidence_postfix)
+        else:
+            logger.info("Mapping numerical data for key '%s' using direct matrix multiplication.", key)
+            self._map_obs_numerical(key, prediction_postfix)
+
+    def _map_obs_categorical(self, key: str, prediction_postfix: str, confidence_postfix: str) -> None:
+        """Map categorical observation data using one-hot encoding."""
+        onehot = OneHotEncoder(dtype=np.float32)
+        xtab = onehot.fit_transform(
+            self.reference.obs[[key]],
+        )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
+        ytab = self.mapping_matrix @ xtab  # shape = (n_query_cells x n_categories), sparse csr matrix, float32
+
+        pred = pd.Series(
+            data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1],
+            index=self.query.obs_names,
+            dtype=self.reference.obs[key].dtype,
+        )
+        conf = pd.Series(
+            ytab.max(axis=1).toarray().ravel(),
+            index=self.query.obs_names,
+        )
+
+        self.query.obs[f"{key}_{prediction_postfix}"] = pred
+        self.query.obs[f"{key}_{confidence_postfix}"] = conf
+
+        # Add colors if available
+        if f"{key}_colors" in self.reference.uns:
+            color_lookup = dict(
+                zip(self.reference.obs[key].cat.categories, self.reference.uns[f"{key}_colors"], strict=True)
+            )
+            self.query.uns[f"{key}_{prediction_postfix}_colors"] = [
+                color_lookup.get(cat, "#383838") for cat in pred.cat.categories
+            ]
+
+        logger.info("Categorical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
+
+        # Free memory explicitly
+        del onehot, xtab, ytab, pred, conf
+        gc.collect()
+
+    def _map_obs_numerical(self, key: str, prediction_postfix: str) -> None:
+        """Map numerical observation data using direct matrix multiplication."""
+        reference_values = np.array(self.reference.obs[key]).reshape(-1, 1)  # shape = (n_reference_cells, 1)
+        mapped_values = self.mapping_matrix @ reference_values  # shape = (n_query_cells, 1)
+
+        pred = pd.Series(
+            data=mapped_values.ravel(),
+            index=self.query.obs_names,
+        )
+
+        self.query.obs[f"{key}_{prediction_postfix}"] = pred
+
+        logger.info("Numerical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")

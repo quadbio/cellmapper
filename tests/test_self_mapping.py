@@ -15,26 +15,26 @@ class TestSelfMapping:
         assert cm.reference is adata_pbmc3k
         assert cm.query is adata_pbmc3k
 
-    def test_identity_mapping(self, adata_pbmc3k):
+    @pytest.mark.parametrize("obs_key", ["leiden", "dpt_pseudotime"])
+    def test_identity_mapping(self, adata_pbmc3k, obs_key):
         """Test that with n_neighbors=1, self-mapping preserves original labels exactly."""
         # Initialize with self-mapping
         cm = CellMapper(adata_pbmc3k)
-        cm.fit(
+        cm.map(
             knn_method="sklearn",
             mapping_method="jaccard",
-            obs_keys="leiden",
+            obs_keys=obs_key,
             use_rep="X_pca",
             n_neighbors=1,
-            prediction_postfix="transfer",
+            prediction_postfix="pred",
         )
 
         # With n_neighbors=1, labels should be perfectly preserved
-        assert "leiden_transfer" in adata_pbmc3k.obs
-        assert len(adata_pbmc3k.obs["leiden_transfer"]) == len(adata_pbmc3k.obs["leiden"])
-        # Check that all predicted labels are valid categories
-        assert set(adata_pbmc3k.obs["leiden_transfer"].cat.categories) <= set(adata_pbmc3k.obs["leiden"].cat.categories)
+        assert f"{obs_key}_pred" in adata_pbmc3k.obs
+        assert len(adata_pbmc3k.obs[f"{obs_key}_pred"]) == len(adata_pbmc3k.obs[obs_key])
+
         # Labels should match exactly when n_neighbors=1
-        assert adata_pbmc3k.obs["leiden_transfer"].equals(adata_pbmc3k.obs["leiden"])
+        assert adata_pbmc3k.obs[f"{obs_key}_pred"].equals(adata_pbmc3k.obs[obs_key])
 
     def test_all_operations_self_mapping(self, adata_pbmc3k):
         """Test the full pipeline in self-mapping mode."""
@@ -46,16 +46,16 @@ class TestSelfMapping:
         cm.compute_mapping_matrix(method="gaussian")
 
         # Test label transfer
-        cm.transfer_labels(obs_keys="leiden")
+        cm.map_obs(key="leiden")
         assert "leiden_pred" in cm.query.obs
         # With n_neighbors>1, self-mapped labels might not be 100% identical
 
         # Test embedding transfer
-        cm.transfer_embeddings(obsm_keys="X_pca")
+        cm.map_obsm(key="X_pca")
         assert "X_pca_pred" in cm.query.obsm
 
         # Test expression transfer
-        cm.transfer_expression(layer_key="X")
+        cm.map_layers(key="X")
         assert cm.query_imputed is not None
 
         # Test evaluation functions
@@ -84,7 +84,7 @@ class TestSelfMapping:
 
         # Test the full pipeline with precomputed distances
         cm.compute_mapping_matrix(method="gaussian")
-        cm.transfer_labels(obs_keys="leiden")
+        cm.map_obs(key="leiden")
 
         assert "leiden_pred" in cm.query.obs
         assert "leiden_conf" in cm.query.obs
@@ -143,7 +143,7 @@ class TestSelfMapping:
 
         # Test the mapping pipeline
         cm.compute_mapping_matrix(method="gaussian")
-        cm.transfer_labels(obs_keys="leiden")
+        cm.map_obs(key="leiden")
 
         assert "leiden_pred" in cm.query.obs
         assert "leiden_conf" in cm.query.obs
@@ -180,8 +180,8 @@ class TestSelfMapping:
         cm_without_self.compute_mapping_matrix(method="gaussian")
 
         # Compute label transfer for both
-        cm_with_self.transfer_labels(obs_keys="leiden", prediction_postfix="with_self")
-        cm_without_self.transfer_labels(obs_keys="leiden", prediction_postfix="without_self")
+        cm_with_self.map_obs(key="leiden", prediction_postfix="with_self")
+        cm_without_self.map_obs(key="leiden", prediction_postfix="without_self")
 
         # Both should have created prediction columns
         assert "leiden_with_self" in adata_spatial.obs
@@ -204,5 +204,5 @@ class TestSelfMapping:
         assert adata_pbmc3k.obsm["X_pca"].shape[1] == 10
 
         # Test rest of pipeline
-        cm.transfer_labels(obs_keys="leiden")
+        cm.map_obs(key="leiden")
         assert "leiden_pred" in cm.query.obs

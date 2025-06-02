@@ -8,7 +8,7 @@ class TestEvaluate:
     @pytest.mark.parametrize("method", ["pearson", "spearman", "js", "rmse"])
     @pytest.mark.parametrize("groupby", ["batch", "modality"])
     def test_evaluate_expression_transfer_layers_and_methods(self, cmap, eval_layer, method, groupby):
-        cmap.transfer_expression(layer_key="X")
+        cmap.map_layers(key="X")
         cmap.evaluate_expression_transfer(layer_key=eval_layer, method=method, groupby=groupby)
         metrics = cmap.expression_transfer_metrics
         assert metrics["method"] == method
