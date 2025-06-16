@@ -11,7 +11,7 @@ from sklearn.preprocessing import OneHotEncoder
 
 from cellmapper.logging import logger
 from cellmapper.model.knn import Neighbors
-from cellmapper.utils import get_n_comps, to_dense_array
+from cellmapper.utils import get_n_comps
 
 
 class BaseMapper(ABC):
@@ -364,8 +364,11 @@ class BaseMapper(ABC):
         reference_values = np.array(data).reshape(-1, 1)
         mapped_values = self._apply_mapping_to_matrix(reference_values)
 
-        # Convert to dense array and flatten
-        mapped_data = to_dense_array(mapped_values, flatten=True)
+        # Handle both sparse and dense results efficiently
+        if hasattr(mapped_values, "toarray"):
+            mapped_data = mapped_values.toarray().ravel()  # type: ignore[attr-defined]
+        else:
+            mapped_data = mapped_values.ravel()  # type: ignore[attr-defined]
 
         pred = pd.Series(
             data=mapped_data,

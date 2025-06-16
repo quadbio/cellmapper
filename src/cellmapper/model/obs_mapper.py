@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import csr_matrix, issparse
+from scipy.sparse import csr_matrix
 
 from cellmapper.logging import logger
 from cellmapper.model.base_mapper import BaseMapper
@@ -115,9 +115,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         confidence_postfix
             Postfix for confidence scores (categorical data only).
         """
-        if key not in self.reference.obs.columns:
-            raise KeyError(f"Key '{key}' not found in reference.obs")
-
         reference_data = self.reference.obs[key]
 
         # Store postfixes for evaluation methods
@@ -137,13 +134,10 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         prediction_postfix
             Postfix for output key in query.obsm.
         """
-        if key not in self.reference.obsm.keys():
-            raise KeyError(f"Key '{key}' not found in reference.obsm")
-
         logger.info("Mapping embeddings for key '%s'.", key)
 
-        reference_embeddings = np.asarray(self.reference.obsm[key])
-        query_embeddings = self._map_matrix(reference_embeddings)
+        reference_embeddings = self.reference.obsm[key]
+        query_embeddings = self._map_matrix(reference_embeddings)  # type: ignore[arg-type]
 
         output_key = f"{key}_{prediction_postfix}"
         self.query.obsm[output_key] = query_embeddings
@@ -163,20 +157,10 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         -------
         AnnData object with mapped expression data.
         """
-        if key != "X" and key not in self.reference.layers.keys():
-            raise KeyError(f"Key '{key}' not found in reference.layers")
-
         logger.info("Mapping expression data for key '%s'.", key)
 
         reference_layer = self.reference.X if key == "X" else self.reference.layers[key]
-
-        # Handle sparse matrices properly by checking if it's sparse
-        if issparse(reference_layer):
-            reference_matrix = reference_layer.toarray()  # type: ignore
-        else:
-            reference_matrix = np.asarray(reference_layer)
-
-        query_layer = self._map_matrix(reference_matrix)
+        query_layer = self._map_matrix(reference_layer)  # type: ignore[arg-type]
 
         # Create imputed AnnData
         query_imputed = create_imputed_anndata(
