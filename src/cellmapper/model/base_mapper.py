@@ -6,12 +6,12 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 from anndata import AnnData
-from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
+from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
 from sklearn.preprocessing import OneHotEncoder
 
 from cellmapper.logging import logger
 from cellmapper.model.knn import Neighbors
-from cellmapper.utils import get_n_comps
+from cellmapper.utils import get_n_comps, to_dense_array
 
 
 class BaseMapper(ABC):
@@ -114,6 +114,11 @@ class BaseMapper(ABC):
     @abstractmethod
     def _extract_representations(self, use_rep: str) -> tuple[np.ndarray, np.ndarray]:
         """Extract the representations for neighbor computation."""
+        pass
+
+    @abstractmethod
+    def _get_reference_data_container(self) -> pd.DataFrame:
+        """Get the container with reference data (for obs: reference.obs, for var: reference.var)."""
         pass
 
     @property
@@ -251,7 +256,7 @@ class BaseMapper(ABC):
                     "Jaccard and HNOCA methods require both x and y neighbors to be computed. Set only_yx=False."
                 )
             xx, yy, xy, yx = self.knn.get_adjacency_matrices()
-            n_neighbors = self.knn.xx.n_neighbors
+            n_neighbors = self.knn.xx.n_neighbors  # type: ignore[attr-defined]
             jaccard = (yx @ xx.T) + (yy @ xy.T)
 
             if method == "jaccard":
@@ -327,18 +332,9 @@ class BaseMapper(ABC):
         # Apply mapping
         ytab = self._apply_mapping_to_matrix(xtab)
 
-        # Handle both sparse and dense matrices for argmax
-        try:
-            if issparse(ytab) and not isinstance(ytab, np.ndarray):
-                ytab_dense = ytab.toarray()
-            else:
-                ytab_dense = np.asarray(ytab)
-        except (AttributeError, TypeError):
-            # Fallback for edge cases
-            ytab_dense = np.asarray(ytab)
-
-        pred_indices = ytab_dense.argmax(axis=1)
-        conf_values = ytab_dense.max(axis=1)
+        # Use the same approach as original CellMapper for sparse matrix handling
+        pred_indices = ytab.argmax(axis=1).A1  # type: ignore[attr-defined]
+        conf_values = ytab.max(axis=1).toarray().ravel()  # type: ignore[attr-defined]
 
         pred = pd.Series(
             data=np.array(onehot.categories_[0])[pred_indices],
@@ -354,6 +350,10 @@ class BaseMapper(ABC):
         self._store_mapping_result(target_container, target_key, prediction_postfix, pred, "categorical")
         self._store_mapping_result(target_container, target_key, confidence_postfix, conf, "confidence")
 
+        # Handle color mapping if colors are available and target is AnnData
+        if isinstance(target_container, AnnData):
+            self._copy_categorical_colors(target_key, prediction_postfix, pred, target_container)
+
         logger.info("Categorical data mapped and stored with key '%s'.", f"{target_key}_{prediction_postfix}")
 
     def _map_numerical(
@@ -364,15 +364,8 @@ class BaseMapper(ABC):
         reference_values = np.array(data).reshape(-1, 1)
         mapped_values = self._apply_mapping_to_matrix(reference_values)
 
-        # Handle both sparse and dense matrices
-        try:
-            if issparse(mapped_values) and not isinstance(mapped_values, np.ndarray):
-                mapped_data = mapped_values.toarray().ravel()
-            else:
-                mapped_data = np.asarray(mapped_values).ravel()
-        except (AttributeError, TypeError):
-            # Fallback for edge cases
-            mapped_data = np.asarray(mapped_values).ravel()
+        # Convert to dense array and flatten
+        mapped_data = to_dense_array(mapped_values, flatten=True)
 
         pred = pd.Series(
             data=mapped_data,
@@ -389,3 +382,24 @@ class BaseMapper(ABC):
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
         return self._apply_mapping_to_matrix(matrix)
+
+    def _copy_categorical_colors(
+        self,
+        target_key: str,
+        prediction_postfix: str,
+        pred: pd.Series,
+        target_container: AnnData,
+    ) -> None:
+        """Copy categorical colors from reference to target container."""
+        if f"{target_key}_colors" in self.reference.uns:
+            reference_data_container = self._get_reference_data_container()
+            color_lookup = dict(
+                zip(
+                    reference_data_container[target_key].cat.categories,
+                    self.reference.uns[f"{target_key}_colors"],
+                    strict=True,
+                )
+            )
+            target_container.uns[f"{target_key}_{prediction_postfix}_colors"] = [
+                color_lookup.get(cat, "#383838") for cat in pred.cat.categories
+            ]

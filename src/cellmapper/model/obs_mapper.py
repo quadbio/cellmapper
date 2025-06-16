@@ -4,12 +4,13 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, issparse
 
 from cellmapper.logging import logger
 from cellmapper.model.base_mapper import BaseMapper
 from cellmapper.model.embedding import EmbeddingMixin
 from cellmapper.model.evaluate import EvaluationMixin
+from cellmapper.model.knn import Neighbors
 from cellmapper.utils import create_imputed_anndata
 
 
@@ -41,6 +42,10 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
     def _apply_mapping_to_matrix(self, matrix: np.ndarray | csr_matrix) -> np.ndarray | csr_matrix:
         """Apply the mapping matrix to a data matrix for observation mapping."""
         return self.mapping_matrix @ matrix
+
+    def _get_reference_data_container(self) -> pd.DataFrame:
+        """Get the container with reference observation data."""
+        return self.reference.obs
 
     def _store_mapping_result(
         self,
@@ -95,7 +100,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
     def map_obs(
         self,
         key: str,
-        prediction_key: str | None = None,
         prediction_postfix: str = "pred",
         confidence_postfix: str = "conf",
     ) -> None:
@@ -106,8 +110,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         ----------
         key
             Key in reference.obs to be transferred to query.obs.
-        prediction_key
-            Custom key for prediction results. If provided, overrides prediction_postfix.
         prediction_postfix
             Postfix for prediction results.
         confidence_postfix
@@ -118,19 +120,13 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
 
         reference_data = self.reference.obs[key]
 
-        # Use prediction_key if provided, otherwise use default postfix
-        if prediction_key is not None:
-            prediction_postfix = (
-                prediction_key.replace(f"{key}_", "") if f"{key}_" in prediction_key else prediction_key
-            )
-
         # Store postfixes for evaluation methods
         self.prediction_postfix = prediction_postfix
         self.confidence_postfix = confidence_postfix
 
         self._map_data(reference_data, prediction_postfix, confidence_postfix, self.query, key)
 
-    def map_obsm(self, key: str, prediction_key: str | None = None, prediction_postfix: str = "pred") -> None:
+    def map_obsm(self, key: str, prediction_postfix: str = "pred") -> None:
         """
         Map embeddings from reference to query cells.
 
@@ -138,27 +134,11 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         ----------
         key
             Key in reference.obsm storing embeddings to transfer.
-        prediction_key
-            Custom key for output. If provided, overrides prediction_postfix.
         prediction_postfix
             Postfix for output key in query.obsm.
         """
         if key not in self.reference.obsm.keys():
             raise KeyError(f"Key '{key}' not found in reference.obsm")
-
-        logger.info("Mapping embeddings for key '%s'.", key)
-
-        reference_embeddings = np.asarray(self.reference.obsm[key])
-        query_embeddings = self._map_matrix(reference_embeddings)
-
-        # Use prediction_key if provided, otherwise create output key with postfix
-        if prediction_key is not None:
-            output_key = prediction_key
-        else:
-            output_key = f"{key}_{prediction_postfix}"
-
-        self.query.obsm[output_key] = query_embeddings
-        logger.info("Embeddings mapped and stored in query.obsm['%s'].", output_key)
 
         logger.info("Mapping embeddings for key '%s'.", key)
 
@@ -191,8 +171,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         reference_layer = self.reference.X if key == "X" else self.reference.layers[key]
 
         # Handle sparse matrices properly by checking if it's sparse
-        from scipy.sparse import issparse
-
         if issparse(reference_layer):
             reference_matrix = reference_layer.toarray()  # type: ignore
         else:
@@ -329,9 +307,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         # Access the precomputed distances
         distances_matrix = self.query.obsp[distances_key]
 
-        # Import here to avoid circular imports
-        from cellmapper.model.knn import Neighbors
-
         # Create a neighbors object using the factory method
         self.knn = Neighbors.from_distances(distances_matrix, include_self=include_self)
 
@@ -339,5 +314,5 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
             "Loaded precomputed distances from '%s' with %d cells and %d neighbors per cell.",
             distances_key,
             distances_matrix.shape[0],
-            self.knn.xx.n_neighbors,
+            self.knn.xx.n_neighbors,  # type: ignore[attr-defined]
         )

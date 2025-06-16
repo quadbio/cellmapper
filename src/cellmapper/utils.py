@@ -396,3 +396,26 @@ def truncated_svd_cross_covariance(
     vt = vt[idx, :]
 
     return u, s, vt
+
+
+def to_dense_array(matrix: np.ndarray | csr_matrix, flatten: bool = False) -> np.ndarray:
+    """
+    Convert a matrix to a dense numpy array.
+
+    Parameters
+    ----------
+    matrix
+        Input matrix (dense or sparse).
+    flatten
+        If True, flatten the result to 1D array.
+
+    Returns
+    -------
+    Dense numpy array.
+    """
+    if issparse(matrix):
+        result = matrix.toarray()
+    else:
+        result = np.asarray(matrix)
+
+    return result.ravel() if flatten else result
