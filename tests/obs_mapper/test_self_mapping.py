@@ -1,25 +1,40 @@
 import pytest
 import scanpy as sc
 
-from cellmapper.model.cellmapper import CellMapper
+from cellmapper.model.obs_mapper import ObsMapper
 
 
 class TestSelfMapping:
-    """Tests for self-mapping functionality in CellMapper."""
+    """Tests for self-mapping functionality in ObsMapper."""
 
     def test_self_mapping_initialization(self, adata_pbmc3k):
         """Test that self-mapping mode is correctly detected when reference=None."""
         # Initialize with only reference
-        cm = CellMapper(adata_pbmc3k)
+        cm = ObsMapper(adata_pbmc3k)
         assert cm._is_self_mapping
         assert cm.reference is adata_pbmc3k
         assert cm.query is adata_pbmc3k
+
+    def test_precomputed_fixture_setup(self, obs_mapper_self):
+        """Test that the obs_mapper_self fixture is properly configured."""
+        cm = obs_mapper_self
+
+        # Verify fixture is properly set up
+        assert cm._is_self_mapping
+        assert cm.knn is not None
+        assert cm.mapping_matrix is not None
+        assert cm.knn.xx.n_neighbors == 15
+
+        # Test that we can immediately use it for mapping without setup
+        cm.map_obs(key="leiden", prediction_postfix="fixture_test", confidence_postfix="fixture_test_conf")
+        assert "leiden_fixture_test" in cm.query.obs
+        assert "leiden_fixture_test_conf" in cm.query.obs
 
     @pytest.mark.parametrize("obs_key", ["leiden", "dpt_pseudotime"])
     def test_identity_mapping(self, adata_pbmc3k, obs_key):
         """Test that with n_neighbors=1, self-mapping preserves original labels exactly."""
         # Initialize with self-mapping
-        cm = CellMapper(adata_pbmc3k)
+        cm = ObsMapper(adata_pbmc3k)
         cm.map(
             knn_method="sklearn",
             mapping_method="jaccard",
@@ -36,14 +51,10 @@ class TestSelfMapping:
         # Labels should match exactly when n_neighbors=1
         assert adata_pbmc3k.obs[f"{obs_key}_pred"].equals(adata_pbmc3k.obs[obs_key])
 
-    def test_all_operations_self_mapping(self, adata_pbmc3k):
-        """Test the full pipeline in self-mapping mode."""
-        # Initialize with self-mapping
-        cm = CellMapper(adata_pbmc3k)
-
-        # Test with typical parameters
-        cm.compute_neighbors(n_neighbors=5, use_rep="X_pca")
-        cm.compute_mapping_matrix(method="gaussian")
+    def test_all_operations_self_mapping(self, obs_mapper_self):
+        """Test the full pipeline in self-mapping mode using the fixture."""
+        # Use the pre-configured mapper with neighbors and mapping matrix already computed
+        cm = obs_mapper_self
 
         # Test label transfer
         cm.map_obs(key="leiden")
@@ -72,8 +83,8 @@ class TestSelfMapping:
         # Compute neighbors with scanpy
         sc.pp.neighbors(adata_spatial, n_neighbors=n_neighbors, use_rep="X_pca")
 
-        # Initialize CellMapper in self-mapping mode
-        cm = CellMapper(adata_spatial)
+        # Initialize ObsMapper in self-mapping mode
+        cm = ObsMapper(adata_spatial)
 
         # Load precomputed distances
         cm.load_precomputed_distances(distances_key="distances")
@@ -119,10 +130,8 @@ class TestSelfMapping:
         # Compute spatial neighbors with squidpy using the provided parameters
         sq.gr.spatial_neighbors(adata_spatial, spatial_key="spatial", **squidpy_params)
 
-        # Initialize CellMapper in self-mapping mode
-        cm = CellMapper(adata_spatial)
-
-        print(adata_spatial)
+        # Initialize ObsMapper in self-mapping mode
+        cm = ObsMapper(adata_spatial)
 
         # Load precomputed distances
         cm.load_precomputed_distances(distances_key="spatial_distances")
@@ -155,9 +164,9 @@ class TestSelfMapping:
         # Compute neighbors with scanpy
         sc.pp.neighbors(adata_spatial, n_neighbors=10, use_rep="X_pca")
 
-        # Initialize CellMapper in self-mapping mode
-        cm_with_self = CellMapper(adata_spatial)
-        cm_without_self = CellMapper(adata_spatial)
+        # Initialize ObsMapper in self-mapping mode
+        cm_with_self = ObsMapper(adata_spatial)
+        cm_without_self = ObsMapper(adata_spatial)
 
         # Load precomputed distances with different include_self settings
         cm_with_self.load_precomputed_distances(distances_key="distances", include_self=True)
@@ -190,10 +199,31 @@ class TestSelfMapping:
         # The results should be different (excluding self changes the neighborhood)
         assert not adata_spatial.obs["leiden_with_self"].equals(adata_spatial.obs["leiden_without_self"])
 
+    def test_evaluation_methods_with_fixture(self, obs_mapper_self):
+        """Test evaluation methods using the pre-configured fixture."""
+        cm = obs_mapper_self
+
+        # Perform mapping operations
+        cm.map_obs(key="leiden", prediction_postfix="eval_test", confidence_postfix="eval_test_conf")
+        cm.map_layers(key="X")
+
+        # Test label transfer evaluation
+        cm.evaluate_label_transfer(
+            label_key="leiden", prediction_postfix="eval_test", confidence_postfix="eval_test_conf"
+        )
+        assert cm.label_transfer_metrics is not None
+        assert "accuracy" in cm.label_transfer_metrics
+
+        # Test expression transfer evaluation
+        cm.evaluate_expression_transfer(layer_key="X", method="pearson")
+        assert cm.expression_transfer_metrics is not None
+        assert cm.expression_transfer_metrics["method"] == "pearson"
+        assert "average" in cm.expression_transfer_metrics
+
     def test_self_mapping_without_rep(self, adata_pbmc3k):
         """Test self-mapping when use_rep=None, testing automatic PCA computation."""
         # Initialize with self-mapping
-        cm = CellMapper(adata_pbmc3k)
+        cm = ObsMapper(adata_pbmc3k)
 
         # Test with no representation provided
         cm.compute_neighbors(n_neighbors=5, use_rep=None, n_comps=10)

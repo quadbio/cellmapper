@@ -69,9 +69,7 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
 
         return key_added
 
-    def _compute_fallback_representation_joint(
-        self, method: str, key_added: str, n_comps: int | None, fallback_kwargs: dict
-    ) -> str:
+    def _compute_fallback_representation_joint(self, method: str, n_comps: int | None, fallback_kwargs: dict) -> str:
         """Compute joint fallback representation for cross-mapping."""
         if method == "fast_cca":
             key_added = fallback_kwargs.pop("key_added", "X_cca")
@@ -115,6 +113,9 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         confidence_postfix
             Postfix for confidence scores (categorical data only).
         """
+        if key not in self.reference.obs.columns:
+            raise KeyError(f"Key '{key}' not found in reference.obs")
+
         reference_data = self.reference.obs[key]
 
         # Use prediction_key if provided, otherwise use default postfix
@@ -122,6 +123,10 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
             prediction_postfix = (
                 prediction_key.replace(f"{key}_", "") if f"{key}_" in prediction_key else prediction_key
             )
+
+        # Store postfixes for evaluation methods
+        self.prediction_postfix = prediction_postfix
+        self.confidence_postfix = confidence_postfix
 
         self._map_data(reference_data, prediction_postfix, confidence_postfix, self.query, key)
 
@@ -138,15 +143,22 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         prediction_postfix
             Postfix for output key in query.obsm.
         """
-        reference_data = self.reference.obsm[key]
+        if key not in self.reference.obsm.keys():
+            raise KeyError(f"Key '{key}' not found in reference.obsm")
 
-        # Use prediction_key if provided, otherwise use default postfix
+        logger.info("Mapping embeddings for key '%s'.", key)
+
+        reference_embeddings = np.asarray(self.reference.obsm[key])
+        query_embeddings = self._map_matrix(reference_embeddings)
+
+        # Use prediction_key if provided, otherwise create output key with postfix
         if prediction_key is not None:
-            prediction_postfix = (
-                prediction_key.replace(f"{key}_", "") if f"{key}_" in prediction_key else prediction_key
-            )
+            output_key = prediction_key
+        else:
+            output_key = f"{key}_{prediction_postfix}"
 
-        self._map_data(reference_data, prediction_postfix, None, self.query, key)
+        self.query.obsm[output_key] = query_embeddings
+        logger.info("Embeddings mapped and stored in query.obsm['%s'].", output_key)
 
         logger.info("Mapping embeddings for key '%s'.", key)
 
@@ -177,12 +189,24 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         logger.info("Mapping expression data for key '%s'.", key)
 
         reference_layer = self.reference.X if key == "X" else self.reference.layers[key]
-        query_layer = self._map_matrix(np.asarray(reference_layer))
+
+        # Handle sparse matrices properly by checking if it's sparse
+        from scipy.sparse import issparse
+
+        if issparse(reference_layer):
+            reference_matrix = reference_layer.toarray()  # type: ignore
+        else:
+            reference_matrix = np.asarray(reference_layer)
+
+        query_layer = self._map_matrix(reference_matrix)
 
         # Create imputed AnnData
         query_imputed = create_imputed_anndata(
             expression_data=query_layer, query_adata=self.query, reference_adata=self.reference
         )
+
+        # Store as property for evaluation
+        self.query_imputed = query_imputed
 
         message = f"Expression for layer '{key}' mapped."
         if not self._is_self_mapping:
@@ -190,3 +214,130 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         logger.info(message)
 
         return query_imputed
+
+    def map(
+        self,
+        obs_keys: str | list[str] | None = None,
+        obsm_keys: str | list[str] | None = None,
+        layer_key: str | None = None,
+        prediction_postfix: str = "pred",
+        knn_method: str = "sklearn",
+        mapping_method: str = "gaussian",
+        use_rep: str | None = "X_pca",
+        n_neighbors: int = 30,
+        **kwargs,
+    ) -> None:
+        """
+        Map observations, embeddings, and expression layers in one call.
+
+        This method combines neighbor computation, mapping matrix computation,
+        and the actual mapping operations.
+
+        Parameters
+        ----------
+        obs_keys
+            Observation keys to map.
+        obsm_keys
+            Embedding keys to map.
+        layer_key
+            Layer key to map.
+        prediction_postfix
+            Postfix for predictions.
+        knn_method
+            Method for computing neighbors.
+        mapping_method
+            Method for computing mapping matrix.
+        use_rep
+            Representation to use for neighbors.
+        n_neighbors
+            Number of neighbors.
+        **kwargs
+            Additional arguments passed to compute_neighbors.
+        """
+        # Compute neighbors if not already computed
+        if self.knn is None:
+            self.compute_neighbors(n_neighbors=n_neighbors, use_rep=use_rep, method=knn_method, **kwargs)
+
+        # Compute mapping matrix if not already computed
+        if self.mapping_matrix is None:
+            self.compute_mapping_matrix(method=mapping_method)
+
+        # Map observations
+        if obs_keys is not None:
+            if isinstance(obs_keys, str):
+                obs_keys = [obs_keys]
+            for obs_key in obs_keys:
+                self.map_obs(key=obs_key, prediction_postfix=prediction_postfix)
+
+        # Map embeddings
+        if obsm_keys is not None:
+            if isinstance(obsm_keys, str):
+                obsm_keys = [obsm_keys]
+            for obsm_key in obsm_keys:
+                self.map_obsm(key=obsm_key, prediction_postfix=prediction_postfix)
+
+        # Map layers
+        if layer_key is not None:
+            self.map_layers(key=layer_key)
+
+    @property
+    def query_imputed(self) -> AnnData | None:
+        """Get imputed query data."""
+        return getattr(self, "_query_imputed", None)
+
+    @query_imputed.setter
+    def query_imputed(self, value: AnnData | np.ndarray | csr_matrix | pd.DataFrame | None) -> None:
+        """Set imputed query data."""
+        if value is None:
+            self._query_imputed = None
+        elif isinstance(value, AnnData):
+            self._query_imputed = value
+        else:
+            # Convert to AnnData using utility function
+            self._query_imputed = create_imputed_anndata(
+                expression_data=value, query_adata=self.query, reference_adata=self.reference
+            )
+
+    def load_precomputed_distances(self, distances_key: str = "distances", include_self: bool | None = None) -> None:
+        """
+        Load precomputed distances from the AnnData object.
+
+        This method is only available in self-mapping mode.
+
+        Parameters
+        ----------
+        distances_key
+            Key in adata.obsp where the precomputed distances are stored.
+        include_self
+            If True, include self as a neighbor (even if not present in the distance matrix).
+            If False, exclude self connections (even if present in the distance matrix).
+            If None (default), preserve the original behavior of the distance matrix.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``knn``: Neighbors object constructed from the precomputed distances.
+        """
+        if not self._is_self_mapping:
+            raise ValueError("load_precomputed_distances is only available in self-mapping mode.")
+
+        # Access the precomputed distances
+        distances_matrix = self.query.obsp[distances_key]
+
+        # Import here to avoid circular imports
+        from cellmapper.model.knn import Neighbors
+
+        # Create a neighbors object using the factory method
+        self.knn = Neighbors.from_distances(distances_matrix, include_self=include_self)
+
+        logger.info(
+            "Loaded precomputed distances from '%s' with %d cells and %d neighbors per cell.",
+            distances_key,
+            distances_matrix.shape[0],
+            self.knn.xx.n_neighbors,
+        )
