@@ -63,6 +63,59 @@ class BaseMapper(ABC):
                 self._get_dimension_name(),
             )
 
+    # Abstract methods that must be implemented by subclasses
+    @abstractmethod
+    def _get_dimension_name(self) -> str:
+        """Get the name of the dimension being mapped (e.g., 'cells', 'genes')."""
+        pass
+
+    @abstractmethod
+    def _get_query_size(self) -> int:
+        """Get the size of the query dataset in the relevant dimension."""
+        pass
+
+    @abstractmethod
+    def _get_reference_size(self) -> int:
+        """Get the size of the reference dataset in the relevant dimension."""
+        pass
+
+    @abstractmethod
+    def _get_target_index(self) -> pd.Index:
+        """Get the index for the target dimension."""
+        pass
+
+    @abstractmethod
+    def _apply_mapping_to_matrix(self, matrix: np.ndarray | csr_matrix) -> np.ndarray | csr_matrix:
+        """Apply the mapping matrix to a data matrix."""
+        pass
+
+    @abstractmethod
+    def _store_mapping_result(
+        self,
+        target_container: dict | AnnData,
+        target_key: str,
+        postfix: str,
+        data: pd.Series | np.ndarray,
+        data_type: str,
+    ) -> None:
+        """Store the mapping result in the appropriate container."""
+        pass
+
+    @abstractmethod
+    def _compute_fallback_representation_self(self, n_comps: int | None, fallback_kwargs: dict) -> str:
+        """Compute fallback representation for self-mapping."""
+        pass
+
+    @abstractmethod
+    def _compute_fallback_representation_joint(self, method: str, n_comps: int | None, fallback_kwargs: dict) -> str:
+        """Compute joint fallback representation for cross-mapping."""
+        pass
+
+    @abstractmethod
+    def _extract_representations(self, use_rep: str) -> tuple[np.ndarray, np.ndarray]:
+        """Extract the representations for neighbor computation."""
+        pass
+
     @property
     def mapping_matrix(self) -> csr_matrix | None:
         """Get the mapping matrix."""
@@ -108,6 +161,72 @@ class BaseMapper(ABC):
         mapping_matrix = mapping_matrix.multiply(1 / row_sums[:, None])
 
         return csr_matrix(mapping_matrix.astype(np.float32))
+
+    def compute_neighbors(
+        self,
+        n_neighbors: int = 30,
+        use_rep: str | None = None,
+        n_comps: int | None = None,
+        method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
+        metric: str = "euclidean",
+        only_yx: bool = False,
+        fallback_representation: Literal["fast_cca", "joint_pca"] = "joint_pca",
+        fallback_kwargs: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Compute nearest neighbors between reference and query.
+
+        Parameters
+        ----------
+        n_neighbors
+            Number of nearest neighbors.
+        use_rep
+            Data representation based on which to find nearest neighbors.
+        n_comps
+            Number of components to use.
+        method
+            Method to use for computing neighbors.
+        metric
+            Distance metric to use for nearest neighbors.
+        only_yx
+            If True, only compute the xy neighbors.
+        fallback_representation
+            Method for computing cross-dataset representation when use_rep=None.
+        fallback_kwargs
+            Additional keyword arguments for fallback representation method.
+        """
+        if fallback_kwargs is None:
+            fallback_kwargs = {}
+
+        self.only_yx = only_yx
+
+        # Handle fallback representation computation
+        if use_rep is None:
+            if self._is_self_mapping:
+                logger.warning(
+                    "No representation provided and self-mapping mode detected. Computing PCA automatically."
+                )
+                key_added = self._compute_fallback_representation_self(n_comps, fallback_kwargs)
+            else:
+                logger.warning(
+                    "No representation provided. Computing joint representation using '%s'.",
+                    fallback_representation,
+                )
+                key_added = self._compute_fallback_representation_joint(
+                    fallback_representation, n_comps, fallback_kwargs
+                )
+            use_rep = key_added
+
+        # Extract representations
+        xrep, yrep = self._extract_representations(use_rep)
+
+        # Handle number of components
+        n_comps = get_n_comps(n_comps, n_vars=xrep.shape[1])
+        xrep = xrep[:, :n_comps]
+        yrep = yrep[:, :n_comps]
+
+        self.knn = Neighbors(np.ascontiguousarray(xrep), np.ascontiguousarray(yrep))
+        self.knn.compute_neighbors(n_neighbors=n_neighbors, method=method, metric=metric, only_yx=only_yx)
 
     def compute_mapping_matrix(
         self,
@@ -205,7 +324,7 @@ class BaseMapper(ABC):
         data_values = np.asarray(data.values).reshape(-1, 1)
         xtab = onehot.fit_transform(data_values)
 
-        # Apply mapping - this may need transposition for variable mapping
+        # Apply mapping
         ytab = self._apply_mapping_to_matrix(xtab)
 
         # Handle both sparse and dense matrices for argmax
@@ -270,127 +389,3 @@ class BaseMapper(ABC):
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
         return self._apply_mapping_to_matrix(matrix)
-
-    def compute_neighbors(
-        self,
-        n_neighbors: int = 30,
-        use_rep: str | None = None,
-        n_comps: int | None = None,
-        method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
-        metric: str = "euclidean",
-        only_yx: bool = False,
-        fallback_representation: Literal["fast_cca", "joint_pca"] = "joint_pca",
-        fallback_kwargs: dict[str, Any] | None = None,
-    ) -> None:
-        """
-        Compute nearest neighbors between reference and query.
-
-        Parameters
-        ----------
-        n_neighbors
-            Number of nearest neighbors.
-        use_rep
-            Data representation based on which to find nearest neighbors.
-        n_comps
-            Number of components to use.
-        method
-            Method to use for computing neighbors.
-        metric
-            Distance metric to use for nearest neighbors.
-        only_yx
-            If True, only compute the xy neighbors.
-        fallback_representation
-            Method for computing cross-dataset representation when use_rep=None.
-        fallback_kwargs
-            Additional keyword arguments for fallback representation method.
-        """
-        if fallback_kwargs is None:
-            fallback_kwargs = {}
-
-        self.only_yx = only_yx
-
-        # Handle fallback representation computation
-        if use_rep is None:
-            if self._is_self_mapping:
-                logger.warning(
-                    "No representation provided and self-mapping mode detected. Computing PCA automatically."
-                )
-                key_added = fallback_kwargs.pop("key_added", "X_pca")
-                self._compute_fallback_representation_self(key_added, n_comps, fallback_kwargs)
-            else:
-                logger.warning(
-                    "No representation provided. Computing joint representation using '%s'.",
-                    fallback_representation,
-                )
-                key_added = fallback_kwargs.pop("key_added", "X_pca")
-                self._compute_fallback_representation_joint(
-                    fallback_representation, key_added, n_comps, fallback_kwargs
-                )
-            use_rep = key_added
-
-        # Extract representations (use_rep is guaranteed to be a string at this point)
-        assert use_rep is not None
-        xrep, yrep = self._extract_representations(use_rep)
-
-        # Handle number of components
-        n_comps = get_n_comps(n_comps, n_vars=xrep.shape[1])
-        xrep = xrep[:, :n_comps]
-        yrep = yrep[:, :n_comps]
-
-        self.knn = Neighbors(np.ascontiguousarray(xrep), np.ascontiguousarray(yrep))
-        self.knn.compute_neighbors(n_neighbors=n_neighbors, method=method, metric=metric, only_yx=only_yx)
-
-    # Abstract methods that must be implemented by subclasses
-    @abstractmethod
-    def _get_dimension_name(self) -> str:
-        """Get the name of the dimension being mapped (e.g., 'cells', 'genes')."""
-        pass
-
-    @abstractmethod
-    def _get_query_size(self) -> int:
-        """Get the size of the query dataset in the relevant dimension."""
-        pass
-
-    @abstractmethod
-    def _get_reference_size(self) -> int:
-        """Get the size of the reference dataset in the relevant dimension."""
-        pass
-
-    @abstractmethod
-    def _get_target_index(self) -> pd.Index:
-        """Get the index for the target dimension."""
-        pass
-
-    @abstractmethod
-    def _apply_mapping_to_matrix(self, matrix: np.ndarray | csr_matrix) -> np.ndarray | csr_matrix:
-        """Apply the mapping matrix to a data matrix."""
-        pass
-
-    @abstractmethod
-    def _store_mapping_result(
-        self,
-        target_container: dict | AnnData,
-        target_key: str,
-        postfix: str,
-        data: pd.Series | np.ndarray,
-        data_type: str,
-    ) -> None:
-        """Store the mapping result in the appropriate container."""
-        pass
-
-    @abstractmethod
-    def _compute_fallback_representation_self(self, key_added: str, n_comps: int | None, fallback_kwargs: dict) -> None:
-        """Compute fallback representation for self-mapping."""
-        pass
-
-    @abstractmethod
-    def _compute_fallback_representation_joint(
-        self, method: str, key_added: str, n_comps: int | None, fallback_kwargs: dict
-    ) -> None:
-        """Compute joint fallback representation for cross-mapping."""
-        pass
-
-    @abstractmethod
-    def _extract_representations(self, use_rep: str) -> tuple[np.ndarray, np.ndarray]:
-        """Extract the representations for neighbor computation."""
-        pass

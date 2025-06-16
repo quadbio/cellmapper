@@ -34,10 +34,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         """Get the size of the reference dataset in the observation dimension."""
         return self.reference.n_obs
 
-    def _get_expected_mapping_matrix_shape(self) -> tuple[int, int]:
-        """Get the expected shape of the mapping matrix for observation mapping."""
-        return (self.query.n_obs, self.reference.n_obs)
-
     def _get_target_index(self) -> pd.Index:
         """Get the index for the target observation dimension."""
         return self.query.obs_names
@@ -66,20 +62,27 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
             # Dictionary-like container
             target_container[output_key] = data
 
-    def _compute_fallback_representation_self(self, key_added: str, n_comps: int | None, fallback_kwargs: dict) -> None:
+    def _compute_fallback_representation_self(self, n_comps: int | None, fallback_kwargs: dict) -> str:
         """Compute fallback representation for self-mapping."""
+        key_added = fallback_kwargs.pop("key_added", "X_pca")
         sc.tl.pca(self.query, n_comps=n_comps, key_added=key_added, **fallback_kwargs)
+
+        return key_added
 
     def _compute_fallback_representation_joint(
         self, method: str, key_added: str, n_comps: int | None, fallback_kwargs: dict
-    ) -> None:
+    ) -> str:
         """Compute joint fallback representation for cross-mapping."""
         if method == "fast_cca":
+            key_added = fallback_kwargs.pop("key_added", "X_cca")
             self.compute_fast_cca(n_comps=n_comps, key_added=key_added, **fallback_kwargs)
         elif method == "joint_pca":
+            key_added = fallback_kwargs.pop("key_added", "X_pca")
             self.compute_joint_pca(n_comps=n_comps, key_added=key_added, **fallback_kwargs)
         else:
             raise ValueError(f"Unknown fallback_representation: {method}")
+
+        return key_added
 
     def _extract_representations(self, use_rep: str) -> tuple[np.ndarray, np.ndarray]:
         """Extract the representations for neighbor computation."""
@@ -112,9 +115,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         confidence_postfix
             Postfix for confidence scores (categorical data only).
         """
-        if key not in self.reference.obs.columns:
-            raise KeyError(f"Key '{key}' not found in reference.obs")
-
         reference_data = self.reference.obs[key]
 
         # Use prediction_key if provided, otherwise use default postfix
@@ -138,9 +138,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
         prediction_postfix
             Postfix for output key in query.obsm.
         """
-        if key not in self.reference.obsm.keys():
-            raise KeyError(f"Key '{key}' not found in reference.obsm")
-
         reference_data = self.reference.obsm[key]
 
         # Use prediction_key if provided, otherwise use default postfix
@@ -150,8 +147,6 @@ class ObsMapper(EvaluationMixin, EmbeddingMixin, BaseMapper):
             )
 
         self._map_data(reference_data, prediction_postfix, None, self.query, key)
-        if key not in self.reference.obsm.keys():
-            raise KeyError(f"Key '{key}' not found in reference.obsm")
 
         logger.info("Mapping embeddings for key '%s'.", key)
 
