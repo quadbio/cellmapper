@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.1.4]
+### Changed
+- Rename mapping methods to `map_obs`, `map_obsm`, and `map_layers`, and improve support for numerical `.obs` annotations {pr}`30`.
+
+
 ## [v0.1.3]
 
 ### Added
