@@ -128,6 +128,10 @@ html_theme_options = {
     "use_repository_button": True,
     "path_to_docs": "docs/",
     "navigation_with_keys": False,
+    "logo": {
+        "image_light": "_static/images/cellmapper_logo_light.svg",  # Logo for light mode
+        "image_dark": "_static/images/cellmapper_logo_dark.svg",  # Logo for dark mode
+    },
 }
 
 pygments_style = "default"
