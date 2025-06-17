@@ -118,7 +118,9 @@ class EmbeddingMixin:
         )
 
         # Concatenate with inner join on genes
-        joint = ad.concat([self.reference, self.query], join="inner", label="batch", keys=["reference", "query"])
+        joint = ad.concat(
+            [self.reference, self.query], join="inner", label="batch", keys=["reference", "query"], merge="same"
+        )
 
         # Potentially subset along the features
         mask_var = _check_mask(joint, mask_var, "var")
