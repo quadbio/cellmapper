@@ -6,6 +6,8 @@ import pytest
 import scanpy as sc
 
 from cellmapper.model.cellmapper import CellMapper
+from cellmapper.model.obs_mapper import ObsMapper
+from cellmapper.model.var_mapper import VarMapper
 
 
 @pytest.fixture
@@ -189,6 +191,66 @@ def cmap(query_reference_adata):
     cmap.compute_mapping_matrix(method="gaussian")
 
     return cmap
+
+
+@pytest.fixture
+def obs_mapper(query_reference_adata):
+    """ObsMapper fixture for query-to-reference mapping."""
+    query, reference = query_reference_adata
+
+    # Create an ObsMapper object
+    mapper = ObsMapper(
+        reference=reference,
+        query=query,
+    )
+
+    # Compute neighbors and mapping matrix
+    mapper.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
+    mapper.compute_mapping_matrix(method="gaussian")
+
+    return mapper
+
+
+@pytest.fixture
+def var_mapper(query_reference_adata):
+    """VarMapper fixture for query-to-reference mapping."""
+    query, reference = query_reference_adata
+
+    # Create a VarMapper object
+    mapper = VarMapper(
+        reference=reference,
+        query=query,
+    )
+
+    # Compute neighbors and mapping matrix for variables
+    mapper.compute_neighbors(n_neighbors=30, use_rep="X", method="sklearn")
+    mapper.compute_mapping_matrix(method="gaussian")
+
+    return mapper
+
+
+@pytest.fixture
+def obs_mapper_self(adata_pbmc3k):
+    """ObsMapper fixture for self-mapping."""
+    mapper = ObsMapper(adata_pbmc3k)
+
+    # Compute neighbors and mapping matrix
+    mapper.compute_neighbors(n_neighbors=15, use_rep="X_pca", method="sklearn")
+    mapper.compute_mapping_matrix(method="gaussian")
+
+    return mapper
+
+
+@pytest.fixture
+def var_mapper_self(adata_pbmc3k):
+    """VarMapper fixture for self-mapping."""
+    mapper = VarMapper(adata_pbmc3k)
+
+    # Compute neighbors and mapping matrix for variables
+    mapper.compute_neighbors(n_neighbors=15, use_rep="X", method="sklearn")
+    mapper.compute_mapping_matrix(method="gaussian")
+
+    return mapper
 
 
 @pytest.fixture

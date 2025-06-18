@@ -3,11 +3,11 @@
 import logging
 import os
 
+from rich.console import Console
+from rich.logging import RichHandler
+
 
 def _setup_logger() -> "logging.Logger":
-    from rich.console import Console
-    from rich.logging import RichHandler
-
     logger = logging.getLogger(__name__)
     level = os.environ.get("LOGLEVEL", logging.INFO)
     logger.setLevel(level=level)
