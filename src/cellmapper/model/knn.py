@@ -133,7 +133,8 @@ class NeighborsResults:
 
     def knn_graph_connectivities(
         self,
-        kernel: Literal["gaussian", "scarches", "random", "inverse_distance"] = "gaussian",
+        kernel: Literal["gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance"] = "gaussian",
+        symmetric: bool = False,
         dtype=np.float64,
         **kwargs,
     ) -> csr_matrix:
@@ -143,7 +144,9 @@ class NeighborsResults:
         Parameters
         ----------
         kernel
-            Connectivity kernel to use. Supported: 'gaussian', 'scarches', 'random', 'inverse_distance'.
+            Connectivity kernel to use. Supported: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance'.
+        symmetric
+            If True, create a symmetric connectivity matrix. Only valid for square matrices (self-mapping).
         dtype
             Data type for the matrix values.
         **kwargs
@@ -154,6 +157,10 @@ class NeighborsResults:
         csr_matrix
             Sparse matrix of connectivities (shape: n_samples x n_targets).
         """
+        # Check if symmetric is requested for non-square matrices
+        if symmetric and self.n_samples != (self.n_targets or self.n_samples):
+            raise ValueError("Symmetric connectivity matrices can only be created for self-mapping (square matrices)")
+
         # Get valid entries mask
         valid_mask = self._get_valid_entries_mask()
 
@@ -161,10 +168,19 @@ class NeighborsResults:
         connectivities = self._compute_kernel_values(kernel, valid_mask, **kwargs)
 
         # Create sparse matrix with calculated connectivities
-        return self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
+        conn_matrix = self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
+
+        # Make symmetric if requested
+        if symmetric:
+            conn_matrix = conn_matrix + conn_matrix.T
+
+        return conn_matrix
 
     def _compute_kernel_values(
-        self, kernel: Literal["gaussian", "scarches", "random", "inverse_distance"], valid_mask: np.ndarray, **kwargs
+        self,
+        kernel: Literal["gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance"],
+        valid_mask: np.ndarray,
+        **kwargs,
     ) -> np.ndarray:
         """
         Helper method to compute kernel values based on distances.
@@ -197,6 +213,10 @@ class NeighborsResults:
             # Apply Gaussian kernel to valid entries
             connectivities[valid_mask] = np.exp(-(finite_distances**2) / (2 * sigma**2))
 
+        elif kernel == "adaptive_gaussian":
+            # Adaptive Gaussian kernel following Haghverdi et al. (2016) / scanpy implementation
+            connectivities = self._compute_adaptive_gaussian_kernel(valid_mask, **kwargs)
+
         elif kernel == "equal":
             # Set connectivities to 1 for valid entries
             connectivities[valid_mask] = 1.0
@@ -220,8 +240,91 @@ class NeighborsResults:
 
         else:
             raise ValueError(
-                f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'scarches', 'random', 'inverse_distance', 'equal'."
+                f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance', 'equal'."
             )
+
+        return connectivities
+
+    def _compute_adaptive_gaussian_kernel(self, valid_mask: np.ndarray, **kwargs) -> np.ndarray:
+        """
+        Compute adaptive Gaussian kernel weights following Haghverdi et al. (2016) / scanpy implementation.
+
+        This implements the adaptive bandwidth scheme where each point gets its own sigma value
+        based on its local neighborhood density.
+
+        Parameters
+        ----------
+        valid_mask
+            Boolean mask indicating valid entries.
+        **kwargs
+            Additional parameters for the kernel:
+            - sigma_method: 'median' (default, for sparse-like) or 'kth_neighbor' (for dense-like)
+            - kth_neighbor_factor: Factor to divide kth neighbor distance (default: 4.0)
+
+        Returns
+        -------
+        np.ndarray
+            Array of connectivity values with adaptive Gaussian weighting.
+        """
+        # Get parameters
+        sigma_method = kwargs.get("sigma_method", "median")
+        kth_neighbor_factor = kwargs.get("kth_neighbor_factor", 4.0)
+
+        # Compute squared distances for all valid entries
+        distances_sq = self.distances**2
+
+        # Vectorized computation of adaptive sigma for each sample (following scanpy's approach)
+        if sigma_method == "median":
+            # Use median of squared distances (scanpy sparse case)
+            sigmas_sq = np.array(
+                [
+                    np.median(distances_sq[i, valid_mask[i, :]]) if np.any(valid_mask[i, :]) else 0.0
+                    for i in range(self.n_samples)
+                ]
+            )
+        elif sigma_method == "kth_neighbor":
+            # Use distance to farthest neighbor divided by factor (scanpy dense case)
+            # This assumes distances are sorted (which they should be from k-NN)
+            sigmas_sq = np.array(
+                [
+                    distances_sq[i, valid_mask[i, :]][-1] / kth_neighbor_factor if np.any(valid_mask[i, :]) else 0.0
+                    for i in range(self.n_samples)
+                ]
+            )
+        else:
+            raise ValueError(f"Unknown sigma_method: {sigma_method}")
+
+        sigmas = np.sqrt(sigmas_sq)
+
+        # Initialize connectivities and compute weights (following scanpy's vectorized approach)
+        connectivities = np.zeros_like(self.distances)
+
+        # Process each sample (this loop is unavoidable due to varying neighbor counts)
+        for i in range(self.n_samples):
+            sample_mask = valid_mask[i, :]
+            if not np.any(sample_mask):
+                continue
+
+            # Get neighbor indices and squared distances (vectorized)
+            neighbor_indices = self.indices[i, sample_mask]
+            sample_distances_sq = distances_sq[i, sample_mask]
+
+            # Adaptive kernel computation (vectorized following scanpy)
+            # W[i,j] = sqrt((2 * sigma_i * sigma_j) / (sigma_i^2 + sigma_j^2)) * exp(-d_ij^2 / (sigma_i^2 + sigma_j^2))
+            sigma_i = sigmas[i]
+            sigma_j = sigmas[neighbor_indices]
+
+            num = 2 * sigma_i * sigma_j
+            den = sigmas_sq[i] + sigmas_sq[neighbor_indices]
+
+            # Compute weights where denominator is non-zero (vectorized)
+            valid_den = den > 0
+            weights = np.zeros_like(sample_distances_sq)
+            weights[valid_den] = np.sqrt(num[valid_den] / den[valid_den]) * np.exp(
+                -sample_distances_sq[valid_den] / den[valid_den]
+            )
+
+            connectivities[i, sample_mask] = weights
 
         return connectivities
 
