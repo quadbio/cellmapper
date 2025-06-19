@@ -83,6 +83,9 @@ class TestQueryToReferenceMapping:
             use_rep="X_pca",
             n_neighbors=1,
             prediction_postfix="transfer",
+            # For n_neighbors=1 identity mapping, we need self-edges and no symmetrization
+            symmetric=False,
+            self_edges=True,
         )
         assert "leiden_transfer" in reference.obs
         assert len(reference.obs["leiden_transfer"]) == len(reference.obs["leiden"])

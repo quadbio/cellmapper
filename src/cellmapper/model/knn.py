@@ -342,7 +342,9 @@ class NeighborsResults:
 
         return connectivities
 
-    def boolean_adjacency(self, dtype=np.float64, self_edges: bool | None = False) -> csr_matrix:
+    def boolean_adjacency(
+        self, dtype=np.float64, self_edges: bool | None = False, symmetric: bool = False
+    ) -> csr_matrix:
         """
         Construct a boolean adjacency matrix from neighbor indices.
 
@@ -355,12 +357,19 @@ class NeighborsResults:
             - True: Include self-edges (set diagonal to 1)
             - False: Exclude self-edges (set diagonal to 0)
             - None: Leave as-is (preserve original neighbor graph structure)
+        symmetric
+            If True, create a symmetric adjacency matrix where for each edge i→j,
+            ensure j→i exists with the same weight. Only valid for square matrices.
 
         Returns
         -------
         csr_matrix
             Boolean adjacency matrix (shape: n_samples x n_targets), with 1 for each neighbor relationship.
         """
+        # Check if symmetric is requested for non-square matrices
+        if symmetric and not self.is_square:
+            raise ValueError("Symmetric adjacency matrices can only be created for square matrices")
+
         # Get valid entries mask (only check indices, not distances)
         valid_mask = self.indices != -1
 
@@ -369,6 +378,10 @@ class NeighborsResults:
 
         # Create sparse matrix with ones as values for valid entries
         adj_matrix = self._create_sparse_matrix(ones, valid_mask, dtype=dtype)
+
+        # Apply symmetrization if requested and matrix is square
+        if symmetric and self.is_square:
+            adj_matrix = self._symmetrize_matrix(adj_matrix)
 
         # Handle self-edges if specified and matrix is square
         if self_edges is not None and self.is_square:
@@ -643,19 +656,41 @@ class Neighbors:
         else:
             raise ValueError(f"Unknown method: {method}. Supported methods are 'sklearn', 'pynndescent', and 'rapids'.")
 
-    def get_adjacency_matrices(self) -> tuple[csr_matrix, csr_matrix, csr_matrix, csr_matrix]:
+    def get_adjacency_matrices(
+        self, symmetric: bool = False, self_edges: bool | None = False
+    ) -> tuple[csr_matrix, csr_matrix, csr_matrix, csr_matrix]:
         """
         Compute unweighted adjacency matrices for all k-NN graphs.
+
+        Parameters
+        ----------
+        symmetric
+            If True, make self-terms (xx, yy) symmetric. Cross-terms (xy, yx) are not affected.
+        self_edges
+            Control self-edges for self-terms (xx, yy). Cross-terms (xy, yx) are not affected.
+            - True: Include self-edges (set diagonal entries to 1)
+            - False: Exclude self-edges (set diagonal entries to 0)
+            - None: Leave as-is (preserve original neighbor graph structure)
 
         Returns
         -------
         tuple
             Unweighted adjacency matrices (xx, yy, xy, yx).
+
+        Notes
+        -----
+        The symmetric and self_edges parameters only apply to self-terms (xx, yy) since
+        these represent within-dataset neighborhoods. Cross-terms (xy, yx) represent
+        between-dataset relationships where symmetry and self-edges are not meaningful.
         """
         if self.xx is None or self.yy is None or self.xy is None or self.yx is None:
             raise ValueError("Neighbors must be computed before accessing adjacency matrices.")
-        xx_adj = self.xx.boolean_adjacency()
-        yy_adj = self.yy.boolean_adjacency()
+
+        # Apply parameters to self-terms (within-dataset neighborhoods)
+        xx_adj = self.xx.boolean_adjacency(self_edges=self_edges, symmetric=symmetric)
+        yy_adj = self.yy.boolean_adjacency(self_edges=self_edges, symmetric=symmetric)
+
+        # Cross-terms use default parameters (no symmetry/self-edges modification)
         xy_adj = self.xy.boolean_adjacency()
         yx_adj = self.yx.boolean_adjacency()
 

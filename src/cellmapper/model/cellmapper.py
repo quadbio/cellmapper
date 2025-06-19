@@ -34,8 +34,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.query = query
 
         # Handle self-mapping case - use the query as both source and target
-        self.reference = reference if reference is not None else query
-        self._is_self_mapping = reference is None
+        if reference is None:
+            self.reference = query
+            self._is_self_mapping = True
+        elif reference is query:
+            # Same object passed twice - treat as self-mapping
+            logger.warning(
+                "The same AnnData object was passed as both query and reference. Initializing in self-mapping mode."
+            )
+            self.reference = query
+            self._is_self_mapping = True
+        else:
+            self.reference = reference
+            self._is_self_mapping = False
 
         # Update log message to reflect self-mapping if applicable
         if self._is_self_mapping:
@@ -312,12 +323,35 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         logger.info("Computing mapping matrix using method '%s'.", method)
 
         if method in ["jaccard", "hnoca"]:
-            if self.only_yx:
+            # In cross-mapping mode, we need all four adjacency matrices
+            if self.only_yx and not self._is_self_mapping:
                 raise ValueError(
-                    "Jaccard and HNOCa methods require both x and y neighbors to be computed. Set only_yx=False."
+                    "Jaccard and HNOCa methods require both x and y neighbors to be computed in cross-mapping mode. Set only_yx=False."
                 )
-            xx, yy, xy, yx = self.knn.get_adjacency_matrices()
-            n_neighbors = self.knn.xx.n_neighbors
+
+            # For Jaccard/HNOCA, we need adjacency matrices that respect the self_edges parameter
+            # Default to True for self_edges if None, as Jaccard needs neighbors including self
+            jaccard_self_edges = True if self_edges is None else self_edges
+
+            if self._is_self_mapping:
+                # In self-mapping, use only yx matrix with symmetric and self_edges parameters
+                # Type assertion for mypy - neighbors validation ensures yx is not None
+                assert self.knn.yx is not None
+                adj_matrix = self.knn.yx.boolean_adjacency(self_edges=jaccard_self_edges, symmetric=symmetric)
+                # Set all matrices to the same adjacency pattern
+                xx = yy = xy = yx = adj_matrix
+                n_neighbors = self.knn.yx.n_neighbors
+            else:
+                # Get adjacency matrices with consistent parameter handling
+                # symmetric and self_edges only apply to self-terms (xx, yy) in get_adjacency_matrices
+                xx, yy, xy, yx = self.knn.get_adjacency_matrices(
+                    symmetric=symmetric,  # Apply symmetry directly in boolean_adjacency
+                    self_edges=jaccard_self_edges,
+                )
+                # Type assertion for mypy - get_adjacency_matrices validates that xx is not None
+                assert self.knn.xx is not None
+                n_neighbors = self.knn.xx.n_neighbors
+
             jaccard = (yx @ xx.T) + (yy @ xy.T)
 
             if method == "jaccard":
@@ -325,12 +359,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             elif method == "hnoca":
                 jaccard.data /= 2 * n_neighbors - jaccard.data
                 jaccard.data = jaccard.data**2
+
             self.mapping_matrix = jaccard
         elif method in ["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal"]:
             # Type cast to satisfy the type checker since we've filtered to only valid kernel methods
             kernel_method = cast(
                 Literal["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal"], method
             )
+            # Type assertion for mypy - neighbors validation ensures yx is not None
+            assert self.knn.yx is not None
             self.mapping_matrix = self.knn.yx.knn_graph_connectivities(
                 kernel=kernel_method, symmetric=symmetric, self_edges=self_edges
             )
@@ -566,9 +603,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             raise ValueError("load_precomputed_distances is only available in self-mapping mode.")
 
         # Access the precomputed distances
+        if distances_key not in self.query.obsp:
+            raise ValueError(f"No distances found at key '{distances_key}' in query.obsp")
+
         distances_matrix = self.query.obsp[distances_key]
         if distances_matrix is None:
-            raise ValueError(f"No distances found at key '{distances_key}' in query.obsp")
+            raise ValueError(f"Distances matrix at key '{distances_key}' is None")
+
+        # Store shape before potential conversion
+        n_cells = distances_matrix.shape[0]
 
         # Convert to csr_matrix if not already
         if not isinstance(distances_matrix, csr_matrix):
@@ -577,10 +620,12 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         # Create a neighbors object using the factory method
         self.knn = Neighbors.from_distances(distances_matrix, self_edges=self_edges)
 
+        # Type assertion for mypy - from_distances creates a valid neighbors object with xx
+        assert self.knn.xx is not None
         logger.info(
             "Loaded precomputed distances from '%s' with %d cells and %d neighbors per cell.",
             distances_key,
-            distances_matrix.shape[0],
+            n_cells,
             self.knn.xx.n_neighbors,
         )
 

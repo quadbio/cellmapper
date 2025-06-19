@@ -27,6 +27,9 @@ class TestSelfMapping:
             use_rep="X_pca",
             n_neighbors=1,
             prediction_postfix="pred",
+            # For n_neighbors=1 identity mapping, we need self-edges and no symmetrization
+            symmetric=False,
+            self_edges=True,
         )
 
         # With n_neighbors=1, labels should be perfectly preserved
@@ -138,7 +141,7 @@ class TestSelfMapping:
         if "set_diag" in squidpy_params and squidpy_params["set_diag"]:
             assert (
                 adata_spatial.obsp["spatial_connectivities"].diagonal()
-                == cm.knn.xx.boolean_adjacency(set_diag=True).diagonal()
+                == cm.knn.xx.boolean_adjacency(self_edges=True).diagonal()
             ).all()
 
         # Test the mapping pipeline
@@ -148,8 +151,8 @@ class TestSelfMapping:
         assert "leiden_pred" in cm.query.obs
         assert "leiden_conf" in cm.query.obs
 
-    @pytest.mark.parametrize("include_self", [True, False])
-    def test_load_distances_with_include_self(self, adata_spatial, include_self):
+    @pytest.mark.parametrize("self_edges", [True, False])
+    def test_load_distances_with_self_edges(self, adata_spatial, self_edges):
         """Test loading precomputed distances with and without self-connections."""
 
         # Compute neighbors with scanpy
@@ -159,9 +162,9 @@ class TestSelfMapping:
         cm_with_self = CellMapper(adata_spatial)
         cm_without_self = CellMapper(adata_spatial)
 
-        # Load precomputed distances with different include_self settings
-        cm_with_self.load_precomputed_distances(distances_key="distances", include_self=True)
-        cm_without_self.load_precomputed_distances(distances_key="distances", include_self=False)
+        # Load precomputed distances with different self_edges settings
+        cm_with_self.load_precomputed_distances(distances_key="distances", self_edges=True)
+        cm_without_self.load_precomputed_distances(distances_key="distances", self_edges=False)
 
         # Verify that neighbors were loaded with or without self
         assert cm_with_self.knn is not None
