@@ -146,7 +146,9 @@ class NeighborsResults:
         kernel
             Connectivity kernel to use. Supported: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance'.
         symmetric
-            If True, create a symmetric connectivity matrix. Only valid for square matrices (self-mapping).
+            If True, create a symmetric connectivity matrix using scanpy's approach.
+            For each edge i→j, ensures j→i exists with the same weight.
+            Only valid for square matrices (self-mapping).
         dtype
             Data type for the matrix values.
         **kwargs
@@ -156,6 +158,7 @@ class NeighborsResults:
         -------
         csr_matrix
             Sparse matrix of connectivities (shape: n_samples x n_targets).
+            If symmetric=True, the matrix will satisfy W[i,j] = W[j,i] for all edges.
         """
         # Check if symmetric is requested for non-square matrices
         if symmetric and self.n_samples != (self.n_targets or self.n_samples):
@@ -170,9 +173,9 @@ class NeighborsResults:
         # Create sparse matrix with calculated connectivities
         conn_matrix = self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
 
-        # Make symmetric if requested
+        # Apply scanpy-style symmetrization if requested
         if symmetric:
-            conn_matrix = conn_matrix + conn_matrix.T
+            conn_matrix = self._symmetrize_scanpy_style(conn_matrix)
 
         return conn_matrix
 
@@ -345,6 +348,39 @@ class NeighborsResults:
             adj_matrix.setdiag(1.0 if set_diag else 0.0)
 
         return adj_matrix
+
+    def _symmetrize_scanpy_style(self, sparse_matrix: csr_matrix) -> csr_matrix:
+        """
+        Apply scanpy-style symmetrization to a sparse connectivity matrix.
+
+        For each existing edge i→j, ensure that j→i exists with the same weight.
+        This follows scanpy's approach where symmetric relationships are created
+        by copying weights rather than adding them.
+
+        Parameters
+        ----------
+        sparse_matrix
+            Input sparse connectivity matrix to symmetrize.
+
+        Returns
+        -------
+        csr_matrix
+            Symmetrized sparse matrix where W[i,j] = W[j,i] for all existing edges.
+        """
+        # Convert to LIL format for efficient item assignment
+        matrix_lil = sparse_matrix.tolil()
+
+        # Get all existing nonzero entries
+        nonzero_indices = sparse_matrix.nonzero()
+        rows, cols = nonzero_indices[0], nonzero_indices[1]
+
+        # For each existing edge i→j, ensure j→i exists with the same weight
+        for i, j in zip(rows, cols, strict=False):
+            if matrix_lil[j, i] == 0:  # If reverse edge j→i doesn't exist
+                matrix_lil[j, i] = matrix_lil[i, j]  # Copy forward edge weight
+
+        # Convert back to CSR format for efficiency
+        return matrix_lil.tocsr()
 
 
 class Neighbors:
