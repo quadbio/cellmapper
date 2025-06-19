@@ -250,66 +250,49 @@ class NeighborsResults:
         Compute adaptive Gaussian kernel weights following Haghverdi et al. (2016) / scanpy implementation.
 
         This implements the adaptive bandwidth scheme where each point gets its own sigma value
-        based on its local neighborhood density.
+        based on the distance to its farthest neighbor, exactly as in scanpy's gauss kernel
+        for dense distances (knn=True case).
 
         Parameters
         ----------
         valid_mask
             Boolean mask indicating valid entries.
         **kwargs
-            Additional parameters for the kernel:
-            - sigma_method: 'median' (default, for sparse-like) or 'kth_neighbor' (for dense-like)
-            - kth_neighbor_factor: Factor to divide kth neighbor distance (default: 4.0)
+            Additional parameters for the kernel (unused, for API compatibility).
 
         Returns
         -------
         np.ndarray
             Array of connectivity values with adaptive Gaussian weighting.
         """
-        # Get parameters
-        sigma_method = kwargs.get("sigma_method", "median")
-        kth_neighbor_factor = kwargs.get("kth_neighbor_factor", 4.0)
-
-        # Compute squared distances for all valid entries
+        # Compute squared distances
         distances_sq = self.distances**2
 
-        # Vectorized computation of adaptive sigma for each sample (following scanpy's approach)
-        if sigma_method == "median":
-            # Use median of squared distances (scanpy sparse case)
-            sigmas_sq = np.array(
-                [
-                    np.median(distances_sq[i, valid_mask[i, :]]) if np.any(valid_mask[i, :]) else 0.0
-                    for i in range(self.n_samples)
-                ]
-            )
-        elif sigma_method == "kth_neighbor":
-            # Use distance to farthest neighbor divided by factor (scanpy dense case)
-            # This assumes distances are sorted (which they should be from k-NN)
-            sigmas_sq = np.array(
-                [
-                    distances_sq[i, valid_mask[i, :]][-1] / kth_neighbor_factor if np.any(valid_mask[i, :]) else 0.0
-                    for i in range(self.n_samples)
-                ]
-            )
-        else:
-            raise ValueError(f"Unknown sigma_method: {sigma_method}")
-
+        # Compute sigma using the farthest valid neighbor for each sample (scanpy approach)
+        # This is equivalent to scanpy's: sigmas_sq = distances_sq[:, -1] / 4
+        # but handles variable neighbor counts via valid_mask
+        sigmas_sq = np.array(
+            [
+                np.max(distances_sq[i, valid_mask[i, :]]) / 4.0 if np.any(valid_mask[i, :]) else 1.0
+                for i in range(self.n_samples)
+            ]
+        )
         sigmas = np.sqrt(sigmas_sq)
 
-        # Initialize connectivities and compute weights (following scanpy's vectorized approach)
+        # Initialize connectivities
         connectivities = np.zeros_like(self.distances)
 
-        # Process each sample (this loop is unavoidable due to varying neighbor counts)
+        # Compute adaptive weights following scanpy's vectorized approach within each sample
         for i in range(self.n_samples):
             sample_mask = valid_mask[i, :]
             if not np.any(sample_mask):
                 continue
 
-            # Get neighbor indices and squared distances (vectorized)
+            # Get neighbor indices and squared distances
             neighbor_indices = self.indices[i, sample_mask]
             sample_distances_sq = distances_sq[i, sample_mask]
 
-            # Adaptive kernel computation (vectorized following scanpy)
+            # Adaptive kernel computation (scanpy's formula)
             # W[i,j] = sqrt((2 * sigma_i * sigma_j) / (sigma_i^2 + sigma_j^2)) * exp(-d_ij^2 / (sigma_i^2 + sigma_j^2))
             sigma_i = sigmas[i]
             sigma_j = sigmas[neighbor_indices]
@@ -317,13 +300,8 @@ class NeighborsResults:
             num = 2 * sigma_i * sigma_j
             den = sigmas_sq[i] + sigmas_sq[neighbor_indices]
 
-            # Compute weights where denominator is non-zero (vectorized)
-            valid_den = den > 0
-            weights = np.zeros_like(sample_distances_sq)
-            weights[valid_den] = np.sqrt(num[valid_den] / den[valid_den]) * np.exp(
-                -sample_distances_sq[valid_den] / den[valid_den]
-            )
-
+            # Compute weights (vectorized)
+            weights = np.sqrt(num / den) * np.exp(-sample_distances_sq / den)
             connectivities[i, sample_mask] = weights
 
         return connectivities
