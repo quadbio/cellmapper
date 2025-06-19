@@ -1,7 +1,7 @@
 """k-NN based mapping of labels, embeddings, and expression values."""
 
 import gc
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -252,7 +252,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
     def compute_mapping_matrix(
         self,
-        method: Literal["jaccard", "gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"] = "gaussian",
+        method: Literal[
+            "jaccard", "gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"
+        ] = "gaussian",
+        symmetric: bool | None = None,
+        self_edges: bool | None = None,
     ) -> None:
         """
         Compute the mapping matrix for label transfer.
@@ -264,11 +268,22 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
             - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
             - "gaussian": Gaussian kernel with (global) bandwith equal to the mean distance.
+            - "adaptive_gaussian": Adaptive Gaussian kernel following Haghverdi et al. (2016) / scanpy implementation.
             - "scarches": scArches kernel. Inspired by scArches :cite:`lotfollahi2022mapping`
             - "inverse_distance": Inverse distance kernel.
             - "random": Random kernel, useful for testing.
             - "hnoca": HNOCA kernel. Inspired by HNOCA-tools :cite:`he2024integrated`
             - "equal": All neighbors are equally weighted (1/n_neighbors).
+        symmetric
+            If True, create a symmetric connectivity matrix where for each edge i→j,
+            ensure j→i exists with the same weight. Only valid for square matrices (self-mapping).
+            If None (default), uses True for self-mapping and False for cross-mapping.
+        self_edges
+            Control self-edges (diagonal entries) for square matrices (self-mapping):
+            - True: Include self-edges (set diagonal entries to 1)
+            - False: Exclude self-edges (set diagonal entries to 0)
+            - None: Leave as-is (preserve original neighbor graph structure)
+            If None (default), uses False for self-mapping (scanpy style) and None for cross-mapping.
 
         Returns
         -------
@@ -279,11 +294,23 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         Updates the following attributes:
 
         - ``mapping_matrix``: Mapping matrix for label transfer.
+
+        For self-mapping mode, the default behavior follows scanpy conventions:
+        symmetric connectivity matrices without self-edges.
         """
         if self.knn is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
 
+        # Set defaults based on mapping mode
+        if symmetric is None:
+            symmetric = self._is_self_mapping  # True for self-mapping, False for cross-mapping
+        if self_edges is None:
+            self_edges = (
+                False if self._is_self_mapping else None
+            )  # False for self-mapping (scanpy style), None for cross-mapping
+
         logger.info("Computing mapping matrix using method '%s'.", method)
+
         if method in ["jaccard", "hnoca"]:
             if self.only_yx:
                 raise ValueError(
@@ -299,8 +326,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 jaccard.data /= 2 * n_neighbors - jaccard.data
                 jaccard.data = jaccard.data**2
             self.mapping_matrix = jaccard
-        elif method in ["gaussian", "scarches", "inverse_distance", "random", "equal"]:
-            self.mapping_matrix = self.knn.yx.knn_graph_connectivities(kernel=method)
+        elif method in ["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal"]:
+            # Type cast to satisfy the type checker since we've filtered to only valid kernel methods
+            kernel_method = cast(
+                Literal["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal"], method
+            )
+            self.mapping_matrix = self.knn.yx.knn_graph_connectivities(
+                kernel=kernel_method, symmetric=symmetric, self_edges=self_edges
+            )
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
 
@@ -433,7 +466,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
         metric: str = "euclidean",
         only_yx: bool = False,
-        mapping_method: Literal["jaccard", "gaussian", "scarches", "inverse_distance", "random", "hnoca"] = "gaussian",
+        mapping_method: Literal[
+            "jaccard", "gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"
+        ] = "gaussian",
+        symmetric: bool | None = None,
+        self_edges: bool | None = None,
         prediction_postfix: str = "pred",
     ) -> "CellMapper":
         """
@@ -459,13 +496,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             If True, only compute the xy neighbors. This is faster, but not suitable for Jaccard or HNOCA methods.
         mapping_method
             Method to use for computing the mapping matrix.
+        symmetric
+            If True, create a symmetric connectivity matrix. Only valid for square matrices (self-mapping).
+            If None (default), uses True for self-mapping and False for cross-mapping.
+        self_edges
+            Control self-edges (diagonal entries) for square matrices (self-mapping).
+            If None (default), uses False for self-mapping (scanpy style) and None for cross-mapping.
         prediction_postfix
             Postfix added to create new keys in ``query.obs`` for the mapped labels or in ``query.obsm`` for the mapped embeddings.
         """
         self.compute_neighbors(
             n_neighbors=n_neighbors, use_rep=use_rep, method=knn_method, metric=metric, only_yx=only_yx
         )
-        self.compute_mapping_matrix(method=mapping_method)
+        self.compute_mapping_matrix(method=mapping_method, symmetric=symmetric, self_edges=self_edges)
         if obs_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obs_keys, str):
@@ -490,7 +533,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         return self
 
-    def load_precomputed_distances(self, distances_key: str = "distances", include_self: bool | None = None) -> None:
+    def load_precomputed_distances(self, distances_key: str = "distances", self_edges: bool | None = None) -> None:
         """
         Load precomputed distances from the AnnData object.
 
@@ -500,10 +543,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         ----------
         distances_key
             Key in adata.obsp where the precomputed distances are stored.
-        include_self
-            If True, include self as a neighbor (even if not present in the distance matrix).
-            If False, exclude self connections (even if present in the distance matrix).
-            If None (default), preserve the original behavior of the distance matrix.
+        self_edges
+            Control self-edges (diagonal entries) in the neighbor graph:
+            - True: Include self-edges (set diagonal entries to 1)
+            - False: Exclude self-edges (set diagonal entries to 0)
+            - None (default): Uses False for self-mapping (scanpy style)
 
         Returns
         -------
@@ -514,15 +558,24 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         Updates the following attributes:
 
         - ``knn``: Neighbors object constructed from the precomputed distances.
+
+        For symmetrization of connectivity matrices, use the ``symmetric`` parameter
+        in ``compute_mapping_matrix()`` after loading the distances.
         """
         if not self._is_self_mapping:
             raise ValueError("load_precomputed_distances is only available in self-mapping mode.")
 
         # Access the precomputed distances
         distances_matrix = self.query.obsp[distances_key]
+        if distances_matrix is None:
+            raise ValueError(f"No distances found at key '{distances_key}' in query.obsp")
+
+        # Convert to csr_matrix if not already
+        if not isinstance(distances_matrix, csr_matrix):
+            distances_matrix = csr_matrix(distances_matrix)
 
         # Create a neighbors object using the factory method
-        self.knn = Neighbors.from_distances(distances_matrix, include_self=include_self)
+        self.knn = Neighbors.from_distances(distances_matrix, self_edges=self_edges)
 
         logger.info(
             "Loaded precomputed distances from '%s' with %d cells and %d neighbors per cell.",

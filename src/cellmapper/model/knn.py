@@ -155,7 +155,9 @@ class NeighborsResults:
 
     def knn_graph_connectivities(
         self,
-        kernel: Literal["gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance"] = "gaussian",
+        kernel: Literal[
+            "gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal"
+        ] = "gaussian",
         symmetric: bool = False,
         self_edges: bool | None = False,
         dtype=np.float64,
@@ -212,7 +214,7 @@ class NeighborsResults:
 
     def _compute_kernel_values(
         self,
-        kernel: Literal["gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance"],
+        kernel: Literal["gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal"],
         valid_mask: np.ndarray,
         **kwargs,
     ) -> np.ndarray:
