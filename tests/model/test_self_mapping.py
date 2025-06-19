@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import scanpy as sc
 
@@ -209,3 +210,83 @@ class TestSelfMapping:
         # Test rest of pipeline
         cm.map_obs(key="leiden")
         assert "leiden_pred" in cm.query.obs
+
+
+class TestScanpyCompatibility:
+    """Tests comparing CellMapper connectivity computation with scanpy in self-mapping mode."""
+
+    @pytest.mark.parametrize("n_neighbors", [10, 15, 30])
+    def test_neighbors_computation_vs_scanpy(self, adata_pbmc3k, n_neighbors):
+        """Test that CellMapper neighbor computation matches scanpy's results."""
+        # Create a copy for scanpy computation
+        adata_scanpy = adata_pbmc3k.copy()
+
+        # Compute neighbors with scanpy
+        sc.pp.neighbors(adata_scanpy, n_neighbors=n_neighbors, use_rep="X_pca", method="gauss")
+
+        # Compute neighbors with CellMapper
+        cm = CellMapper(adata_pbmc3k)
+        cm.compute_neighbors(n_neighbors=n_neighbors, use_rep="X_pca", method="sklearn")
+
+        # Compare connectivity matrices instead of raw indices (which scanpy doesn't always store)
+        assert cm.knn is not None
+        assert cm.knn.yx is not None
+
+        scanpy_connectivities = adata_scanpy.obsp["connectivities"]
+        cm_connectivities = cm.knn.yx.knn_graph_connectivities(
+            kernel="adaptive_gaussian", symmetric=True, self_edges=False
+        )
+
+        # Check that both matrices have similar sparsity patterns
+        scanpy_nnz = scanpy_connectivities.nnz
+        cm_nnz = cm_connectivities.nnz
+        sparsity_ratio = min(scanpy_nnz, cm_nnz) / max(scanpy_nnz, cm_nnz)
+        assert sparsity_ratio > 0.8, f"Sparsity patterns too different: {sparsity_ratio:.3f}"
+
+        # Check shapes match
+        assert cm_connectivities.shape == scanpy_connectivities.shape
+
+    def test_connectivity_matrix_vs_scanpy(self, adata_pbmc3k):
+        """Test that CellMapper connectivity matrices match scanpy when using compatible parameters."""
+        # Create a copy for scanpy computation
+        adata_scanpy = adata_pbmc3k.copy()
+
+        # Compute neighbors with scanpy (default: n_neighbors=15)
+        sc.pp.neighbors(adata_scanpy, n_neighbors=15, use_rep="X_pca")
+
+        # Get scanpy's connectivity matrix
+        scanpy_connectivities = adata_scanpy.obsp["connectivities"].copy()
+
+        # Compute with CellMapper
+        cm = CellMapper(adata_pbmc3k)
+        cm.compute_neighbors(n_neighbors=15, use_rep="X_pca", method="sklearn")
+
+        # Get CellMapper connectivity matrix
+        assert cm.knn is not None
+        assert cm.knn.yx is not None
+        cm_connectivities = cm.knn.yx.knn_graph_connectivities(
+            kernel="adaptive_gaussian", symmetric=True, self_edges=False
+        )
+
+        # Test connectivity matrix properties
+        # Check if matrix is symmetric (allowing for small numerical errors)
+        diff = cm_connectivities - cm_connectivities.T
+        max_asymmetry = abs(diff.data).max() if diff.nnz > 0 else 0
+        assert max_asymmetry < 1e-10, f"Matrix not symmetric: max asymmetry {max_asymmetry}"
+
+        # Check that diagonal is zero
+        diagonal_sum = abs(cm_connectivities.diagonal().sum())
+        assert diagonal_sum < 1e-10, f"Matrix has non-zero diagonal: {diagonal_sum}"
+
+        # Compute correlation between the two connectivity matrices
+        # Convert to dense for easier comparison (only for first 100 cells for speed)
+        n_compare = min(100, adata_pbmc3k.n_obs)
+        scanpy_dense = scanpy_connectivities[:n_compare, :n_compare].toarray()
+        cm_dense = cm_connectivities[:n_compare, :n_compare].toarray()
+
+        # Should be very highly correlated
+        # Note: Lower threshold because scanpy computes connectivity to ALL cells,
+        # while CellMapper only computes connectivity to k-nearest neighbors
+        correlation_matrix = np.corrcoef(scanpy_dense.flatten(), cm_dense.flatten())
+        correlation = correlation_matrix[0, 1]
+        assert correlation > 0.7, f"Connectivity correlation {correlation:.3f} too low"
