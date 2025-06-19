@@ -15,9 +15,26 @@ from cellmapper.utils import extract_neighbors_from_distances
 class NeighborsResults:
     """Nearest neighbors results data store.
 
-    Adapted from the scib-metrics package: https://github.com/YosefLab/scib-metrics. Extended to non-square matrices and potentially
-    varying number of neighbors per cell. This class is used to store the results of nearest neighbor searches, including
-    distances and indices of the nearest neighbors. It also provides methods to compute adjacency matrices and connectivities based on the nearest neighbors.
+    Adapted from the scib-metrics package: https://github.com/YosefLab/scib-metrics.
+    Extended to support non-square matrices and potentially varying number of neighbors per cell.
+    This class stores the results of nearest neighbor searches and provides methods to compute
+    adjacency matrices and connectivities using various kernels.
+
+    Features:
+    ---------
+    - Multiple connectivity kernels (Gaussian, adaptive Gaussian, inverse distance, etc.)
+    - Support for both square (self-mapping) and non-square (cross-mapping) matrices
+    - Configurable self-edge handling for square matrices
+    - Symmetrization options for creating undirected graphs
+    - Robust handling of variable neighbor counts and invalid entries
+
+    Self-Edge Handling:
+    ------------------
+    For square matrices, self-edges (diagonal entries) can be controlled via the `self_edges`
+    parameter in connectivity methods:
+    - `self_edges=True`: Include self-edges (diagonal entries set to 1)
+    - `self_edges=False`: Exclude self-edges (diagonal set to zero)
+    - `self_edges=None`: Leave as-is (preserve original neighbor graph structure)
 
     Attributes
     ----------
@@ -64,6 +81,11 @@ class NeighborsResults:
     def shape(self) -> tuple[int, int]:
         """Shape of the adjacency/graph matrices (n_samples, n_targets)."""
         return (self.n_samples, self.n_targets or self.n_samples)
+
+    @property
+    def is_square(self) -> bool:
+        """Whether this represents a square matrix (self-mapping)."""
+        return self.n_samples == (self.n_targets or self.n_samples)
 
     def _get_valid_entries_mask(self) -> np.ndarray:
         """
@@ -135,6 +157,7 @@ class NeighborsResults:
         self,
         kernel: Literal["gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance"] = "gaussian",
         symmetric: bool = False,
+        self_edges: bool | None = False,
         dtype=np.float64,
         **kwargs,
     ) -> csr_matrix:
@@ -146,9 +169,13 @@ class NeighborsResults:
         kernel
             Connectivity kernel to use. Supported: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance'.
         symmetric
-            If True, create a symmetric connectivity matrix using scanpy's approach.
-            For each edge i→j, ensures j→i exists with the same weight.
-            Only valid for square matrices (self-mapping).
+            If True, create a symmetric connectivity matrix where for each edge i→j,
+            ensure j→i exists with the same weight. Only valid for square matrices.
+        self_edges
+            Control self-edges (diagonal entries) for square matrices:
+            - True: Include self-edges (set diagonal entries to 1)
+            - False: Exclude self-edges (set diagonal entries to 0)
+            - None: Leave as-is (preserve original neighbor graph structure)
         dtype
             Data type for the matrix values.
         **kwargs
@@ -161,7 +188,7 @@ class NeighborsResults:
             If symmetric=True, the matrix will satisfy W[i,j] = W[j,i] for all edges.
         """
         # Check if symmetric is requested for non-square matrices
-        if symmetric and self.n_samples != (self.n_targets or self.n_samples):
+        if symmetric and not self.is_square:
             raise ValueError("Symmetric connectivity matrices can only be created for self-mapping (square matrices)")
 
         # Get valid entries mask
@@ -173,9 +200,13 @@ class NeighborsResults:
         # Create sparse matrix with calculated connectivities
         conn_matrix = self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
 
-        # Apply scanpy-style symmetrization if requested
+        # Handle self-edges if specified and matrix is square
+        if self_edges is not None and self.is_square:
+            conn_matrix = self._set_self_edges(conn_matrix, self_edges)
+
+        # Apply symmetrization if requested
         if symmetric:
-            conn_matrix = self._symmetrize_scanpy_style(conn_matrix)
+            conn_matrix = self._symmetrize_matrix(conn_matrix)
 
         return conn_matrix
 
@@ -309,7 +340,7 @@ class NeighborsResults:
 
         return connectivities
 
-    def boolean_adjacency(self, dtype=np.float64, set_diag: bool | None = None) -> csr_matrix:
+    def boolean_adjacency(self, dtype=np.float64, self_edges: bool | None = False) -> csr_matrix:
         """
         Construct a boolean adjacency matrix from neighbor indices.
 
@@ -317,10 +348,11 @@ class NeighborsResults:
         ----------
         dtype
             Data type for the matrix values.
-        set_diag
-            If True, set the diagonal to 1. If False, set the diagonal to 0.
-            If None, do not modify the diagonal - whether it's 0 or 1 depends on the neighbor algorithm.
-            This parameter can only be used with square matrices.
+        self_edges
+            Control self-edges (diagonal entries) for square matrices:
+            - True: Include self-edges (set diagonal to 1)
+            - False: Exclude self-edges (set diagonal to 0)
+            - None: Leave as-is (preserve original neighbor graph structure)
 
         Returns
         -------
@@ -336,26 +368,51 @@ class NeighborsResults:
         # Create sparse matrix with ones as values for valid entries
         adj_matrix = self._create_sparse_matrix(ones, valid_mask, dtype=dtype)
 
-        # Handle the diagonal based on set_diag parameter
-        if set_diag is not None:
-            # Check that we have a square matrix
-            if self.shape[0] != self.shape[1]:
-                raise ValueError(
-                    "The set_diag parameter can only be used with square matrices "
-                    f"(got shape {self.shape[0]} x {self.shape[1]})."
-                )
-            # Use setdiag to efficiently set diagonal elements
-            adj_matrix.setdiag(1.0 if set_diag else 0.0)
+        # Handle self-edges if specified and matrix is square
+        if self_edges is not None and self.is_square:
+            adj_matrix = self._set_self_edges(adj_matrix, self_edges)
 
         return adj_matrix
 
-    def _symmetrize_scanpy_style(self, sparse_matrix: csr_matrix) -> csr_matrix:
+    def _set_self_edges(self, sparse_matrix: csr_matrix, self_edges: bool) -> csr_matrix:
         """
-        Apply scanpy-style symmetrization to a sparse connectivity matrix.
+        Set or remove self-edges (diagonal entries) in a sparse connectivity matrix.
+
+        Only applies to square matrices. Non-square matrices are returned unchanged
+        since they don't have a meaningful diagonal.
+
+        Parameters
+        ----------
+        sparse_matrix
+            Input sparse connectivity matrix.
+        self_edges
+            If True, set diagonal entries to 1. If False, set diagonal entries to 0.
+
+        Returns
+        -------
+        csr_matrix
+            Matrix with diagonal entries set according to self_edges parameter.
+            Non-square matrices are returned unchanged.
+        """
+        if not self.is_square:
+            # Non-square matrices don't have a meaningful diagonal
+            return sparse_matrix
+
+        # Set diagonal entries
+        result = sparse_matrix.copy()
+        result.setdiag(1.0 if self_edges else 0.0)
+        if not self_edges:
+            result.eliminate_zeros()  # Remove explicit zeros when excluding self-edges
+        return result
+
+    def _symmetrize_matrix(self, sparse_matrix: csr_matrix) -> csr_matrix:
+        """
+        Apply symmetrization to a sparse connectivity matrix.
 
         For each existing edge i→j, ensure that j→i exists with the same weight.
-        This follows scanpy's approach where symmetric relationships are created
-        by copying weights rather than adding them.
+        This creates undirected graphs by copying edge weights rather than adding them.
+
+        Only applies to square matrices.
 
         Parameters
         ----------
@@ -367,6 +424,9 @@ class NeighborsResults:
         csr_matrix
             Symmetrized sparse matrix where W[i,j] = W[j,i] for all existing edges.
         """
+        if not self.is_square:
+            raise ValueError("Can only symmetrize square matrices")
+
         # Convert to LIL format for efficient item assignment
         matrix_lil = sparse_matrix.tolil()
 
@@ -411,7 +471,7 @@ class Neighbors:
         self._is_self_mapping = yrep is None
 
     @classmethod
-    def from_distances(cls, distances_matrix: "csr_matrix", include_self: bool | None = None) -> "Neighbors":
+    def from_distances(cls, distances_matrix: csr_matrix, self_edges: bool | None = None) -> "Neighbors":
         """
         Create a Neighbors object from a pre-computed distances matrix.
 
@@ -419,7 +479,7 @@ class Neighbors:
         ----------
         distances_matrix
             Sparse distance matrix, typically from adata.obsp['distances']
-        include_self
+        self_edges
             If True, include self as a neighbor (cells are their own neighbors).
             If False, exclude self connections, even if present in the distance matrix.
             If None (default), preserve the original behavior of the distance matrix.
@@ -430,7 +490,7 @@ class Neighbors:
             A new Neighbors object with pre-computed neighbor information
         """
         # Extract indices and distances from the sparse matrix
-        indices, distances = extract_neighbors_from_distances(distances_matrix, include_self=include_self)
+        indices, distances = extract_neighbors_from_distances(distances_matrix, include_self=self_edges)
 
         # Create a minimal Neighbors object for self-mapping
         n_cells = distances_matrix.shape[0]
