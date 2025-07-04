@@ -266,7 +266,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         method: Literal[
             "jaccard", "gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"
         ] = "gaussian",
-        symmetric: bool | None = None,
+        symmetrize: bool | None = None,
         self_edges: bool | None = None,
     ) -> None:
         """
@@ -285,8 +285,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             - "random": Random kernel, useful for testing.
             - "hnoca": HNOCA kernel. Inspired by HNOCA-tools :cite:`he2024integrated`
             - "equal": All neighbors are equally weighted (1/n_neighbors).
-        symmetric
-            If True, create a symmetric connectivity matrix where for each edge i→j,
+        symmetrize
+            If True, create a symmetrize connectivity matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices (self-mapping).
             If None (default), uses True for self-mapping and False for cross-mapping.
         self_edges
@@ -307,14 +307,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         - ``mapping_matrix``: Mapping matrix for label transfer.
 
         For self-mapping mode, the default behavior follows scanpy conventions:
-        symmetric connectivity matrices without self-edges.
+        symmetrize connectivity matrices without self-edges.
         """
         if self.knn is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
 
         # Set defaults based on mapping mode
-        if symmetric is None:
-            symmetric = self._is_self_mapping  # True for self-mapping, False for cross-mapping
+        if symmetrize is None:
+            symmetrize = self._is_self_mapping  # True for self-mapping, False for cross-mapping
         if self_edges is None:
             self_edges = (
                 False if self._is_self_mapping else None
@@ -334,18 +334,18 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             jaccard_self_edges = True if self_edges is None else self_edges
 
             if self._is_self_mapping:
-                # In self-mapping, use only yx matrix with symmetric and self_edges parameters
+                # In self-mapping, use only yx matrix with symmetrize and self_edges parameters
                 # Type assertion for mypy - neighbors validation ensures yx is not None
                 assert self.knn.yx is not None
-                adj_matrix = self.knn.yx.boolean_adjacency(self_edges=jaccard_self_edges, symmetric=symmetric)
+                adj_matrix = self.knn.yx.boolean_adjacency(self_edges=jaccard_self_edges, symmetrize=symmetrize)
                 # Set all matrices to the same adjacency pattern
                 xx = yy = xy = yx = adj_matrix
                 n_neighbors = self.knn.yx.n_neighbors
             else:
                 # Get adjacency matrices with consistent parameter handling
-                # symmetric and self_edges only apply to self-terms (xx, yy) in get_adjacency_matrices
+                # symmetrize and self_edges only apply to self-terms (xx, yy) in get_adjacency_matrices
                 xx, yy, xy, yx = self.knn.get_adjacency_matrices(
-                    symmetric=symmetric,  # Apply symmetry directly in boolean_adjacency
+                    symmetrize=symmetrize,  # Apply symmetry directly in boolean_adjacency
                     self_edges=jaccard_self_edges,
                 )
                 # Type assertion for mypy - get_adjacency_matrices validates that xx is not None
@@ -369,7 +369,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             # Type assertion for mypy - neighbors validation ensures yx is not None
             assert self.knn.yx is not None
             self.mapping_matrix = self.knn.yx.knn_graph_connectivities(
-                kernel=kernel_method, symmetric=symmetric, self_edges=self_edges
+                kernel=kernel_method, symmetrize=symmetrize, self_edges=self_edges
             )
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
@@ -506,7 +506,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         mapping_method: Literal[
             "jaccard", "gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"
         ] = "gaussian",
-        symmetric: bool | None = None,
+        symmetrize: bool | None = None,
         self_edges: bool | None = None,
         prediction_postfix: str = "pred",
     ) -> "CellMapper":
@@ -533,8 +533,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             If True, only compute the xy neighbors. This is faster, but not suitable for Jaccard or HNOCA methods.
         mapping_method
             Method to use for computing the mapping matrix.
-        symmetric
-            If True, create a symmetric connectivity matrix. Only valid for square matrices (self-mapping).
+        symmetrize
+            If True, create a symmetrize connectivity matrix. Only valid for square matrices (self-mapping).
             If None (default), uses True for self-mapping and False for cross-mapping.
         self_edges
             Control self-edges (diagonal entries) for square matrices (self-mapping).
@@ -545,7 +545,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.compute_neighbors(
             n_neighbors=n_neighbors, use_rep=use_rep, method=knn_method, metric=metric, only_yx=only_yx
         )
-        self.compute_mapping_matrix(method=mapping_method, symmetric=symmetric, self_edges=self_edges)
+        self.compute_mapping_matrix(method=mapping_method, symmetrize=symmetrize, self_edges=self_edges)
         if obs_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obs_keys, str):
@@ -596,7 +596,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         - ``knn``: Neighbors object constructed from the precomputed distances.
 
-        For symmetrization of connectivity matrices, use the ``symmetric`` parameter
+        For symmetrization of connectivity matrices, use the ``symmetrize`` parameter
         in ``compute_mapping_matrix()`` after loading the distances.
         """
         if not self._is_self_mapping:

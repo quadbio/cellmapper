@@ -84,7 +84,7 @@ class TestQueryToReferenceMapping:
             n_neighbors=1,
             prediction_postfix="transfer",
             # For n_neighbors=1 identity mapping, we need self-edges and no symmetrization
-            symmetric=False,
+            symmetrize=False,
             self_edges=True,
         )
         assert "leiden_transfer" in reference.obs

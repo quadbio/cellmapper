@@ -29,7 +29,7 @@ class TestSelfMapping:
             n_neighbors=1,
             prediction_postfix="pred",
             # For n_neighbors=1 identity mapping, we need self-edges and no symmetrization
-            symmetric=False,
+            symmetrize=False,
             self_edges=True,
         )
 
@@ -234,7 +234,7 @@ class TestScanpyCompatibility:
 
         scanpy_connectivities = adata_scanpy.obsp["connectivities"]
         cm_connectivities = cm.knn.yx.knn_graph_connectivities(
-            kernel="adaptive_gaussian", symmetric=True, self_edges=False
+            kernel="adaptive_gaussian", symmetrize=True, self_edges=False
         )
 
         # Check that both matrices have similar sparsity patterns
@@ -265,14 +265,14 @@ class TestScanpyCompatibility:
         assert cm.knn is not None
         assert cm.knn.yx is not None
         cm_connectivities = cm.knn.yx.knn_graph_connectivities(
-            kernel="adaptive_gaussian", symmetric=True, self_edges=False
+            kernel="adaptive_gaussian", symmetrize=True, self_edges=False
         )
 
         # Test connectivity matrix properties
-        # Check if matrix is symmetric (allowing for small numerical errors)
+        # Check if matrix is symmetrize (allowing for small numerical errors)
         diff = cm_connectivities - cm_connectivities.T
         max_asymmetry = abs(diff.data).max() if diff.nnz > 0 else 0
-        assert max_asymmetry < 1e-10, f"Matrix not symmetric: max asymmetry {max_asymmetry}"
+        assert max_asymmetry < 1e-10, f"Matrix not symmetrize: max asymmetry {max_asymmetry}"
 
         # Check that diagonal is zero
         diagonal_sum = abs(cm_connectivities.diagonal().sum())

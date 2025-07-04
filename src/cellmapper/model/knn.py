@@ -158,7 +158,7 @@ class NeighborsResults:
         kernel: Literal[
             "gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal"
         ] = "gaussian",
-        symmetric: bool = False,
+        symmetrize: bool = False,
         self_edges: bool | None = False,
         dtype=np.float64,
         **kwargs,
@@ -170,8 +170,8 @@ class NeighborsResults:
         ----------
         kernel
             Connectivity kernel to use. Supported: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance'.
-        symmetric
-            If True, create a symmetric connectivity matrix where for each edge i→j,
+        symmetrize
+            If True, create a symmetrize connectivity matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices.
         self_edges
             Control self-edges (diagonal entries) for square matrices:
@@ -187,11 +187,11 @@ class NeighborsResults:
         -------
         csr_matrix
             Sparse matrix of connectivities (shape: n_samples x n_targets).
-            If symmetric=True, the matrix will satisfy W[i,j] = W[j,i] for all edges.
+            If symmetrize=True, the matrix will satisfy W[i,j] = W[j,i] for all edges.
         """
-        # Check if symmetric is requested for non-square matrices
-        if symmetric and not self.is_square:
-            raise ValueError("Symmetric connectivity matrices can only be created for self-mapping (square matrices)")
+        # Check if symmetrize is requested for non-square matrices
+        if symmetrize and not self.is_square:
+            raise ValueError("symmetrize connectivity matrices can only be created for self-mapping (square matrices)")
 
         # Get valid entries mask
         valid_mask = self._get_valid_entries_mask()
@@ -207,7 +207,7 @@ class NeighborsResults:
             conn_matrix = self._set_self_edges(conn_matrix, self_edges)
 
         # Apply symmetrization if requested
-        if symmetric:
+        if symmetrize:
             conn_matrix = self._symmetrize_matrix(conn_matrix)
 
         return conn_matrix
@@ -343,7 +343,7 @@ class NeighborsResults:
         return connectivities
 
     def boolean_adjacency(
-        self, dtype=np.float64, self_edges: bool | None = False, symmetric: bool = False
+        self, dtype=np.float64, self_edges: bool | None = False, symmetrize: bool = False
     ) -> csr_matrix:
         """
         Construct a boolean adjacency matrix from neighbor indices.
@@ -357,8 +357,8 @@ class NeighborsResults:
             - True: Include self-edges (set diagonal to 1)
             - False: Exclude self-edges (set diagonal to 0)
             - None: Leave as-is (preserve original neighbor graph structure)
-        symmetric
-            If True, create a symmetric adjacency matrix where for each edge i→j,
+        symmetrize
+            If True, create a symmetrize adjacency matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices.
 
         Returns
@@ -366,9 +366,9 @@ class NeighborsResults:
         csr_matrix
             Boolean adjacency matrix (shape: n_samples x n_targets), with 1 for each neighbor relationship.
         """
-        # Check if symmetric is requested for non-square matrices
-        if symmetric and not self.is_square:
-            raise ValueError("Symmetric adjacency matrices can only be created for square matrices")
+        # Check if symmetrize is requested for non-square matrices
+        if symmetrize and not self.is_square:
+            raise ValueError("symmetrize adjacency matrices can only be created for square matrices")
 
         # Get valid entries mask (only check indices, not distances)
         valid_mask = self.indices != -1
@@ -380,7 +380,7 @@ class NeighborsResults:
         adj_matrix = self._create_sparse_matrix(ones, valid_mask, dtype=dtype)
 
         # Apply symmetrization if requested and matrix is square
-        if symmetric and self.is_square:
+        if symmetrize and self.is_square:
             adj_matrix = self._symmetrize_matrix(adj_matrix)
 
         # Handle self-edges if specified and matrix is square
@@ -657,15 +657,15 @@ class Neighbors:
             raise ValueError(f"Unknown method: {method}. Supported methods are 'sklearn', 'pynndescent', and 'rapids'.")
 
     def get_adjacency_matrices(
-        self, symmetric: bool = False, self_edges: bool | None = False
+        self, symmetrize: bool = False, self_edges: bool | None = False
     ) -> tuple[csr_matrix, csr_matrix, csr_matrix, csr_matrix]:
         """
         Compute unweighted adjacency matrices for all k-NN graphs.
 
         Parameters
         ----------
-        symmetric
-            If True, make self-terms (xx, yy) symmetric. Cross-terms (xy, yx) are not affected.
+        symmetrize
+            If True, make self-terms (xx, yy) symmetrize. Cross-terms (xy, yx) are not affected.
         self_edges
             Control self-edges for self-terms (xx, yy). Cross-terms (xy, yx) are not affected.
             - True: Include self-edges (set diagonal entries to 1)
@@ -679,7 +679,7 @@ class Neighbors:
 
         Notes
         -----
-        The symmetric and self_edges parameters only apply to self-terms (xx, yy) since
+        The symmetrize and self_edges parameters only apply to self-terms (xx, yy) since
         these represent within-dataset neighborhoods. Cross-terms (xy, yx) represent
         between-dataset relationships where symmetry and self-edges are not meaningful.
         """
@@ -687,8 +687,8 @@ class Neighbors:
             raise ValueError("Neighbors must be computed before accessing adjacency matrices.")
 
         # Apply parameters to self-terms (within-dataset neighborhoods)
-        xx_adj = self.xx.boolean_adjacency(self_edges=self_edges, symmetric=symmetric)
-        yy_adj = self.yy.boolean_adjacency(self_edges=self_edges, symmetric=symmetric)
+        xx_adj = self.xx.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
+        yy_adj = self.yy.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
 
         # Cross-terms use default parameters (no symmetry/self-edges modification)
         xy_adj = self.xy.boolean_adjacency()
