@@ -461,7 +461,7 @@ class NeighborsResults:
 class Neighbors:
     """Class to compute and store nearest neighbors."""
 
-    def __init__(self, xrep: np.ndarray, yrep: np.ndarray | None = None):
+    def __init__(self, xrep: np.ndarray, yrep: np.ndarray | None = None, is_self_mapping: bool | None = None):
         """
         Initialize the Neighbors class.
 
@@ -471,6 +471,9 @@ class Neighbors:
             Representation of the reference dataset.
         yrep
             Representation of the query dataset. If None, self-mapping will be used.
+        is_self_mapping
+            Explicitly specify if this is a self-mapping case. If None, will be inferred
+            from whether yrep is None.
         """
         self.xrep = xrep
         # Use xrep for self-mapping if yrep is None
@@ -483,7 +486,11 @@ class Neighbors:
         self.yx: NeighborsResults | None = None
 
         # Flag to track if this is a self-mapping case
-        self._is_self_mapping = yrep is None
+        # Use explicit parameter if provided, otherwise infer from yrep
+        if is_self_mapping is not None:
+            self._is_self_mapping = is_self_mapping
+        else:
+            self._is_self_mapping = yrep is None
 
     @classmethod
     def from_distances(cls, distances_matrix: csr_matrix, self_edges: bool | None = None) -> "Neighbors":
