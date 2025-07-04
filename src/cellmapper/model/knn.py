@@ -557,7 +557,9 @@ class Neighbors:
         random_state
             Random state for reproducibility.
         only_yx
-            If True, only compute the xy neighbors.
+            If True, only compute the xy neighbors. In self-mapping mode, this is
+            automatically set to True for efficiency since all neighbor matrices
+            contain the same information.
 
         Returns
         -------
@@ -571,7 +573,18 @@ class Neighbors:
         - ``yy``: Nearest neighbors results for query to query.
         - ``xy``: Nearest neighbors results for reference to query.
         - ``yx``: Nearest neighbors results for query to reference.
+
+        In self-mapping mode, all four matrices will reference the same NeighborsResults
+        object for memory efficiency.
         """
+        # Optimize for self-mapping: only compute yx and reuse for all matrices
+        if self._is_self_mapping:
+            only_yx = True
+            logger.info(
+                "Self-mapping mode detected. Computing only yx neighbors for efficiency "
+                "(all neighbor matrices will contain the same information)."
+            )
+
         if method in ["rapids", "sklearn", "pynndescent", "faiss"]:
             logger.info("Using %s to compute %d neighbors.", method, n_neighbors)
 
