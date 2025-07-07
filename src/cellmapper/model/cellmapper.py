@@ -266,7 +266,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
     def compute_mapping_matrix(
         self,
         method: Literal[
-            "jaccard", "gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"
+            "jaccard",
+            "gaussian",
+            "adaptive_gaussian",
+            "scarches",
+            "inverse_distance",
+            "random",
+            "hnoca",
+            "equal",
+            "umap",
         ] = "gaussian",
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
@@ -287,6 +295,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             - "random": Random kernel, useful for testing.
             - "hnoca": HNOCA kernel. Inspired by HNOCA-tools :cite:`he2024integrated`
             - "equal": All neighbors are equally weighted (1/n_neighbors).
+            - "umap": UMAP fuzzy simplicial set connectivities. Only available for self-mapping with true k-NN graphs.
         symmetrize
             If True, create a symmetrize connectivity matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices (self-mapping).
@@ -363,10 +372,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 jaccard.data = jaccard.data**2
 
             self.mapping_matrix = jaccard
-        elif method in ["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal"]:
+        elif method in ["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal", "umap"]:
+            # Validate self-mapping-only kernels
+            if method == "umap" and not self._is_self_mapping:
+                raise ValueError("UMAP kernel is only supported for self-mapping mode.")
+
             # Type cast to satisfy the type checker since we've filtered to only valid kernel methods
             kernel_method = cast(
-                Literal["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal"], method
+                Literal["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal", "umap"],
+                method,
             )
             # Type assertion for mypy - neighbors validation ensures yx is not None
             assert self.knn.yx is not None
@@ -506,7 +520,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         metric: str = "euclidean",
         only_yx: bool = False,
         mapping_method: Literal[
-            "jaccard", "gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "hnoca", "equal"
+            "jaccard",
+            "gaussian",
+            "adaptive_gaussian",
+            "scarches",
+            "inverse_distance",
+            "random",
+            "hnoca",
+            "equal",
+            "umap",
         ] = "gaussian",
         symmetrize: bool | None = None,
         self_edges: bool | None = None,

@@ -4,9 +4,11 @@ from typing import Literal
 
 import numpy as np
 import sklearn.neighbors
-from scipy.sparse import csr_matrix
+from scipy.sparse import coo_matrix, csr_matrix
+from umap.umap_ import fuzzy_simplicial_set
 
 from cellmapper.check import check_deps
+from cellmapper.constants import SELF_MAPPING_ONLY_KERNELS
 from cellmapper.logging import logger
 from cellmapper.utils import extract_neighbors_from_distances
 
@@ -156,7 +158,7 @@ class NeighborsResults:
     def knn_graph_connectivities(
         self,
         kernel: Literal[
-            "gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal"
+            "gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal", "umap"
         ] = "gaussian",
         symmetrize: bool = False,
         self_edges: bool | None = False,
@@ -169,7 +171,7 @@ class NeighborsResults:
         Parameters
         ----------
         kernel
-            Connectivity kernel to use. Supported: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance'.
+            Connectivity kernel to use. Supported: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance', 'equal', 'umap'.
         symmetrize
             If True, create a symmetrize connectivity matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices.
@@ -193,14 +195,33 @@ class NeighborsResults:
         if symmetrize and not self.is_square:
             raise ValueError("symmetrize connectivity matrices can only be created for self-mapping (square matrices)")
 
+        # Check if self-mapping only kernel is used for non-square matrices
+        if kernel in SELF_MAPPING_ONLY_KERNELS and not self.is_square:
+            raise ValueError(f"Kernel '{kernel}' is only supported for self-mapping (square matrices)")
+
+        # Warn about UMAP inherent symmetry
+        if kernel == "umap" and not symmetrize:
+            logger.info(
+                "UMAP kernel inherently produces symmetric connectivities. "
+                "Consider setting symmetrize=True for consistency with other kernels."
+            )
+
         # Get valid entries mask
         valid_mask = self._get_valid_entries_mask()
 
-        # Calculate connectivities based on the kernel type
-        connectivities = self._compute_kernel_values(kernel, valid_mask, **kwargs)
+        # Special handling for UMAP kernel which returns sparse matrix directly
+        if kernel == "umap":
+            # UMAP kernel requires true k-NN graphs (no padding with -1)
+            if np.any(self.indices == -1):
+                raise ValueError("UMAP kernel requires true k-NN graphs (all cells must have exactly k neighbors)")
+            # Compute UMAP fuzzy simplicial set connectivities (returns sparse matrix)
+            conn_matrix = self._compute_umap_kernel(**kwargs)
+        else:
+            # Calculate connectivities based on the kernel type
+            connectivities = self._compute_kernel_values(kernel, valid_mask, **kwargs)
 
-        # Create sparse matrix with calculated connectivities
-        conn_matrix = self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
+            # Create sparse matrix with calculated connectivities
+            conn_matrix = self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
 
         # Handle self-edges if specified and matrix is square
         if self_edges is not None and self.is_square:
@@ -280,6 +301,49 @@ class NeighborsResults:
             )
 
         return connectivities
+
+    def _compute_umap_kernel(self, **kwargs) -> csr_matrix:
+        """
+        Compute UMAP fuzzy simplicial set connectivities following scanpy implementation.
+
+        This calls umap-learn's fuzzy_simplicial_set function with a dummy data matrix
+        to compute the connectivity weights based on the k-NN graph structure.
+
+        Parameters
+        ----------
+        valid_mask
+            Boolean mask indicating valid entries.
+        **kwargs
+            Additional parameters for UMAP kernel:
+            - set_op_mix_ratio: float, default 1.0
+            - local_connectivity: float, default 1.0
+
+        Returns
+        -------
+        csr_matrix
+            Sparse connectivity matrix.
+        """
+        # Extract UMAP-specific parameters
+        set_op_mix_ratio = kwargs.get("set_op_mix_ratio", 1.0)
+        local_connectivity = kwargs.get("local_connectivity", 1.0)
+
+        # Create dummy data matrix (scanpy approach)
+        X = coo_matrix((self.n_samples, 1))
+
+        # Call UMAP's fuzzy_simplicial_set
+        connectivities_sparse, _sigmas, _rhos = fuzzy_simplicial_set(
+            X,
+            self.n_neighbors,
+            None,  # random_state
+            None,  # metric
+            knn_indices=self.indices.astype(np.int32),
+            knn_dists=self.distances.astype(np.float32),
+            set_op_mix_ratio=set_op_mix_ratio,
+            local_connectivity=local_connectivity,
+        )
+
+        # Return as CSR matrix
+        return connectivities_sparse.tocsr()
 
     def _compute_adaptive_gaussian_kernel(self, valid_mask: np.ndarray, **kwargs) -> np.ndarray:
         """
@@ -604,6 +668,10 @@ class Neighbors:
 
                 if only_yx:
                     self.yx = NeighborsResults(*xnn.kneighbors(yrep_gpu), n_targets=self.xrep.shape[0])
+                    if self._is_self_mapping:
+                        self.xx = self.yx
+                        self.yy = self.yx
+                        self.xy = self.yx
                     return
 
                 ynn = cm.neighbors.NearestNeighbors(n_neighbors=n_neighbors, output_type="numpy", metric=metric).fit(
@@ -626,6 +694,10 @@ class Neighbors:
 
                 if only_yx:
                     self.yx = NeighborsResults(*xnn_gpu.search(self.yrep, n_neighbors), n_targets=self.xrep.shape[0])
+                    if self._is_self_mapping:
+                        self.xx = self.yx
+                        self.yy = self.yx
+                        self.xy = self.yx
                     return
 
                 ynn = faiss.IndexFlatL2(self.yrep.shape[1])
@@ -642,6 +714,10 @@ class Neighbors:
 
                 if only_yx:
                     self.yx = NeighborsResults(*xnn.kneighbors(self.yrep), n_targets=self.xrep.shape[0])
+                    if self._is_self_mapping:
+                        self.xx = self.yx
+                        self.yy = self.yx
+                        self.xy = self.yx
                     return
 
                 ynn = sklearn.neighbors.NearestNeighbors(n_neighbors=n_neighbors, metric=metric).fit(self.yrep)
@@ -659,6 +735,10 @@ class Neighbors:
 
                 if only_yx:
                     self.yx = NeighborsResults(*xnn.query(self.yrep, k=n_neighbors)[::-1], n_targets=self.xrep.shape[0])
+                    if self._is_self_mapping:
+                        self.xx = self.yx
+                        self.yy = self.yx
+                        self.xy = self.yx
                     return
 
                 ynn = NNDescent(self.yrep, metric=metric, n_jobs=-1, random_state=random_state)
