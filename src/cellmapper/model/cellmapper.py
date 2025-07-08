@@ -322,6 +322,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         """
         if self.knn is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
+        assert self.knn.yx is not None, "Neighbors object must have yx neighbors computed."
 
         # Set defaults based on mapping mode
         if symmetrize is None:
@@ -344,24 +345,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             # Default to True for self_edges if None, as Jaccard needs neighbors including self
             jaccard_self_edges = True if self_edges is None else self_edges
 
-            if self._is_self_mapping:
-                # In self-mapping, use only yx matrix with symmetrize and self_edges parameters
-                # Type assertion for mypy - neighbors validation ensures yx is not None
-                assert self.knn.yx is not None
-                adj_matrix = self.knn.yx.boolean_adjacency(self_edges=jaccard_self_edges, symmetrize=symmetrize)
-                # Set all matrices to the same adjacency pattern
-                xx = yy = xy = yx = adj_matrix
-                n_neighbors = self.knn.yx.n_neighbors
-            else:
-                # Get adjacency matrices with consistent parameter handling
-                # symmetrize and self_edges only apply to self-terms (xx, yy) in get_adjacency_matrices
-                xx, yy, xy, yx = self.knn.get_adjacency_matrices(
-                    symmetrize=symmetrize,  # Apply symmetry directly in boolean_adjacency
-                    self_edges=jaccard_self_edges,
-                )
-                # Type assertion for mypy - get_adjacency_matrices validates that xx is not None
-                assert self.knn.xx is not None
-                n_neighbors = self.knn.xx.n_neighbors
+            # Get adjacency matrices with consistent parameter handling
+            # symmetrize and self_edges only apply to self-terms (xx, yy) in get_adjacency_matrices
+            xx, yy, xy, yx = self.knn.get_adjacency_matrices(
+                symmetrize=symmetrize,  # Apply symmetry directly in boolean_adjacency
+                self_edges=jaccard_self_edges,
+            )
+            # Type assertion for mypy - get_adjacency_matrices validates that xx is not None
+            n_neighbors = self.knn.yx.n_neighbors
 
             jaccard = (yx @ xx.T) + (yy @ xy.T)
 
@@ -383,7 +374,6 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 method,
             )
             # Type assertion for mypy - neighbors validation ensures yx is not None
-            assert self.knn.yx is not None
             self.mapping_matrix = self.knn.yx.knn_graph_connectivities(
                 kernel=kernel_method, symmetrize=symmetrize, self_edges=self_edges
             )

@@ -786,13 +786,13 @@ class Neighbors:
         if self.xx is None or self.yy is None or self.xy is None or self.yx is None:
             raise ValueError("Neighbors must be computed before accessing adjacency matrices.")
 
-        # Apply parameters to self-terms (within-dataset neighborhoods)
+        # self-terms (within-dataset neighborhoods)
         xx_adj = self.xx.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
         yy_adj = self.yy.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
 
-        # Cross-terms use default parameters (no symmetry/self-edges modification)
-        xy_adj = self.xy.boolean_adjacency()
-        yx_adj = self.yx.boolean_adjacency()
+        # Cross-terms (between-dataset neighborhoods)
+        xy_adj = self.xy.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
+        yx_adj = self.yx.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
 
         return xx_adj, yy_adj, xy_adj, yx_adj
 
