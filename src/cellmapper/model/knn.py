@@ -317,6 +317,7 @@ class NeighborsResults:
             Additional parameters for UMAP kernel:
             - set_op_mix_ratio: float, default 1.0
             - local_connectivity: float, default 1.0
+            - remove_last: bool, default False (makes sense when importing distances from scanpy)
 
         Returns
         -------
@@ -326,18 +327,43 @@ class NeighborsResults:
         # Extract UMAP-specific parameters
         set_op_mix_ratio = kwargs.get("set_op_mix_ratio", 1.0)
         local_connectivity = kwargs.get("local_connectivity", 1.0)
+        remove_last_neighbor = kwargs.get("remove_last_neighbor", False)
 
         # Create dummy data matrix (scanpy approach)
         X = coo_matrix((self.n_samples, 1))
 
+        if remove_last_neighbor:
+            # If remove_last is True, we remove the last neighbor from each sample
+            indices = self.indices.astype(np.int32)[:, :-1]
+            distances = self.distances.astype(np.float32)[:, :-1]
+            n_neighbors = self.n_neighbors - 1
+
+            logger.info(f"Removing the last neighbor and decreasing n_neighbors. New n_neighbors: {n_neighbors}. ")
+        else:
+            # Otherwise, use the full indices and distances
+            indices = self.indices.astype(np.int32)
+            distances = self.distances.astype(np.float32)
+            n_neighbors = self.n_neighbors
+
+        print(
+            f"Using UMAP fuzzy_simplicial_set with {self.n_samples:,} observations and {n_neighbors} neighbors."
+            f" Set operation mix ratio: {set_op_mix_ratio}, Local connectivity: {local_connectivity}"
+        )
+
+        print(f"indices shape: {indices.shape}")
+        print(f"distances shape {distances.shape}")
+
+        print(f"indices:\n{indices[:10, :]}")
+        print(f"distances:\n{np.round(distances[:10, :], 3)}")
+
         # Call UMAP's fuzzy_simplicial_set
         connectivities_sparse, _sigmas, _rhos = fuzzy_simplicial_set(
             X,
-            self.n_neighbors,
+            n_neighbors,
             None,  # random_state
             None,  # metric
-            knn_indices=self.indices.astype(np.int32),
-            knn_dists=self.distances.astype(np.float32),
+            knn_indices=indices,
+            knn_dists=distances,
             set_op_mix_ratio=set_op_mix_ratio,
             local_connectivity=local_connectivity,
         )
@@ -606,6 +632,7 @@ class Neighbors:
         metric: str = "euclidean",
         random_state: int = 0,
         only_yx: bool = False,
+        **kwargs,
     ):
         """
         Compute nearest neighbors using either sklearn or rapids.
@@ -624,6 +651,15 @@ class Neighbors:
             If True, only compute the xy neighbors. In self-mapping mode, this is
             automatically set to True for efficiency since all neighbor matrices
             contain the same information.
+        **kwargs
+            Additional keyword arguments to pass to the underlying k-NN algorithm.
+            These are method-specific and will be passed directly to the algorithm's
+            constructor or fitting method.
+
+            For pynndescent, scanpy-style defaults are applied:
+            - n_jobs: -1 (use all CPU cores)
+            - n_trees: min(64, 5 + round(n_samples^0.5 / 20.0)) (per dataset)
+            - n_iters: max(5, round(log2(n_samples))) (per dataset)
 
         Returns
         -------
@@ -640,6 +676,14 @@ class Neighbors:
 
         In self-mapping mode, all four matrices will reference the same NeighborsResults
         object for memory efficiency.
+
+        Examples
+        --------
+        >>> neighbors = Neighbors(xrep, yrep)
+        >>> # sklearn with custom parameters
+        >>> neighbors.compute_neighbors(method="sklearn", algorithm="ball_tree", leaf_size=20)
+        >>> # pynndescent with custom parameters (inherits scanpy-style defaults)
+        >>> neighbors.compute_neighbors(method="pynndescent", n_trees=32, verbose=True)
         """
         # Optimize for self-mapping: only compute yx and reuse for all matrices
         if self._is_self_mapping:
@@ -662,9 +706,9 @@ class Neighbors:
                 xrep_gpu = cp.asarray(self.xrep)
                 yrep_gpu = cp.asarray(self.yrep)
 
-                xnn = cm.neighbors.NearestNeighbors(n_neighbors=n_neighbors, output_type="numpy", metric=metric).fit(
-                    xrep_gpu
-                )
+                xnn = cm.neighbors.NearestNeighbors(
+                    n_neighbors=n_neighbors, output_type="numpy", metric=metric, **kwargs
+                ).fit(xrep_gpu)
 
                 if only_yx:
                     self.yx = NeighborsResults(*xnn.kneighbors(yrep_gpu), n_targets=self.xrep.shape[0])
@@ -674,9 +718,9 @@ class Neighbors:
                         self.xy = self.yx
                     return
 
-                ynn = cm.neighbors.NearestNeighbors(n_neighbors=n_neighbors, output_type="numpy", metric=metric).fit(
-                    yrep_gpu
-                )
+                ynn = cm.neighbors.NearestNeighbors(
+                    n_neighbors=n_neighbors, output_type="numpy", metric=metric, **kwargs
+                ).fit(yrep_gpu)
 
                 x_results = xnn.kneighbors(xrep_gpu)
                 y_results = ynn.kneighbors(yrep_gpu)
@@ -686,6 +730,14 @@ class Neighbors:
             elif method == "faiss":
                 check_deps("faiss")
                 import faiss
+
+                # Note: faiss implementation is basic and kwargs support is limited
+                # For more advanced faiss features, consider using the faiss API directly
+                if kwargs:
+                    logger.warning(
+                        "FAISS method has limited kwargs support. Additional kwargs will be ignored: %s",
+                        list(kwargs.keys()),
+                    )
 
                 res = faiss.StandardGpuResources()
                 xnn = faiss.IndexFlatL2(self.xrep.shape[1])
@@ -710,7 +762,9 @@ class Neighbors:
                 yx_results = xnn_gpu.search(self.yrep, n_neighbors)
 
             elif method == "sklearn":
-                xnn = sklearn.neighbors.NearestNeighbors(n_neighbors=n_neighbors, metric=metric).fit(self.xrep)
+                xnn = sklearn.neighbors.NearestNeighbors(n_neighbors=n_neighbors, metric=metric, **kwargs).fit(
+                    self.xrep
+                )
 
                 if only_yx:
                     self.yx = NeighborsResults(*xnn.kneighbors(self.yrep), n_targets=self.xrep.shape[0])
@@ -720,7 +774,9 @@ class Neighbors:
                         self.xy = self.yx
                     return
 
-                ynn = sklearn.neighbors.NearestNeighbors(n_neighbors=n_neighbors, metric=metric).fit(self.yrep)
+                ynn = sklearn.neighbors.NearestNeighbors(n_neighbors=n_neighbors, metric=metric, **kwargs).fit(
+                    self.yrep
+                )
 
                 x_results = xnn.kneighbors(self.xrep)
                 y_results = ynn.kneighbors(self.yrep)
@@ -731,7 +787,16 @@ class Neighbors:
                 check_deps("pynndescent")
                 from pynndescent import NNDescent
 
-                xnn = NNDescent(self.xrep, metric=metric, n_jobs=-1, random_state=random_state)
+                # Prepare kwargs with scanpy-style defaults for xrep
+                xnn_kwargs = kwargs.copy()
+                if "n_jobs" not in xnn_kwargs:
+                    xnn_kwargs["n_jobs"] = -1
+                if "n_trees" not in xnn_kwargs:
+                    xnn_kwargs["n_trees"] = min(64, 5 + round((self.xrep.shape[0]) ** 0.5 / 20.0))
+                if "n_iters" not in xnn_kwargs:
+                    xnn_kwargs["n_iters"] = max(5, round(np.log2(self.xrep.shape[0])))
+
+                xnn = NNDescent(self.xrep, metric=metric, random_state=random_state, **xnn_kwargs)
 
                 if only_yx:
                     self.yx = NeighborsResults(*xnn.query(self.yrep, k=n_neighbors)[::-1], n_targets=self.xrep.shape[0])
@@ -741,7 +806,16 @@ class Neighbors:
                         self.xy = self.yx
                     return
 
-                ynn = NNDescent(self.yrep, metric=metric, n_jobs=-1, random_state=random_state)
+                # Prepare kwargs with scanpy-style defaults for yrep
+                ynn_kwargs = kwargs.copy()
+                if "n_jobs" not in ynn_kwargs:
+                    ynn_kwargs["n_jobs"] = -1
+                if "n_trees" not in ynn_kwargs:
+                    ynn_kwargs["n_trees"] = min(64, 5 + round((self.yrep.shape[0]) ** 0.5 / 20.0))
+                if "n_iters" not in ynn_kwargs:
+                    ynn_kwargs["n_iters"] = max(5, round(np.log2(self.yrep.shape[0])))
+
+                ynn = NNDescent(self.yrep, metric=metric, random_state=random_state, **ynn_kwargs)
 
                 x_results = xnn.query(self.xrep, k=n_neighbors)[::-1]
                 y_results = ynn.query(self.yrep, k=n_neighbors)[::-1]
@@ -754,7 +828,9 @@ class Neighbors:
             self.yx = NeighborsResults(*yx_results, n_targets=self.xrep.shape[0])
 
         else:
-            raise ValueError(f"Unknown method: {method}. Supported methods are 'sklearn', 'pynndescent', and 'rapids'.")
+            raise ValueError(
+                f"Unknown method: {method}. Supported methods are 'sklearn', 'pynndescent', 'rapids', and 'faiss'."
+            )
 
     def get_adjacency_matrices(
         self, symmetrize: bool = False, self_edges: bool | None = False
