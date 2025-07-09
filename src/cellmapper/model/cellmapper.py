@@ -265,7 +265,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         yrep = yrep[:, :n_comps]
 
         self.knn = Neighbors(
-            np.ascontiguousarray(xrep), np.ascontiguousarray(yrep), is_self_mapping=self._is_self_mapping
+            np.ascontiguousarray(xrep),
+            None if self._is_self_mapping else np.ascontiguousarray(yrep),
+            is_self_mapping=self._is_self_mapping,
         )
         self.knn.compute_neighbors(
             n_neighbors=n_neighbors,
