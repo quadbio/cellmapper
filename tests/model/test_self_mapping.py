@@ -152,47 +152,42 @@ class TestSelfMapping:
         assert "leiden_pred" in cm.query.obs
         assert "leiden_conf" in cm.query.obs
 
-    @pytest.mark.parametrize("self_edges", [True, False])
-    def test_load_distances_with_self_edges(self, adata_spatial, self_edges):
-        """Test loading precomputed distances with and without self-connections."""
+    def test_load_distances_behavior(self, adata_spatial):
+        """Test loading precomputed distances and verifying neighbor behavior."""
 
         # Compute neighbors with scanpy
         sc.pp.neighbors(adata_spatial, n_neighbors=10, use_rep="X_pca")
 
         # Initialize CellMapper in self-mapping mode
-        cm_with_self = CellMapper(adata_spatial)
-        cm_without_self = CellMapper(adata_spatial)
+        cm = CellMapper(adata_spatial)
 
-        # Load precomputed distances with different self_edges settings
-        cm_with_self.load_precomputed_distances(distances_key="distances", self_edges=True)
-        cm_without_self.load_precomputed_distances(distances_key="distances", self_edges=False)
+        # Load precomputed distances
+        cm.load_precomputed_distances(distances_key="distances")
 
-        # Verify that neighbors were loaded with or without self
-        assert cm_with_self.knn is not None
-        assert cm_without_self.knn is not None
+        # Verify that neighbors were loaded
+        assert cm.knn is not None
 
-        # Check that with include_self=True, each cell has itself as a neighbor
-        for i in range(min(10, cm_with_self.knn.xx.n_samples)):  # Check first 10 cells
-            assert i in cm_with_self.knn.xx.indices[i]
+        # With the new behavior, self-edges are removed from stored arrays
+        # but the original n_neighbors from the distance matrix is preserved
+        for i in range(min(10, cm.knn.xx.n_samples)):  # Check first 10 cells
+            assert i not in cm.knn.xx.indices[i], "Self-edges should be removed from stored arrays"
 
-        # Check that with include_self=False, no cell has itself as a neighbor
-        for i in range(min(10, cm_without_self.knn.xx.n_samples)):  # Check first 10 cells
-            assert i not in cm_without_self.knn.xx.indices[i]
+        # Test with self_edges=True in adjacency methods
+        adjacency_with_self = cm.knn.xx.boolean_adjacency(self_edges=True)
+        adjacency_without_self = cm.knn.xx.boolean_adjacency(self_edges=False)
 
-        # Both should work with the rest of the pipeline
-        cm_with_self.compute_mapping_matrix(method="gaussian")
-        cm_without_self.compute_mapping_matrix(method="gaussian")
+        # With self_edges=True, diagonal should be True
+        assert adjacency_with_self.diagonal().all(), "Diagonal should be True with self_edges=True"
 
-        # Compute label transfer for both
-        cm_with_self.map_obs(key="leiden", prediction_postfix="with_self")
-        cm_without_self.map_obs(key="leiden", prediction_postfix="without_self")
+        # With self_edges=False, diagonal should be False
+        assert not adjacency_without_self.diagonal().any(), "Diagonal should be False with self_edges=False"
 
-        # Both should have created prediction columns
-        assert "leiden_with_self" in adata_spatial.obs
-        assert "leiden_without_self" in adata_spatial.obs
+        # Test the mapping pipeline
+        cm.compute_mapping_matrix(method="gaussian")
+        cm.map_obs(key="leiden")
 
-        # The results should be different (excluding self changes the neighborhood)
-        assert not adata_spatial.obs["leiden_with_self"].equals(adata_spatial.obs["leiden_without_self"])
+        assert "leiden_pred" in cm.query.obs
+        assert "leiden_conf" in cm.query.obs
 
     def test_self_mapping_without_rep(self, adata_pbmc3k):
         """Test self-mapping when use_rep=None, testing automatic PCA computation."""

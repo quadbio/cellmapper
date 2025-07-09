@@ -10,7 +10,8 @@ class TestNeighborsResults:
         # Should not raise
         nr = NeighborsResults(distances=sample_distances, indices=sample_indices)
         assert nr.n_samples == 3
-        assert nr.n_neighbors == 2
+        # After initialization, self-edges are removed for square matrices, so n_neighbors = 1
+        assert nr.n_neighbors == 1
         assert nr.shape == (3, 3)
 
     def test_neighborsresults_invalid_shape(self, sample_distances):

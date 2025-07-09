@@ -114,7 +114,8 @@ class TestNeighbors:
 
         # Check the number of neighbors
         assert neighbors.xx.n_samples == n_samples
-        assert neighbors.xx.n_neighbors == n_neighbors
+        # After initialization, self-edges are removed, so n_neighbors = n_neighbors - 1
+        assert neighbors.xx.n_neighbors == n_neighbors - 1
 
         # Verify the connectivities
         connectivities = neighbors.xx.knn_graph_connectivities(self_edges=True)
@@ -160,7 +161,7 @@ class TestNeighbors:
         print(distances)
 
         # Create Neighbors object
-        neighbors = Neighbors.from_distances(distances, self_edges=True)
+        neighbors = Neighbors.from_distances(distances)
 
         # Compute connectivities with different kernels
         connectivities = neighbors.xx.knn_graph_connectivities(kernel=kernel, self_edges=True)

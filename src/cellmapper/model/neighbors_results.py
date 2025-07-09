@@ -23,29 +23,31 @@ class NeighborsResults:
     ---------
     - Multiple connectivity kernels (Gaussian, adaptive Gaussian, inverse distance, etc.)
     - Support for both square (self-mapping) and non-square (cross-mapping) matrices
-    - Configurable self-edge handling for square matrices
+    - Configurable self-edge inclusion for square matrices in connectivity computations
     - Symmetrization options for creating undirected graphs
     - Robust handling of variable neighbor counts and invalid entries
 
-    Self-Edge Handling:
-    ------------------
-    For square matrices, self-edges (diagonal entries) can be controlled via the `self_edges`
-    parameter in connectivity methods:
-    - `self_edges=True`: Include self-edges (diagonal entries set to 1)
-    - `self_edges=False`: Exclude self-edges (diagonal set to zero)
-    - `self_edges=None`: Leave as-is (preserve original neighbor graph structure)
 
     Attributes
     ----------
     distances
-        Array of distances to the nearest neighbors.
+        Array of distances to the nearest neighbors, excluding self-edges.
+        For square matrices, self-edges are automatically removed during initialization
+        to ensure consistent storage format across different k-NN algorithms.
     indices
-        Array of indices of the nearest neighbors. Self should always
-        be included here; however, some approximate algorithms may not return
-        the self edge.
+        Array of indices of the nearest neighbors, excluding self-edges.
+        For square matrices, self-edges are automatically removed during initialization
+        to ensure consistent storage format across different k-NN algorithms.
     n_targets
         Number of target samples. If None, it is assumed to be the same as
         the number of samples in the indices array.
+
+    Notes
+    -----
+    The `n_neighbors` property always refers to non-self neighbors (self-edges are automatically
+    removed during initialization for consistent storage). When self-edges are included via
+    connectivity methods with `self_edges=True`, the resulting arrays will have shape
+    (n_samples, n_neighbors + 1), but the `n_neighbors` property remains unchanged.
     """
 
     distances: np.ndarray
@@ -56,8 +58,8 @@ class NeighborsResults:
         """
         Post-initialization logic for NeighborsResults.
 
-        Ensures that `n_targets` is set correctly and validates the shape of
-        `distances` and `indices`.
+        Ensures that `n_targets` is set correctly, validates array shapes,
+        and removes self-edges from square matrices for consistent storage.
         """
         if self.indices.shape != self.distances.shape:
             raise ValueError("Indices and distances must have the same shape.")
@@ -65,6 +67,10 @@ class NeighborsResults:
         if self.n_targets is None:
             # Assume square adjacency matrix if `n_targets` is not provided
             self.n_targets = self.indices.shape[0]
+
+        # Remove self-edges for consistent storage (square matrices only)
+        if self.is_square:
+            self._remove_self_edges_from_storage()
 
     @property
     def n_samples(self) -> int:
@@ -86,27 +92,20 @@ class NeighborsResults:
         """Whether this represents a square matrix (self-mapping)."""
         return self.n_samples == (self.n_targets or self.n_samples)
 
-    def _get_valid_entries_mask(self) -> np.ndarray:
+    def _create_sparse_matrix_from_arrays(
+        self, values: np.ndarray, indices: np.ndarray, valid_mask: np.ndarray, dtype=np.float64
+    ) -> csr_matrix:
         """
-        Helper method to get a mask of valid entries (neither -1 indices nor infinite distances).
-
-        Returns
-        -------
-        np.ndarray
-            Boolean mask of valid entries with shape (n_samples, n_neighbors).
-        """
-        return (self.indices != -1) & np.isfinite(self.distances)
-
-    def _create_sparse_matrix(self, values: np.ndarray, valid_mask: np.ndarray, dtype=np.float64) -> csr_matrix:
-        """
-        Helper method to create a sparse matrix from values with filtering of invalid entries.
+        Helper method to create a sparse matrix from values and indices with filtering of invalid entries.
 
         Parameters
         ----------
         values
-            Values for the sparse matrix, same shape as self.indices/self.distances.
+            Values for the sparse matrix, same shape as indices.
+        indices
+            Indices array (may include self-edges).
         valid_mask
-            Boolean mask of valid entries, same shape as values.
+            Boolean mask of valid entries, same shape as values and indices.
         dtype
             Data type for the matrix values.
 
@@ -116,7 +115,7 @@ class NeighborsResults:
             Sparse matrix with only valid entries.
         """
         # Flatten all arrays
-        flat_indices = self.indices.ravel()
+        flat_indices = indices.ravel()
         flat_values = values.ravel()
         valid_entries = valid_mask.ravel()
 
@@ -125,7 +124,7 @@ class NeighborsResults:
         valid_values = flat_values[valid_entries]
 
         # Create row indices
-        rows = np.repeat(np.arange(self.n_samples), self.n_neighbors)
+        rows = np.repeat(np.arange(self.n_samples), indices.shape[1])
         rows = rows[valid_entries]
 
         # Create CSR matrix with only valid entries
@@ -146,11 +145,11 @@ class NeighborsResults:
         csr_matrix
             Sparse matrix of distances (shape: n_samples x n_targets).
         """
-        # Get valid entries mask
-        valid_mask = self._get_valid_entries_mask()
+        # Get distances, indices, and valid mask without self-edges by default
+        distances, indices, valid_mask = self._get_distances_and_indices(self_edges=False)
 
         # Create sparse matrix with distances as values
-        return self._create_sparse_matrix(self.distances, valid_mask, dtype=dtype)
+        return self._create_sparse_matrix_from_arrays(distances, indices, valid_mask, dtype=dtype)
 
     def knn_graph_connectivities(
         self,
@@ -158,7 +157,7 @@ class NeighborsResults:
             "gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal", "umap"
         ] = "gaussian",
         symmetrize: bool = False,
-        self_edges: bool | None = False,
+        self_edges: bool = False,
         dtype=np.float64,
         **kwargs,
     ) -> csr_matrix:
@@ -173,10 +172,9 @@ class NeighborsResults:
             If True, create a symmetrize connectivity matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices.
         self_edges
-            Control self-edges (diagonal entries) for square matrices:
-            - True: Include self-edges (set diagonal entries to 1)
-            - False: Exclude self-edges (set diagonal entries to 0)
-            - None: Leave as-is (preserve original neighbor graph structure)
+            Control self-edges in the neighbor graph for square matrices:
+            - True: Include self-edges in the connectivity computation
+            - False: Exclude self-edges from the connectivity computation
         dtype
             Data type for the matrix values.
         **kwargs
@@ -203,26 +201,11 @@ class NeighborsResults:
                 "Consider setting symmetrize=True for consistency with other kernels."
             )
 
-        # Get valid entries mask
-        valid_mask = self._get_valid_entries_mask()
-
-        # Special handling for UMAP kernel which returns sparse matrix directly
+        # Compute connectivities using the specified kernel (all kernels now return sparse matrices)
         if kernel == "umap":
-            # UMAP kernel requires true k-NN graphs (no padding with -1)
-            if np.any(self.indices == -1):
-                raise ValueError("UMAP kernel requires true k-NN graphs (all cells must have exactly k neighbors)")
-            # Compute UMAP fuzzy simplicial set connectivities (returns sparse matrix)
-            conn_matrix = self._compute_umap_kernel(**kwargs)
+            conn_matrix = self._compute_umap_kernel(self_edges, **kwargs)
         else:
-            # Calculate connectivities based on the kernel type
-            connectivities = self._compute_kernel_values(kernel, valid_mask, **kwargs)
-
-            # Create sparse matrix with calculated connectivities
-            conn_matrix = self._create_sparse_matrix(connectivities, valid_mask, dtype=dtype)
-
-        # Handle self-edges if specified and matrix is square
-        if self_edges is not None and self.is_square:
-            conn_matrix = self._set_self_edges(conn_matrix, self_edges)
+            conn_matrix = self._compute_kernel_values(kernel, self_edges, dtype=dtype, **kwargs)
 
         # Apply symmetrization if requested
         if symmetrize:
@@ -233,9 +216,10 @@ class NeighborsResults:
     def _compute_kernel_values(
         self,
         kernel: Literal["gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal"],
-        valid_mask: np.ndarray,
+        self_edges: bool,
+        dtype=np.float64,
         **kwargs,
-    ) -> np.ndarray:
+    ) -> csr_matrix:
         """
         Helper method to compute kernel values based on distances.
 
@@ -243,21 +227,26 @@ class NeighborsResults:
         ----------
         kernel
             Kernel type to use for computing connectivities.
-        valid_mask
-            Boolean mask indicating valid entries.
+        self_edges
+            Whether to include self-edges in the computation.
+        dtype
+            Data type for the matrix values.
         **kwargs
             Additional arguments for kernel computation.
 
         Returns
         -------
-        np.ndarray
-            Array of connectivity values with same shape as distances.
+        csr_matrix
+            Sparse matrix of connectivity values.
         """
+        # Get distances, indices, and valid mask with appropriate self-edge handling
+        distances, indices, valid_mask = self._get_distances_and_indices(self_edges)
+
         # Initialize empty connectivities array
-        connectivities = np.zeros_like(self.distances)
+        connectivities = np.zeros_like(distances)
 
         # Extract finite distances for parameter calculation
-        finite_distances = self.distances[valid_mask]
+        finite_distances = distances[valid_mask]
         if len(finite_distances) == 0:
             raise ValueError("No finite distances found in the neighborhood graph")
 
@@ -269,7 +258,7 @@ class NeighborsResults:
 
         elif kernel == "adaptive_gaussian":
             # Adaptive Gaussian kernel following Haghverdi et al. (2016) / scanpy implementation
-            connectivities = self._compute_adaptive_gaussian_kernel(valid_mask, **kwargs)
+            connectivities = self._compute_adaptive_gaussian_kernel(self_edges, **kwargs)
 
         elif kernel == "equal":
             # Set connectivities to 1 for valid entries
@@ -297,9 +286,10 @@ class NeighborsResults:
                 f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance', 'equal'."
             )
 
-        return connectivities
+        # Create and return sparse matrix
+        return self._create_sparse_matrix_from_arrays(connectivities, indices, valid_mask, dtype=dtype)
 
-    def _compute_umap_kernel(self, **kwargs) -> csr_matrix:
+    def _compute_umap_kernel(self, self_edges: bool, **kwargs) -> csr_matrix:
         """
         Compute UMAP fuzzy simplicial set connectivities following scanpy implementation.
 
@@ -308,19 +298,26 @@ class NeighborsResults:
 
         Parameters
         ----------
-        valid_mask
-            Boolean mask indicating valid entries.
+        self_edges
+            Whether to include self-edges in the computation.
         **kwargs
             Additional parameters for UMAP kernel:
             - set_op_mix_ratio: float, default 1.0
             - local_connectivity: float, default 1.0
-            - remove_last: bool, default False (makes sense when importing distances from scanpy)
+            - remove_last_neighbor: bool, default False (makes sense when importing distances from scanpy)
 
         Returns
         -------
         csr_matrix
             Sparse connectivity matrix.
         """
+        # Get distances, indices, and valid mask with appropriate self-edge handling
+        distances, indices, valid_mask = self._get_distances_and_indices(self_edges)
+
+        # UMAP kernel requires true k-NN graphs (no padding with -1)
+        if np.any(indices == -1):
+            raise ValueError("UMAP kernel requires true k-NN graphs (all cells must have exactly k neighbors)")
+
         # Extract UMAP-specific parameters
         set_op_mix_ratio = kwargs.get("set_op_mix_ratio", 1.0)
         local_connectivity = kwargs.get("local_connectivity", 1.0)
@@ -331,30 +328,19 @@ class NeighborsResults:
 
         if remove_last_neighbor:
             # If remove_last is True, we remove the last neighbor from each sample
-            indices = self.indices.astype(np.int32)[:, :-1]
-            distances = self.distances.astype(np.float32)[:, :-1]
-            n_neighbors = self.n_neighbors - 1
+            indices = indices.astype(np.int32)[:, :-1]
+            distances = distances.astype(np.float32)[:, :-1]
+            n_neighbors = indices.shape[1]
 
-            logger.info(f"Removing the last neighbor and decreasing n_neighbors. New n_neighbors: {n_neighbors}. ")
+            logger.info(f"Removing the last neighbor and decreasing n_neighbors. New n_neighbors: {n_neighbors}.")
         else:
             # Otherwise, use the full indices and distances
-            indices = self.indices.astype(np.int32)
-            distances = self.distances.astype(np.float32)
-            n_neighbors = self.n_neighbors
-
-        print(
-            f"Using UMAP fuzzy_simplicial_set with {self.n_samples:,} observations and {n_neighbors} neighbors."
-            f" Set operation mix ratio: {set_op_mix_ratio}, Local connectivity: {local_connectivity}"
-        )
-
-        print(f"indices shape: {indices.shape}")
-        print(f"distances shape {distances.shape}")
-
-        print(f"indices:\n{indices[:10, :]}")
-        print(f"distances:\n{np.round(distances[:10, :], 3)}")
+            indices = indices.astype(np.int32)
+            distances = distances.astype(np.float32)
+            n_neighbors = indices.shape[1]
 
         # Call UMAP's fuzzy_simplicial_set
-        connectivities_sparse, _sigmas, _rhos = fuzzy_simplicial_set(
+        result = fuzzy_simplicial_set(
             X,
             n_neighbors,
             None,  # random_state
@@ -365,10 +351,13 @@ class NeighborsResults:
             local_connectivity=local_connectivity,
         )
 
+        # Extract the connectivity matrix (first element of tuple)
+        connectivities_sparse = result[0]
+
         # Return as CSR matrix
         return connectivities_sparse.tocsr()
 
-    def _compute_adaptive_gaussian_kernel(self, valid_mask: np.ndarray, **kwargs) -> np.ndarray:
+    def _compute_adaptive_gaussian_kernel(self, self_edges: bool, **kwargs) -> np.ndarray:
         """
         Compute adaptive Gaussian kernel weights following Haghverdi et al. (2016) / scanpy implementation.
 
@@ -378,8 +367,8 @@ class NeighborsResults:
 
         Parameters
         ----------
-        valid_mask
-            Boolean mask indicating valid entries.
+        self_edges
+            Whether to include self-edges in the computation.
         **kwargs
             Additional parameters for the kernel (unused, for API compatibility).
 
@@ -388,8 +377,11 @@ class NeighborsResults:
         np.ndarray
             Array of connectivity values with adaptive Gaussian weighting.
         """
+        # Get distances, indices, and valid mask with appropriate self-edge handling
+        distances, indices, valid_mask = self._get_distances_and_indices(self_edges)
+
         # Compute squared distances
-        distances_sq = self.distances**2
+        distances_sq = distances**2
 
         # Compute sigma using the farthest valid neighbor for each sample (scanpy approach)
         # This is equivalent to scanpy's: sigmas_sq = distances_sq[:, -1] / 4
@@ -403,7 +395,7 @@ class NeighborsResults:
         sigmas = np.sqrt(sigmas_sq)
 
         # Initialize connectivities
-        connectivities = np.zeros_like(self.distances)
+        connectivities = np.zeros_like(distances)
 
         # Compute adaptive weights following scanpy's vectorized approach within each sample
         for i in range(self.n_samples):
@@ -412,7 +404,7 @@ class NeighborsResults:
                 continue
 
             # Get neighbor indices and squared distances
-            neighbor_indices = self.indices[i, sample_mask]
+            neighbor_indices = indices[i, sample_mask]
             sample_distances_sq = distances_sq[i, sample_mask]
 
             # Adaptive kernel computation (scanpy's formula)
@@ -429,9 +421,7 @@ class NeighborsResults:
 
         return connectivities
 
-    def boolean_adjacency(
-        self, dtype=np.float64, self_edges: bool | None = False, symmetrize: bool = False
-    ) -> csr_matrix:
+    def boolean_adjacency(self, dtype=np.float64, self_edges: bool = False, symmetrize: bool = False) -> csr_matrix:
         """
         Construct a boolean adjacency matrix from neighbor indices.
 
@@ -440,10 +430,9 @@ class NeighborsResults:
         dtype
             Data type for the matrix values.
         self_edges
-            Control self-edges (diagonal entries) for square matrices:
-            - True: Include self-edges (set diagonal to 1)
-            - False: Exclude self-edges (set diagonal to 0)
-            - None: Leave as-is (preserve original neighbor graph structure)
+            Control self-edges in the neighbor graph for square matrices:
+            - True: Include self-edges in the adjacency computation
+            - False: Exclude self-edges from the adjacency computation
         symmetrize
             If True, create a symmetrize adjacency matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices.
@@ -457,55 +446,20 @@ class NeighborsResults:
         if symmetrize and not self.is_square:
             raise ValueError("symmetrize adjacency matrices can only be created for square matrices")
 
-        # Get valid entries mask (only check indices, not distances)
-        valid_mask = self.indices != -1
+        # Get distances, indices, and valid mask with appropriate self-edge handling
+        distances, indices, valid_mask = self._get_distances_and_indices(self_edges)
 
         # Create array of ones with same shape as indices
-        ones = np.ones_like(self.indices, dtype=dtype)
+        ones = np.ones_like(indices, dtype=dtype)
 
         # Create sparse matrix with ones as values for valid entries
-        adj_matrix = self._create_sparse_matrix(ones, valid_mask, dtype=dtype)
+        adj_matrix = self._create_sparse_matrix_from_arrays(ones, indices, valid_mask, dtype=dtype)
 
         # Apply symmetrization if requested and matrix is square
         if symmetrize and self.is_square:
             adj_matrix = self._symmetrize_matrix(adj_matrix)
 
-        # Handle self-edges if specified and matrix is square
-        if self_edges is not None and self.is_square:
-            adj_matrix = self._set_self_edges(adj_matrix, self_edges)
-
         return adj_matrix
-
-    def _set_self_edges(self, sparse_matrix: csr_matrix, self_edges: bool) -> csr_matrix:
-        """
-        Set or remove self-edges (diagonal entries) in a sparse connectivity matrix.
-
-        Only applies to square matrices. Non-square matrices are returned unchanged
-        since they don't have a meaningful diagonal.
-
-        Parameters
-        ----------
-        sparse_matrix
-            Input sparse connectivity matrix.
-        self_edges
-            If True, set diagonal entries to 1. If False, set diagonal entries to 0.
-
-        Returns
-        -------
-        csr_matrix
-            Matrix with diagonal entries set according to self_edges parameter.
-            Non-square matrices are returned unchanged.
-        """
-        if not self.is_square:
-            # Non-square matrices don't have a meaningful diagonal
-            return sparse_matrix
-
-        # Set diagonal entries
-        result = sparse_matrix.copy()
-        result.setdiag(1.0 if self_edges else 0.0)
-        if not self_edges:
-            result.eliminate_zeros()  # Remove explicit zeros when excluding self-edges
-        return result
 
     def _symmetrize_matrix(self, sparse_matrix: csr_matrix) -> csr_matrix:
         """
@@ -543,3 +497,74 @@ class NeighborsResults:
 
         # Convert back to CSR format for efficiency
         return matrix_lil.tocsr()
+
+    def _remove_self_edges_from_storage(self):
+        """Remove self-edges from stored distances and indices if present.
+
+        Only applies to square matrices. Checks if the first column contains
+        self-references (0, 1, 2, 3, ...) and removes it if found.
+        """
+        if not self.is_square:
+            return  # Nothing to do for non-square matrices
+
+        # Check if first column contains self-references (0, 1, 2, 3, ...)
+        expected_self_indices = np.arange(self.n_samples)
+        has_self_edges = np.array_equal(self.indices[:, 0], expected_self_indices)
+
+        if has_self_edges:
+            # Remove first column (self-edges) and keep remaining columns
+            self.indices = self.indices[:, 1:]
+            self.distances = self.distances[:, 1:]
+
+    def _get_distances_and_indices(self, self_edges: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Get distances and indices with optional self-edge handling, plus valid entries mask.
+
+        Parameters
+        ----------
+        self_edges
+            Control self-edge inclusion:
+            - True: Add self-edges as first column with distance 0.0
+            - False: Return stored arrays (without self-edges)
+
+        Returns
+        -------
+        tuple
+            Modified distances, indices, and valid_mask arrays based on self_edges parameter.
+            When self_edges=True, arrays will have shape (n_samples, n_neighbors + 1).
+            Valid mask identifies entries that are neither -1 indices nor infinite distances.
+        """
+        if self.is_square and self_edges:
+            distances, indices = self._add_self_edges(self.distances, self.indices)
+        else:
+            distances, indices = self.distances, self.indices
+
+        # Create valid entries mask
+        valid_mask = (indices != -1) & np.isfinite(distances)
+
+        return distances, indices, valid_mask
+
+    def _add_self_edges(self, distances: np.ndarray, indices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Add self-edges as first column with distance 0.0.
+
+        Parameters
+        ----------
+        distances
+            Distance array without self-edges
+        indices
+            Indices array without self-edges
+
+        Returns
+        -------
+        tuple
+            Arrays with self-edges prepended as first column.
+            Shape increases from (n_samples, n_neighbors) to (n_samples, n_neighbors + 1).
+        """
+        # Create self-edge columns
+        self_indices = np.arange(self.n_samples, dtype=indices.dtype).reshape(-1, 1)
+        self_distances = np.zeros((self.n_samples, 1), dtype=distances.dtype)
+
+        # Prepend self-edges to existing arrays (no truncation)
+        new_indices = np.column_stack([self_indices, indices])
+        new_distances = np.column_stack([self_distances, distances])
+
+        return new_distances, new_indices
