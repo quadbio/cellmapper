@@ -154,7 +154,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         n_comps: int | None = None,
         method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
         metric: str = "euclidean",
+        random_state: int = 0,
         only_yx: bool = False,
+        neighbors_kwargs: dict[str, Any] | None = None,
         fallback_representation: Literal["fast_cca", "joint_pca"] = "fast_cca",
         fallback_kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -187,9 +189,13 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             distances to self are very small positive numbers, for rapids and sklearn, they are exactly 0.
         metric
             Distance metric to use for nearest neighbors.
+        random_state
+            Random seed for reproducibility. Only used by "pynndescent" method.
         only_yx
             If True, only compute the xy neighbors. This is faster, but not suitable for
-            Jaccard or HNOCA methods.
+            Jaccard or HNOCA methods in cross-mapping mode.
+        neighbors_kwargs
+            Additional keyword arguments to pass to the neighbors computation method.
         fallback_representation
             Method to use for computing a cross-dataset representation when `use_rep=None`. Options:
 
@@ -261,7 +267,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.knn = Neighbors(
             np.ascontiguousarray(xrep), np.ascontiguousarray(yrep), is_self_mapping=self._is_self_mapping
         )
-        self.knn.compute_neighbors(n_neighbors=n_neighbors, method=method, metric=metric, only_yx=self.only_yx)
+        self.knn.compute_neighbors(
+            n_neighbors=n_neighbors,
+            method=method,
+            metric=metric,
+            only_yx=self.only_yx,
+            random_state=random_state,
+            **(neighbors_kwargs or {}),
+        )
 
     def compute_mapping_matrix(
         self,

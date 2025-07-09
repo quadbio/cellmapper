@@ -796,6 +796,10 @@ class Neighbors:
                 if "n_iters" not in xnn_kwargs:
                     xnn_kwargs["n_iters"] = max(5, round(np.log2(self.xrep.shape[0])))
 
+                print(
+                    f"Using pynndescent with kwargs {xnn_kwargs} for {self.xrep.shape[0]:,} samples and {n_neighbors} neighbors."
+                )
+
                 xnn = NNDescent(self.xrep, metric=metric, random_state=random_state, **xnn_kwargs)
 
                 if only_yx:
