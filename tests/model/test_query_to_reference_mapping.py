@@ -33,9 +33,7 @@ class TestQueryToReferenceMapping:
         cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
         assert_metrics_close(cmap.expression_transfer_metrics, expected_expression_transfer_metrics)
 
-    @pytest.mark.parametrize(
-        "method", ["gaussian", "scarches", "random", "inverse_distance", "jaccard", "hnoca", "equal"]
-    )
+    @pytest.mark.parametrize("method", ["gauss", "scarches", "random", "inverse_distance", "jaccard", "hnoca", "equal"])
     def test_compute_mapping_matrix_all_methods(self, cmap, method):
         cmap.compute_mapping_matrix(method=method)
         assert cmap.mapping_matrix is not None
@@ -83,6 +81,9 @@ class TestQueryToReferenceMapping:
             use_rep="X_pca",
             n_neighbors=1,
             prediction_postfix="transfer",
+            # For n_neighbors=1 identity mapping, we need self-edges and no symmetrization
+            symmetrize=False,
+            self_edges=True,
         )
         assert "leiden_transfer" in reference.obs
         assert len(reference.obs["leiden_transfer"]) == len(reference.obs["leiden"])
@@ -268,7 +269,7 @@ class TestQueryToReferenceMapping:
         # Create CellMapper and compute mapping matrix
         cmap = CellMapper(query=query, reference=reference)
         cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-        cmap.compute_mapping_matrix(method="gaussian")
+        cmap.compute_mapping_matrix(method="gauss")
 
         # Test float and integer data
         for key in ["numerical_score", "integer_score"]:
@@ -283,7 +284,7 @@ class TestQueryToReferenceMapping:
         # Create CellMapper and compute mapping matrix
         cmap = CellMapper(query=query, reference=reference)
         cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-        cmap.compute_mapping_matrix(method="gaussian")
+        cmap.compute_mapping_matrix(method="gauss")
 
         # Map pseudotime
         cmap.map_obs(key="dpt_pseudotime")

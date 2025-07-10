@@ -3,7 +3,7 @@ import pytest
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
-from cellmapper.model.knn import Neighbors
+from cellmapper.model.neighbors import Neighbors
 
 
 def assert_adjacency_equal(neigh1, neigh2, attrs=("xx", "yy", "xy", "yx")):
@@ -114,10 +114,11 @@ class TestNeighbors:
 
         # Check the number of neighbors
         assert neighbors.xx.n_samples == n_samples
-        assert neighbors.xx.n_neighbors == n_neighbors
+        # After initialization, self-edges are removed, so n_neighbors = n_neighbors - 1
+        assert neighbors.xx.n_neighbors == n_neighbors - 1
 
         # Verify the connectivities
-        connectivities = neighbors.xx.knn_graph_connectivities()
+        connectivities = neighbors.xx.knn_graph_connectivities(self_edges=True)
         assert connectivities.shape == (n_samples, n_samples)
         assert np.count_nonzero(connectivities.toarray()[0]) == n_neighbors
 
@@ -145,7 +146,7 @@ class TestNeighbors:
         assert knn_graph.shape == original_conn.shape
         assert np.isclose(knn_graph.sum(), original_conn.sum(), rtol=0.1)
 
-    @pytest.mark.parametrize("kernel", ["gaussian", "scarches", "inverse_distance"])
+    @pytest.mark.parametrize("kernel", ["gauss", "scarches", "inverse_distance"])
     def test_from_distances_different_kernels(self, kernel):
         """Test different kernels with distances from Neighbors.from_distances."""
         n_samples = 10
@@ -160,10 +161,10 @@ class TestNeighbors:
         print(distances)
 
         # Create Neighbors object
-        neighbors = Neighbors.from_distances(distances, include_self=True)
+        neighbors = Neighbors.from_distances(distances)
 
         # Compute connectivities with different kernels
-        connectivities = neighbors.xx.knn_graph_connectivities(kernel=kernel)
+        connectivities = neighbors.xx.knn_graph_connectivities(kernel=kernel, self_edges=True)
 
         # Basic checks
         assert connectivities.shape == (n_samples, n_samples)

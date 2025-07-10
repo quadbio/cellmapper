@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
 
-from cellmapper.model.knn import NeighborsResults
+from cellmapper.model.neighbors_results import NeighborsResults
 
 
 class TestNeighborsResults:
@@ -10,7 +10,8 @@ class TestNeighborsResults:
         # Should not raise
         nr = NeighborsResults(distances=sample_distances, indices=sample_indices)
         assert nr.n_samples == 3
-        assert nr.n_neighbors == 2
+        # After initialization, self-edges are removed for square matrices, so n_neighbors = 1
+        assert nr.n_neighbors == 1
         assert nr.shape == (3, 3)
 
     def test_neighborsresults_invalid_shape(self, sample_distances):
@@ -27,7 +28,7 @@ class TestNeighborsResults:
         # Check that diagonal is zero (self-distance)
         assert np.allclose(mat.diagonal(), 0)
 
-    @pytest.mark.parametrize("kernel", ["gaussian", "scarches", "random", "inverse_distance"])
+    @pytest.mark.parametrize("kernel", ["gauss", "scarches", "random", "inverse_distance"])
     def test_knn_graph_connectivities_kernels(self, sample_distances, sample_indices, kernel):
         nr = NeighborsResults(distances=sample_distances, indices=sample_indices)
         mat = nr.knn_graph_connectivities(kernel=kernel)
