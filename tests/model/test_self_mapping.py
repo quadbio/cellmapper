@@ -9,24 +9,34 @@ from cellmapper.model.cellmapper import CellMapper
 class TestUMAPConnectivityValidation:
     """Test UMAP connectivity compatibility between scanpy and CellMapper implementations."""
 
-    def test_scanpy_umap_connectivity_reproduction(self, adata_pbmc3k):
+    @pytest.mark.parametrize(
+        "transformer,remove_last_neighbor",
+        [
+            ("sklearn", False),
+            ("pynndescent", True),
+        ],
+    )
+    def test_scanpy_umap_connectivity_reproduction(self, adata_pbmc3k, transformer, remove_last_neighbor):
         """
-        Test that CellMapper can exactly reproduce scanpy's UMAP connectivities when using sklearn.
+        Test that CellMapper can exactly reproduce scanpy's UMAP connectivities.
 
         This test validates the first part of the connectivity test tutorial:
         1. Compute k-NN graph in scanpy with UMAP method
         2. Import distances into CellMapper
         3. Validate that distances match (accounting for self-edge differences)
         4. Validate that applying UMAP kernel gives equivalent results
-        """
-        # Use sklearn transformer for deterministic results
-        transformer = "pynndescent"
-        n_neighbors = 8
 
+        Parameters
+        ----------
+        transformer
+            The transformer to use ('sklearn' or 'pynndescent')
+        remove_last_neighbor
+            Whether to remove the last neighbor when loading distances
+        """
         # Step 1: Compute neighbors with scanpy using UMAP method
         nbhs = Neighbors(adata_pbmc3k)
         nbhs.compute_neighbors(
-            n_neighbors=n_neighbors,
+            n_neighbors=8,
             use_rep="X_pca",
             n_pcs=50,
             knn=True,
@@ -43,7 +53,7 @@ class TestUMAPConnectivityValidation:
 
         # Step 2: Initialize CellMapper and load precomputed distances
         cmap = CellMapper(adata_pbmc3k)
-        cmap.load_precomputed_distances(remove_last_neighbor=True)
+        cmap.load_precomputed_distances(remove_last_neighbor=remove_last_neighbor)
 
         # Step 3: Validate distances match (CellMapper removes self-edges)
         # Scanpy stores distances with self-edges (first column), CellMapper doesn't
