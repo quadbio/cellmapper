@@ -286,7 +286,6 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         method: Literal[
             "jaccard",
             "gauss",
-            "adaptive_gauss",
             "scarches",
             "inverse_distance",
             "random",
@@ -308,7 +307,6 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
             - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
             - "gauss": Gaussian kernel with (global) bandwith equal to the mean distance.
-            - "adaptive_gauss": Adaptive Gaussian kernel following Haghverdi et al. (2016) / scanpy implementation.
             - "scarches": scArches kernel. Inspired by scArches :cite:`lotfollahi2022mapping`
             - "inverse_distance": Inverse distance kernel.
             - "random": Random kernel, useful for testing.
@@ -379,14 +377,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 jaccard.data = jaccard.data**2
 
             self.mapping_matrix = jaccard
-        elif method in ["gauss", "adaptive_gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
+        elif method in ["gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
             # Validate self-mapping-only kernels
             if method in PackageConstants.SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
                 raise ValueError(f"Method '{method}' is only supported for self-mapping mode. ")
 
             # Type cast to satisfy the type checker since we've filtered to only valid kernel methods
             kernel_method = cast(
-                Literal["gauss", "adaptive_gauss", "scarches", "inverse_distance", "random", "equal", "umap"],
+                Literal["gauss", "scarches", "inverse_distance", "random", "equal", "umap"],
                 method,
             )
             # Type assertion for mypy - neighbors validation ensures yx is not None
@@ -528,7 +526,6 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         mapping_method: Literal[
             "jaccard",
             "gauss",
-            "adaptive_gauss",
             "scarches",
             "inverse_distance",
             "random",
