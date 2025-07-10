@@ -28,7 +28,7 @@ class TestNeighborsResults:
         # Check that diagonal is zero (self-distance)
         assert np.allclose(mat.diagonal(), 0)
 
-    @pytest.mark.parametrize("kernel", ["gaussian", "scarches", "random", "inverse_distance"])
+    @pytest.mark.parametrize("kernel", ["gauss", "scarches", "random", "inverse_distance"])
     def test_knn_graph_connectivities_kernels(self, sample_distances, sample_indices, kernel):
         nr = NeighborsResults(distances=sample_distances, indices=sample_indices)
         mat = nr.knn_graph_connectivities(kernel=kernel)

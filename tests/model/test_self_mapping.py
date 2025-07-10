@@ -47,7 +47,7 @@ class TestSelfMapping:
 
         # Test with typical parameters
         cm.compute_neighbors(n_neighbors=5, use_rep="X_pca")
-        cm.compute_mapping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gauss")
 
         # Test label transfer
         cm.map_obs(key="leiden")
@@ -87,7 +87,7 @@ class TestSelfMapping:
         assert cm.knn.xx.n_neighbors + 1 == n_neighbors
 
         # Test the full pipeline with precomputed distances
-        cm.compute_mapping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gauss")
         cm.map_obs(key="leiden")
 
         assert "leiden_pred" in cm.query.obs
@@ -146,7 +146,7 @@ class TestSelfMapping:
             ).all()
 
         # Test the mapping pipeline
-        cm.compute_mapping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gauss")
         cm.map_obs(key="leiden")
 
         assert "leiden_pred" in cm.query.obs
@@ -183,7 +183,7 @@ class TestSelfMapping:
         assert not adjacency_without_self.diagonal().any(), "Diagonal should be False with self_edges=False"
 
         # Test the mapping pipeline
-        cm.compute_mapping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gauss")
         cm.map_obs(key="leiden")
 
         assert "leiden_pred" in cm.query.obs
@@ -196,7 +196,7 @@ class TestSelfMapping:
 
         # Test with no representation provided
         cm.compute_neighbors(n_neighbors=5, use_rep=None, n_comps=10)
-        cm.compute_mapping_matrix(method="gaussian")
+        cm.compute_mapping_matrix(method="gauss")
 
         # Verify joint PCA was computed
         assert "X_pca" in adata_pbmc3k.obsm
@@ -229,7 +229,7 @@ class TestScanpyCompatibility:
 
         scanpy_connectivities = adata_scanpy.obsp["connectivities"]
         cm_connectivities = cm.knn.yx.knn_graph_connectivities(
-            kernel="adaptive_gaussian", symmetrize=True, self_edges=False
+            kernel="adaptive_gauss", symmetrize=True, self_edges=False
         )
 
         # Check that both matrices have similar sparsity patterns
@@ -260,7 +260,7 @@ class TestScanpyCompatibility:
         assert cm.knn is not None
         assert cm.knn.yx is not None
         cm_connectivities = cm.knn.yx.knn_graph_connectivities(
-            kernel="adaptive_gaussian", symmetrize=True, self_edges=False
+            kernel="adaptive_gauss", symmetrize=True, self_edges=False
         )
 
         # Test connectivity matrix properties

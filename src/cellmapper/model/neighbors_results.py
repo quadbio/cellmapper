@@ -153,9 +153,7 @@ class NeighborsResults:
 
     def knn_graph_connectivities(
         self,
-        kernel: Literal[
-            "gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal", "umap"
-        ] = "gaussian",
+        kernel: Literal["gauss", "adaptive_gauss", "scarches", "random", "inverse_distance", "equal", "umap"] = "gauss",
         symmetrize: bool = False,
         self_edges: bool = False,
         dtype=np.float64,
@@ -167,7 +165,7 @@ class NeighborsResults:
         Parameters
         ----------
         kernel
-            Connectivity kernel to use. Supported: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance', 'equal', 'umap'.
+            Connectivity kernel to use. Supported: 'gauss', 'adaptive_gauss', 'scarches', 'random', 'inverse_distance', 'equal', 'umap'.
         symmetrize
             If True, create a symmetrize connectivity matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices.
@@ -215,7 +213,7 @@ class NeighborsResults:
 
     def _compute_kernel_values(
         self,
-        kernel: Literal["gaussian", "adaptive_gaussian", "scarches", "random", "inverse_distance", "equal"],
+        kernel: Literal["gauss", "adaptive_gauss", "scarches", "random", "inverse_distance", "equal"],
         self_edges: bool,
         dtype=np.float64,
         **kwargs,
@@ -250,15 +248,15 @@ class NeighborsResults:
         if len(finite_distances) == 0:
             raise ValueError("No finite distances found in the neighborhood graph")
 
-        if kernel == "gaussian":
+        if kernel == "gauss":
             # Calculate sigma using only finite distances
             sigma = np.mean(finite_distances)
             # Apply Gaussian kernel to valid entries
             connectivities[valid_mask] = np.exp(-(finite_distances**2) / (2 * sigma**2))
 
-        elif kernel == "adaptive_gaussian":
+        elif kernel == "adaptive_gauss":
             # Adaptive Gaussian kernel following Haghverdi et al. (2016) / scanpy implementation
-            connectivities = self._compute_adaptive_gaussian_kernel(self_edges, **kwargs)
+            connectivities = self._compute_adaptive_gauss_kernel(self_edges, **kwargs)
 
         elif kernel == "equal":
             # Set connectivities to 1 for valid entries
@@ -283,7 +281,7 @@ class NeighborsResults:
 
         else:
             raise ValueError(
-                f"Unknown kernel: {kernel}. Supported kernels are: 'gaussian', 'adaptive_gaussian', 'scarches', 'random', 'inverse_distance', 'equal'."
+                f"Unknown kernel: {kernel}. Supported kernels are: 'gauss', 'adaptive_gauss', 'scarches', 'random', 'inverse_distance', 'equal'."
             )
 
         # Create and return sparse matrix
@@ -342,7 +340,7 @@ class NeighborsResults:
         # Return as CSR matrix
         return connectivities_sparse.tocsr()
 
-    def _compute_adaptive_gaussian_kernel(self, self_edges: bool, **kwargs) -> np.ndarray:
+    def _compute_adaptive_gauss_kernel(self, self_edges: bool, **kwargs) -> np.ndarray:
         """
         Compute adaptive Gaussian kernel weights following Haghverdi et al. (2016) / scanpy implementation.
 

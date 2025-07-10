@@ -146,7 +146,7 @@ class TestNeighbors:
         assert knn_graph.shape == original_conn.shape
         assert np.isclose(knn_graph.sum(), original_conn.sum(), rtol=0.1)
 
-    @pytest.mark.parametrize("kernel", ["gaussian", "scarches", "inverse_distance"])
+    @pytest.mark.parametrize("kernel", ["gauss", "scarches", "inverse_distance"])
     def test_from_distances_different_kernels(self, kernel):
         """Test different kernels with distances from Neighbors.from_distances."""
         n_samples = 10

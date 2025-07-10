@@ -282,15 +282,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self,
         method: Literal[
             "jaccard",
-            "gaussian",
-            "adaptive_gaussian",
+            "gauss",
+            "adaptive_gauss",
             "scarches",
             "inverse_distance",
             "random",
             "hnoca",
             "equal",
             "umap",
-        ] = "gaussian",
+        ] = "gauss",
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
     ) -> None:
@@ -303,8 +303,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Method to use for computing the mapping matrix. Options include:
 
             - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
-            - "gaussian": Gaussian kernel with (global) bandwith equal to the mean distance.
-            - "adaptive_gaussian": Adaptive Gaussian kernel following Haghverdi et al. (2016) / scanpy implementation.
+            - "gauss": Gaussian kernel with (global) bandwith equal to the mean distance.
+            - "adaptive_gauss": Adaptive Gaussian kernel following Haghverdi et al. (2016) / scanpy implementation.
             - "scarches": scArches kernel. Inspired by scArches :cite:`lotfollahi2022mapping`
             - "inverse_distance": Inverse distance kernel.
             - "random": Random kernel, useful for testing.
@@ -378,14 +378,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 jaccard.data = jaccard.data**2
 
             self.mapping_matrix = jaccard
-        elif method in ["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal", "umap"]:
+        elif method in ["gauss", "adaptive_gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
             # Validate self-mapping-only kernels
             if method == "umap" and not self._is_self_mapping:
                 raise ValueError("UMAP kernel is only supported for self-mapping mode.")
 
             # Type cast to satisfy the type checker since we've filtered to only valid kernel methods
             kernel_method = cast(
-                Literal["gaussian", "adaptive_gaussian", "scarches", "inverse_distance", "random", "equal", "umap"],
+                Literal["gauss", "adaptive_gauss", "scarches", "inverse_distance", "random", "equal", "umap"],
                 method,
             )
             # Type assertion for mypy - neighbors validation ensures yx is not None
@@ -526,15 +526,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         only_yx: bool = False,
         mapping_method: Literal[
             "jaccard",
-            "gaussian",
-            "adaptive_gaussian",
+            "gauss",
+            "adaptive_gauss",
             "scarches",
             "inverse_distance",
             "random",
             "hnoca",
             "equal",
             "umap",
-        ] = "gaussian",
+        ] = "gauss",
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
         prediction_postfix: str = "pred",
