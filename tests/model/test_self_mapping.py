@@ -16,7 +16,7 @@ class TestUMAPConnectivityValidation:
             ("pynndescent", True),
         ],
     )
-    def test_scanpy_umap_connectivity_reproduction(self, adata_pbmc3k, transformer, remove_last_neighbor):
+    def test_connectivities_from_distances(self, adata_pbmc3k, transformer, remove_last_neighbor):
         """
         Test that CellMapper can exactly reproduce scanpy's UMAP connectivities.
 
