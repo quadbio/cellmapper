@@ -45,7 +45,7 @@ class Neighbors:
             self._is_self_mapping = yrep is None
 
     @classmethod
-    def from_distances(cls, distances_matrix: csr_matrix) -> "Neighbors":
+    def from_distances(cls, distances_matrix: csr_matrix, remove_last_neighbor: bool = False) -> "Neighbors":
         """
         Create a Neighbors object from a pre-computed distances matrix.
 
@@ -53,6 +53,10 @@ class Neighbors:
         ----------
         distances_matrix
             Sparse distance matrix, typically from adata.obsp['distances']
+        remove_last_neighbor
+            If True, removes the last neighbor from the distances matrix.
+            This is useful for direct comparisons with scanpy, which uses a
+            different convention for neighbor counts.
 
         Returns
         -------
@@ -62,6 +66,13 @@ class Neighbors:
         """
         # Extract indices and distances from the sparse matrix
         indices, distances = extract_neighbors_from_distances(distances_matrix)
+
+        if remove_last_neighbor:
+            # Remove the last neighbor (last column) from indices and distances
+            indices = indices[:, :-1]
+            distances = distances[:, :-1]
+
+            logger.info("Removed last neighbor from distances matrix for compatibility with scanpy conventions.")
 
         # Create a minimal Neighbors object for self-mapping
         n_cells = distances_matrix.shape[0]

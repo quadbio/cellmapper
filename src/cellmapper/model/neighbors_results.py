@@ -304,7 +304,6 @@ class NeighborsResults:
             Additional parameters for UMAP kernel:
             - set_op_mix_ratio: float, default 1.0
             - local_connectivity: float, default 1.0
-            - remove_last_neighbor: bool, default False (makes sense when importing distances from scanpy)
 
         Returns
         -------
@@ -312,7 +311,7 @@ class NeighborsResults:
             Sparse connectivity matrix.
         """
         # Get distances, indices, and valid mask with appropriate self-edge handling
-        distances, indices, valid_mask = self._get_distances_and_indices(self_edges)
+        distances, indices, _valid_mask = self._get_distances_and_indices(self_edges)
 
         # UMAP kernel requires true k-NN graphs (no padding with -1)
         if np.any(indices == -1):
@@ -321,28 +320,14 @@ class NeighborsResults:
         # Extract UMAP-specific parameters
         set_op_mix_ratio = kwargs.get("set_op_mix_ratio", 1.0)
         local_connectivity = kwargs.get("local_connectivity", 1.0)
-        remove_last_neighbor = kwargs.get("remove_last_neighbor", False)
 
         # Create dummy data matrix (scanpy approach)
         X = coo_matrix((self.n_samples, 1))
 
-        if remove_last_neighbor:
-            # If remove_last is True, we remove the last neighbor from each sample
-            indices = indices.astype(np.int32)[:, :-1]
-            distances = distances.astype(np.float32)[:, :-1]
-            n_neighbors = indices.shape[1]
-
-            logger.info(f"Removing the last neighbor and decreasing n_neighbors. New n_neighbors: {n_neighbors}.")
-        else:
-            # Otherwise, use the full indices and distances
-            indices = indices.astype(np.int32)
-            distances = distances.astype(np.float32)
-            n_neighbors = indices.shape[1]
-
         # Call UMAP's fuzzy_simplicial_set
         result = fuzzy_simplicial_set(
             X,
-            n_neighbors,
+            indices.shape[1],
             None,  # random_state
             None,  # metric
             knn_indices=indices,
@@ -447,7 +432,7 @@ class NeighborsResults:
             raise ValueError("symmetrize adjacency matrices can only be created for square matrices")
 
         # Get distances, indices, and valid mask with appropriate self-edge handling
-        distances, indices, valid_mask = self._get_distances_and_indices(self_edges)
+        _distances, indices, valid_mask = self._get_distances_and_indices(self_edges)
 
         # Create array of ones with same shape as indices
         ones = np.ones_like(indices, dtype=dtype)

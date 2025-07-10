@@ -599,7 +599,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         return self
 
-    def load_precomputed_distances(self, distances_key: str = "distances") -> None:
+    def load_precomputed_distances(self, distances_key: str = "distances", remove_last_neighbor: bool = False) -> None:
         """
         Load precomputed distances from the AnnData object.
 
@@ -609,6 +609,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         ----------
         distances_key
             Key in adata.obsp where the precomputed distances are stored.
+        remove_last_neighbor
+            If True, removes the last neighbor from the distances matrix.
+            This is useful for direct comparisons with scanpy.
 
         Returns
         -------
@@ -642,7 +645,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             distances_matrix = csr_matrix(distances_matrix)
 
         # Create a neighbors object using the factory method
-        self.knn = Neighbors.from_distances(distances_matrix)
+        self.knn = Neighbors.from_distances(distances_matrix, remove_last_neighbor)
 
         # Type assertion for mypy - from_distances creates a valid neighbors object with xx
         assert self.knn.xx is not None
