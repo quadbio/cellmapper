@@ -1,11 +1,10 @@
 from typing import Literal
 
 import numpy as np
-import sklearn.neighbors
 from scipy.sparse import csr_matrix
 
-from cellmapper.check import check_deps
 from cellmapper.logging import logger
+from cellmapper.model._knn_backend import get_backend
 from cellmapper.model.neighbors_results import NeighborsResults
 from cellmapper.utils import extract_neighbors_from_distances
 
@@ -64,6 +63,7 @@ class Neighbors:
             A new Neighbors object with pre-computed neighbor information.
             Self-edge handling is performed automatically by NeighborsResults during initialization.
         """
+        assert distances_matrix is not None, "distances_matrix must be provided"
         # Extract indices and distances from the sparse matrix
         indices, distances = extract_neighbors_from_distances(distances_matrix)
 
@@ -75,7 +75,7 @@ class Neighbors:
             logger.info("Removed last neighbor from distances matrix for compatibility with scanpy conventions.")
 
         # Create a minimal Neighbors object for self-mapping
-        n_cells = distances_matrix.shape[0]
+        n_cells = distances_matrix.shape[0]  # type: ignore
         placeholder_rep = np.zeros((n_cells, 1))
         neighbors = cls(xrep=placeholder_rep)
 
@@ -163,144 +163,32 @@ class Neighbors:
                 "(all neighbor matrices will contain the same information)."
             )
 
-        if method in ["rapids", "sklearn", "pynndescent", "faiss"]:
-            logger.info("Using %s to compute %d neighbors.", method, n_neighbors)
+        # use strategy pattern to reduce duplication
+        logger.info("Using %s to compute %d neighbors.", method, n_neighbors)
+        backend_x = get_backend(method, n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)
+        backend_x.fit(self.xrep)
 
-            if method == "rapids":
-                check_deps("cuml")
-                import cuml as cm
+        if only_yx:
+            dists, idx = backend_x.query(self.yrep, k=n_neighbors)
+            self.yx = NeighborsResults(distances=dists, indices=idx, n_targets=self.xrep.shape[0])
+            if self._is_self_mapping:
+                self.xx = self.yx
+                self.yy = self.yx
+                self.xy = self.yx
+            return
 
-                check_deps("cupy")
-                import cupy as cp
+        backend_y = get_backend(method, n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)
+        backend_y.fit(self.yrep)
 
-                xrep_gpu = cp.asarray(self.xrep)
-                yrep_gpu = cp.asarray(self.yrep)
+        x_d, x_i = backend_x.query(self.xrep, k=n_neighbors)
+        y_d, y_i = backend_y.query(self.yrep, k=n_neighbors)
+        xy_d, xy_i = backend_y.query(self.xrep, k=n_neighbors)
+        yx_d, yx_i = backend_x.query(self.yrep, k=n_neighbors)
 
-                xnn = cm.neighbors.NearestNeighbors(
-                    n_neighbors=n_neighbors, output_type="numpy", metric=metric, **kwargs
-                ).fit(xrep_gpu)
-
-                if only_yx:
-                    self.yx = NeighborsResults(*xnn.kneighbors(yrep_gpu), n_targets=self.xrep.shape[0])
-                    if self._is_self_mapping:
-                        self.xx = self.yx
-                        self.yy = self.yx
-                        self.xy = self.yx
-                    return
-
-                ynn = cm.neighbors.NearestNeighbors(
-                    n_neighbors=n_neighbors, output_type="numpy", metric=metric, **kwargs
-                ).fit(yrep_gpu)
-
-                x_results = xnn.kneighbors(xrep_gpu)
-                y_results = ynn.kneighbors(yrep_gpu)
-                xy_results = ynn.kneighbors(xrep_gpu)
-                yx_results = xnn.kneighbors(yrep_gpu)
-
-            elif method == "faiss":
-                check_deps("faiss")
-                import faiss
-
-                # Note: faiss implementation is basic and kwargs support is limited
-                # For more advanced faiss features, consider using the faiss API directly
-                if kwargs:
-                    logger.warning(
-                        "FAISS method has limited kwargs support. Additional kwargs will be ignored: %s",
-                        list(kwargs.keys()),
-                    )
-
-                res = faiss.StandardGpuResources()
-                xnn = faiss.IndexFlatL2(self.xrep.shape[1])
-                xnn_gpu = faiss.index_cpu_to_gpu(res, 0, xnn)
-                xnn_gpu.add(self.xrep)
-
-                if only_yx:
-                    self.yx = NeighborsResults(*xnn_gpu.search(self.yrep, n_neighbors), n_targets=self.xrep.shape[0])
-                    if self._is_self_mapping:
-                        self.xx = self.yx
-                        self.yy = self.yx
-                        self.xy = self.yx
-                    return
-
-                ynn = faiss.IndexFlatL2(self.yrep.shape[1])
-                ynn_gpu = faiss.index_cpu_to_gpu(res, 0, ynn)
-                ynn_gpu.add(self.yrep)
-
-                x_results = xnn_gpu.search(self.xrep, n_neighbors)
-                y_results = ynn_gpu.search(self.yrep, n_neighbors)
-                xy_results = ynn_gpu.search(self.xrep, n_neighbors)
-                yx_results = xnn_gpu.search(self.yrep, n_neighbors)
-
-            elif method == "sklearn":
-                xnn = sklearn.neighbors.NearestNeighbors(n_neighbors=n_neighbors, metric=metric, **kwargs).fit(
-                    self.xrep
-                )
-
-                if only_yx:
-                    self.yx = NeighborsResults(*xnn.kneighbors(self.yrep), n_targets=self.xrep.shape[0])
-                    if self._is_self_mapping:
-                        self.xx = self.yx
-                        self.yy = self.yx
-                        self.xy = self.yx
-                    return
-
-                ynn = sklearn.neighbors.NearestNeighbors(n_neighbors=n_neighbors, metric=metric, **kwargs).fit(
-                    self.yrep
-                )
-
-                x_results = xnn.kneighbors(self.xrep)
-                y_results = ynn.kneighbors(self.yrep)
-                xy_results = ynn.kneighbors(self.xrep)
-                yx_results = xnn.kneighbors(self.yrep)
-
-            elif method == "pynndescent":
-                check_deps("pynndescent")
-                from pynndescent import NNDescent
-
-                # Prepare kwargs with scanpy-style defaults for xrep
-                xnn_kwargs = kwargs.copy()
-                if "n_jobs" not in xnn_kwargs:
-                    xnn_kwargs["n_jobs"] = -1
-                if "n_trees" not in xnn_kwargs:
-                    xnn_kwargs["n_trees"] = min(64, 5 + round((self.xrep.shape[0]) ** 0.5 / 20.0))
-                if "n_iters" not in xnn_kwargs:
-                    xnn_kwargs["n_iters"] = max(5, round(np.log2(self.xrep.shape[0])))
-
-                xnn = NNDescent(self.xrep, metric=metric, random_state=random_state, **xnn_kwargs)
-
-                if only_yx:
-                    self.yx = NeighborsResults(*xnn.query(self.yrep, k=n_neighbors)[::-1], n_targets=self.xrep.shape[0])
-                    if self._is_self_mapping:
-                        self.xx = self.yx
-                        self.yy = self.yx
-                        self.xy = self.yx
-                    return
-
-                # Prepare kwargs with scanpy-style defaults for yrep
-                ynn_kwargs = kwargs.copy()
-                if "n_jobs" not in ynn_kwargs:
-                    ynn_kwargs["n_jobs"] = -1
-                if "n_trees" not in ynn_kwargs:
-                    ynn_kwargs["n_trees"] = min(64, 5 + round((self.yrep.shape[0]) ** 0.5 / 20.0))
-                if "n_iters" not in ynn_kwargs:
-                    ynn_kwargs["n_iters"] = max(5, round(np.log2(self.yrep.shape[0])))
-
-                ynn = NNDescent(self.yrep, metric=metric, random_state=random_state, **ynn_kwargs)
-
-                x_results = xnn.query(self.xrep, k=n_neighbors)[::-1]
-                y_results = ynn.query(self.yrep, k=n_neighbors)[::-1]
-                xy_results = ynn.query(self.xrep, k=n_neighbors)[::-1]
-                yx_results = xnn.query(self.yrep, k=n_neighbors)[::-1]
-
-            self.xx = NeighborsResults(*x_results, n_targets=None)
-            self.yy = NeighborsResults(*y_results, n_targets=None)
-            self.xy = NeighborsResults(*xy_results, n_targets=self.yrep.shape[0])
-            self.yx = NeighborsResults(*yx_results, n_targets=self.xrep.shape[0])
-
-        else:
-            raise ValueError(
-                f"Unknown method: {method}. Supported methods are 'sklearn', 'pynndescent', 'rapids', and 'faiss'."
-            )
+        self.xx = NeighborsResults(distances=x_d, indices=x_i, n_targets=None)
+        self.yy = NeighborsResults(distances=y_d, indices=y_i, n_targets=None)
+        self.xy = NeighborsResults(distances=xy_d, indices=xy_i, n_targets=self.yrep.shape[0])
+        self.yx = NeighborsResults(distances=yx_d, indices=yx_i, n_targets=self.xrep.shape[0])
 
     def get_adjacency_matrices(
         self, symmetrize: bool = False, self_edges: bool | None = False
