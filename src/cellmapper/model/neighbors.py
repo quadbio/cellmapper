@@ -3,6 +3,7 @@ from typing import Literal
 import numpy as np
 from scipy.sparse import csr_matrix
 
+from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model._knn_backend import get_backend
 from cellmapper.model.neighbors_results import NeighborsResults
@@ -161,6 +162,17 @@ class Neighbors:
             logger.info(
                 "Self-mapping mode detected. Computing only yx neighbors for efficiency "
                 "(all neighbor matrices will contain the same information)."
+            )
+
+        # issue a warning if using sklearn with large datasets
+        if method == "sklearn" and (
+            self.xrep.shape[0] > PackageConstants.SKLEARN_WARNING_CUTOFF
+            or self.yrep.shape[0] > PackageConstants.SKLEARN_WARNING_CUTOFF
+        ):
+            logger.warning(
+                "Using sklearn for neighbor search with large dataset (%d cells). "
+                "Consider using approximate k-NN search (e.g. pynndescent) or GPU acceleration (e.g. faiss or rapids)",
+                self.xrep.shape[0],
             )
 
         # use strategy pattern to reduce duplication

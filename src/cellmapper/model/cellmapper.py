@@ -10,7 +10,9 @@ from anndata import AnnData
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
 from sklearn.preprocessing import OneHotEncoder
 
-from cellmapper.constants import SELF_MAPPING_ONLY_KERNELS
+from cellmapper.constants import (
+    PackageConstants,
+)
 from cellmapper.logging import logger
 from cellmapper.model.embedding import EmbeddingMixin
 from cellmapper.model.evaluate import EvaluationMixin
@@ -291,7 +293,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             "hnoca",
             "equal",
             "umap",
-        ] = "gauss",
+        ]
+        | None = None,
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
     ) -> None:
@@ -318,10 +321,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             If None (default), uses True for self-mapping and False for cross-mapping.
         self_edges
             Control self-edges (diagonal entries) for square matrices (self-mapping):
-            - True: Include self-edges (set diagonal entries to 1)
-            - False: Exclude self-edges (set diagonal entries to 0)
-            - None: Leave as-is (preserve original neighbor graph structure)
-            If None (default), uses False for self-mapping (scanpy style) and None for cross-mapping.
+            This controls whether or not the kernel used to compute the connectivities
+            is supplied with self-edges. It does not determine whether the final connectivity matrix
+            has self edges. For example, the `umap` kernel expectes self-edges, but does not
+            produce them in the final connectivity matrix.
 
         Returns
         -------
@@ -331,16 +334,20 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         -----
         Updates the following attributes:
 
-        - ``mapping_matrix``: Mapping matrix for label transfer.
-
-        For self-mapping mode, the default behavior follows scanpy conventions:
-        symmetrize connectivity matrices without self-edges.
+        - ``mapping_matrix``: Mapping matrix to transfer labels, embeddings, or expression values.
         """
         if self.knn is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
         assert self.knn.yx is not None, "Neighbors object must have yx neighbors computed."
 
-        # Set defaults based on mapping mode
+        # Default mapping method if not provided
+        if method is None:
+            method = (
+                PackageConstants.DEFAULT_SELF_MAPPING_METHOD
+                if self._is_self_mapping
+                else PackageConstants.DEFAULT_CROSS_MAPPING_METHOD  # type: ignore[assignment]
+            )
+        # Set defaults for symmetrize
         if symmetrize is None:
             symmetrize = self._is_self_mapping  # True for self-mapping, False for cross-mapping
         if self_edges is None:
@@ -374,7 +381,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self.mapping_matrix = jaccard
         elif method in ["gauss", "adaptive_gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
             # Validate self-mapping-only kernels
-            if method in SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
+            if method in PackageConstants.SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
                 raise ValueError(f"Method '{method}' is only supported for self-mapping mode. ")
 
             # Type cast to satisfy the type checker since we've filtered to only valid kernel methods

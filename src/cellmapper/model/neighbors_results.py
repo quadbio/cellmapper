@@ -6,7 +6,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 from umap.umap_ import fuzzy_simplicial_set
 
-from cellmapper.constants import SELF_MAPPING_ONLY_KERNELS
+from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 
 
@@ -189,7 +189,7 @@ class NeighborsResults:
             raise ValueError("symmetrize connectivity matrices can only be created for self-mapping (square matrices)")
 
         # Check if self-mapping only kernel is used for non-square matrices
-        if kernel in SELF_MAPPING_ONLY_KERNELS and not self.is_square:
+        if kernel in PackageConstants.SELF_MAPPING_ONLY_KERNELS and not self.is_square:
             raise ValueError(f"Kernel '{kernel}' is only supported for self-mapping (square matrices)")
 
         # Compute connectivities using the specified kernel (all kernels now return sparse matrices)

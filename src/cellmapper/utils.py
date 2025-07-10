@@ -194,7 +194,7 @@ def extract_neighbors_from_distances(distances_matrix: "csr_matrix") -> tuple[np
 def get_n_comps(n_comps: int | None, n_vars: int) -> int:
     """Determine the number of components to compute."""
     if n_comps is None:
-        return min(n_vars, PackageConstants.n_comps)
+        return min(n_vars, PackageConstants.N_COMPS)
     return min(n_comps, n_vars)
 
 
