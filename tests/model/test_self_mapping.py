@@ -1,7 +1,65 @@
+import numpy as np
 import pytest
 import scanpy as sc
+from scanpy.neighbors import Neighbors
 
 from cellmapper.model.cellmapper import CellMapper
+
+
+class TestUMAPConnectivityValidation:
+    """Test UMAP connectivity compatibility between scanpy and CellMapper implementations."""
+
+    def test_scanpy_umap_connectivity_reproduction(self, adata_pbmc3k):
+        """
+        Test that CellMapper can exactly reproduce scanpy's UMAP connectivities when using sklearn.
+
+        This test validates the first part of the connectivity test tutorial:
+        1. Compute k-NN graph in scanpy with UMAP method
+        2. Import distances into CellMapper
+        3. Validate that distances match (accounting for self-edge differences)
+        4. Validate that applying UMAP kernel gives equivalent results
+        """
+        # Use sklearn transformer for deterministic results
+        transformer = "pynndescent"
+        n_neighbors = 8
+
+        # Step 1: Compute neighbors with scanpy using UMAP method
+        nbhs = Neighbors(adata_pbmc3k)
+        nbhs.compute_neighbors(
+            n_neighbors=n_neighbors,
+            use_rep="X_pca",
+            n_pcs=50,
+            knn=True,
+            method="umap",
+            metric="euclidean",
+            transformer=transformer,
+        )
+
+        # Store scanpy results
+        adata_pbmc3k.obsp["distances"] = nbhs.distances
+        # adata_pbmc3k.obsp["connectivities"] = nbhs.connectivities
+        dist_scanpy = nbhs.distance_matrix
+        conn_scanpy = nbhs.connectivities
+
+        # Step 2: Initialize CellMapper and load precomputed distances
+        cmap = CellMapper(adata_pbmc3k)
+        cmap.load_precomputed_distances(remove_last_neighbor=True)
+
+        # Step 3: Validate distances match (CellMapper removes self-edges)
+        # Scanpy stores distances with self-edges (first column), CellMapper doesn't
+        assert cmap.knn is not None, "KNN should be computed"
+        assert (dist_scanpy[:, 1:] == cmap.knn.yx.distances).all(), "Distances should match after removing self-edges"
+
+        # Step 4: Compute UMAP connectivities with CellMapper
+        conn_cmap = cmap.knn.yx.knn_graph_connectivities(kernel="umap", self_edges=True)
+
+        # Step 5: Validate connectivity matrices are equivalent
+        connectivity_diff = conn_scanpy - conn_cmap
+        assert connectivity_diff.nnz == 0, "Connectivity matrices should be identical"
+
+        # Step 6: Validate matrix properties
+        assert (conn_cmap - conn_cmap.T).nnz == 0, "CellMapper connectivity matrix should be symmetric"
+        assert np.allclose(conn_cmap.diagonal(), 0), "CellMapper connectivity matrix should have no self-edges"
 
 
 class TestSelfMapping:
