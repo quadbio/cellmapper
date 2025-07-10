@@ -192,13 +192,6 @@ class NeighborsResults:
         if kernel in SELF_MAPPING_ONLY_KERNELS and not self.is_square:
             raise ValueError(f"Kernel '{kernel}' is only supported for self-mapping (square matrices)")
 
-        # Warn about UMAP inherent symmetry
-        if kernel == "umap" and not symmetrize:
-            logger.info(
-                "UMAP kernel inherently produces symmetric connectivities. "
-                "Consider setting symmetrize=True for consistency with other kernels."
-            )
-
         # Compute connectivities using the specified kernel (all kernels now return sparse matrices)
         if kernel == "umap":
             conn_matrix = self._compute_umap_kernel(self_edges, **kwargs)
@@ -208,6 +201,14 @@ class NeighborsResults:
         # Apply symmetrization if requested
         if symmetrize:
             conn_matrix = self._symmetrize_matrix(conn_matrix)
+
+        if self.is_square:
+            # Check whether the matrix is symmetric
+            symmetric = (conn_matrix - conn_matrix.T).nnz == 0
+            if symmetrize and not symmetric:
+                logger.warning("Symmetrization requested but the resulting connectivity matrix is not symmetric. ")
+            if not symmetrize and symmetric:
+                logger.info("The resulting connectivity matrix is symmetric, even though that wasn't requested. ")
 
         return conn_matrix
 
@@ -516,6 +517,11 @@ class NeighborsResults:
             When self_edges=True, arrays will have shape (n_samples, n_neighbors + 1).
             Valid mask identifies entries that are neither -1 indices nor infinite distances.
         """
+        if not self.is_square and self_edges:
+            logger.warning(
+                "self_edges=True is only applicable for square matrices (self-mapping). Ignoring self_edges parameter."
+            )
+
         if self.is_square and self_edges:
             distances, indices = self._add_self_edges(self.distances, self.indices)
         else:
