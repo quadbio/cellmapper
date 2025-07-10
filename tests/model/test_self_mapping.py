@@ -65,6 +65,76 @@ class TestUMAPConnectivityValidation:
         assert (conn_cmap - conn_cmap.T).nnz == 0, "CellMapper connectivity matrix should be symmetric"
         assert np.allclose(conn_cmap.diagonal(), 0), "CellMapper connectivity matrix should have no self-edges"
 
+    def test_full_cellmapper_computation(self, adata_pbmc3k):
+        """
+        Test that CellMapper's full computation pipeline exactly reproduces scanpy results.
+
+        This test validates the last section of the connectivity test tutorial:
+        1. Compute neighbors with scanpy using sklearn
+        2. Compute neighbors with CellMapper using the same parameters
+        3. Compare PCA representations (should be identical)
+        4. Compare neighbor indices and distances (should be identical)
+        5. Compare UMAP connectivities (should be identical)
+
+        Only tests with sklearn as it's the only method that gives deterministic results.
+        """
+        transformer = "sklearn"
+        n_neighbors = 8
+        n_pcs = 50
+
+        # Step 1: Compute neighbors with scanpy
+        nbhs_sc = Neighbors(adata_pbmc3k)
+        nbhs_sc.compute_neighbors(
+            n_neighbors=n_neighbors,
+            use_rep="X_pca",
+            n_pcs=n_pcs,
+            knn=True,
+            method="umap",
+            metric="euclidean",
+            transformer=transformer,
+        )
+
+        # Extract scanpy results
+        dist_sc = nbhs_sc.distance_matrix
+        xrep_sc = nbhs_sc.representation
+        conn_sc = nbhs_sc.connectivities
+        indices_sc = nbhs_sc.indice_matrix
+
+        # Step 2: Compute neighbors with CellMapper
+        cmap = CellMapper(adata_pbmc3k)
+        cmap.compute_neighbors(
+            n_neighbors=n_neighbors,
+            use_rep="X_pca",
+            n_comps=n_pcs,
+            method=transformer,
+            metric="euclidean",
+        )
+
+        # Extract CellMapper results
+        assert cmap.knn is not None, "KNN should be computed"
+        xrep_cmap = cmap.knn.xrep
+        dist_cmap = cmap.knn.yx.distances
+        indices_cmap = cmap.knn.yx.indices
+
+        # Step 3: Compare PCA representations (should be identical)
+        assert (xrep_cmap == xrep_sc).all(), "PCA representations should be exactly equal"
+
+        # Step 4: Compare neighbor indices (should be identical, excluding self-edges)
+        assert (indices_cmap == indices_sc[:, 1:]).all(), "Neighbor indices should be identical"
+
+        # Step 5: Compare distances (should be identical, excluding self-edges)
+        assert (dist_cmap == dist_sc[:, 1:]).all(), "Distances should be identical"
+
+        # Step 6: Compute and compare UMAP connectivities
+        conn_cmap = cmap.knn.yx.knn_graph_connectivities(kernel="umap", symmetrize=True, self_edges=True)
+
+        # Check connectivity matrices are identical
+        assert (conn_cmap - conn_sc).nnz == 0, "UMAP connectivity matrices should be identical"
+
+        # Validate matrix properties
+        assert (conn_cmap - conn_cmap.T).nnz == 0, "CellMapper connectivity matrix should be symmetric"
+        assert np.allclose(conn_cmap.diagonal(), 0), "CellMapper connectivity matrix should have no self-edges"
+
 
 class TestSelfMapping:
     """Tests for self-mapping functionality in CellMapper."""
