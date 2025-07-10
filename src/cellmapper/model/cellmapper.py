@@ -10,6 +10,7 @@ from anndata import AnnData
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
 from sklearn.preprocessing import OneHotEncoder
 
+from cellmapper.constants import SELF_MAPPING_ONLY_KERNELS
 from cellmapper.logging import logger
 from cellmapper.model.embedding import EmbeddingMixin
 from cellmapper.model.evaluate import EvaluationMixin
@@ -343,9 +344,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if symmetrize is None:
             symmetrize = self._is_self_mapping  # True for self-mapping, False for cross-mapping
         if self_edges is None:
-            self_edges = (
-                False if self._is_self_mapping else None
-            )  # False for self-mapping (scanpy style), None for cross-mapping
+            self_edges = self._is_self_mapping  # same
 
         logger.info("Computing mapping matrix using method '%s'.", method)
 
@@ -356,15 +355,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                     "Jaccard and HNOCa methods require both x and y neighbors to be computed in cross-mapping mode. Set only_yx=False."
                 )
 
-            # For Jaccard/HNOCA, we need adjacency matrices that respect the self_edges parameter
-            # Default to True for self_edges if None, as Jaccard needs neighbors including self
-            jaccard_self_edges = True if self_edges is None else self_edges
-
-            # Get adjacency matrices with consistent parameter handling
-            # symmetrize and self_edges only apply to self-terms (xx, yy) in get_adjacency_matrices
+            # symmetrize and self_edges only apply to self-terms (xx, yy) in cross-mapping mode
             xx, yy, xy, yx = self.knn.get_adjacency_matrices(
-                symmetrize=symmetrize,  # Apply symmetry directly in boolean_adjacency
-                self_edges=jaccard_self_edges,
+                symmetrize=symmetrize,
+                self_edges=True,
             )
             # Type assertion for mypy - get_adjacency_matrices validates that xx is not None
             n_neighbors = self.knn.yx.n_neighbors
@@ -380,8 +374,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self.mapping_matrix = jaccard
         elif method in ["gauss", "adaptive_gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
             # Validate self-mapping-only kernels
-            if method == "umap" and not self._is_self_mapping:
-                raise ValueError("UMAP kernel is only supported for self-mapping mode.")
+            if method in SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
+                raise ValueError(f"Method '{method}' is only supported for self-mapping mode. ")
 
             # Type cast to satisfy the type checker since we've filtered to only valid kernel methods
             kernel_method = cast(

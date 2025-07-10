@@ -171,10 +171,6 @@ class Neighbors:
         if only_yx:
             dists, idx = backend_x.query(self.yrep, k=n_neighbors)
             self.yx = NeighborsResults(distances=dists, indices=idx, n_targets=self.xrep.shape[0])
-            if self._is_self_mapping:
-                self.xx = self.yx
-                self.yy = self.yx
-                self.xy = self.yx
             return
 
         backend_y = get_backend(method, n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)
@@ -191,7 +187,7 @@ class Neighbors:
         self.yx = NeighborsResults(distances=yx_d, indices=yx_i, n_targets=self.xrep.shape[0])
 
     def get_adjacency_matrices(
-        self, symmetrize: bool = False, self_edges: bool | None = False
+        self, symmetrize: bool = False, self_edges: bool = True
     ) -> tuple[csr_matrix, csr_matrix, csr_matrix, csr_matrix]:
         """
         Compute unweighted adjacency matrices for all k-NN graphs.
@@ -217,16 +213,24 @@ class Neighbors:
         these represent within-dataset neighborhoods. Cross-terms (xy, yx) represent
         between-dataset relationships where symmetry and self-edges are not meaningful.
         """
-        if self.xx is None or self.yy is None or self.xy is None or self.yx is None:
-            raise ValueError("Neighbors must be computed before accessing adjacency matrices.")
+        if self._is_self_mapping:
+            if self.yx is None:
+                raise ValueError("Neighbors must be computed before accessing adjacency matrices.")
+            yx_adj = self.yx.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
+            xx_adj = yx_adj
+            yy_adj = yx_adj
+            xy_adj = yx_adj
+        else:
+            if self.xx is None or self.yy is None or self.xy is None or self.yx is None:
+                raise ValueError("Neighbors must be computed before accessing adjacency matrices.")
 
-        # self-terms (within-dataset neighborhoods)
-        xx_adj = self.xx.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
-        yy_adj = self.yy.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
+            # self-terms (within-dataset neighborhoods)
+            xx_adj = self.xx.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
+            yy_adj = self.yy.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
 
-        # Cross-terms (between-dataset neighborhoods)
-        xy_adj = self.xy.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
-        yx_adj = self.yx.boolean_adjacency(self_edges=self_edges, symmetrize=symmetrize)
+            # Cross-terms (between-dataset neighborhoods)
+            xy_adj = self.xy.boolean_adjacency(self_edges=False, symmetrize=False)
+            yx_adj = self.yx.boolean_adjacency(self_edges=False, symmetrize=False)
 
         return xx_adj, yy_adj, xy_adj, yx_adj
 
