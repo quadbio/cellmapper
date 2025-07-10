@@ -47,25 +47,19 @@ class TestUMAPConnectivityValidation:
 
         # Store scanpy results
         adata_pbmc3k.obsp["distances"] = nbhs.distances
-        # adata_pbmc3k.obsp["connectivities"] = nbhs.connectivities
-        dist_scanpy = nbhs.distance_matrix
-        conn_scanpy = nbhs.connectivities
 
-        # Step 2: Initialize CellMapper and load precomputed distances
+        # Validate importated distances match the original
         cmap = CellMapper(adata_pbmc3k)
+        cmap.load_precomputed_distances(remove_last_neighbor=False)
+        assert (nbhs.distances - cmap.knn.yx.knn_graph_distances).nnz == 0, (
+            "Imported distances don't match scanpy distances"
+        )
+
+        # Validate connectivities match scanpy's. Note, this is a bit weird, we now have to remove the last neighbor, only for pynndescent
         cmap.load_precomputed_distances(remove_last_neighbor=remove_last_neighbor)
-
-        # Step 3: Validate distances match (CellMapper removes self-edges)
-        # Scanpy stores distances with self-edges (first column), CellMapper doesn't
-        assert cmap.knn is not None, "KNN should be computed"
-        assert (dist_scanpy[:, 1:] == cmap.knn.yx.distances).all(), "Distances should match after removing self-edges"
-
-        # Step 4: Compute UMAP connectivities with CellMapper
         conn_cmap = cmap.knn.yx.knn_graph_connectivities(kernel="umap", self_edges=True)
 
-        # Step 5: Validate connectivity matrices are equivalent
-        connectivity_diff = conn_scanpy - conn_cmap
-        assert connectivity_diff.nnz == 0, "Connectivity matrices should be identical"
+        assert (nbhs.connectivities - conn_cmap).nnz == 0, "Connectivity matrices should be identical"
 
         # Step 6: Validate matrix properties
         assert (conn_cmap - conn_cmap.T).nnz == 0, "CellMapper connectivity matrix should be symmetric"
