@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 import scanpy as sc
 from scanpy.neighbors import Neighbors
+from scipy.stats import pearsonr
 
 from cellmapper.model.cellmapper import CellMapper
 
@@ -323,3 +324,40 @@ class TestSelfMapping:
         # Test rest of pipeline
         cm.map_obs(key="leiden")
         assert "leiden_pred" in cm.query.obs
+
+    @pytest.mark.parametrize(
+        "kernel,self_edges,method",
+        [
+            ("gauss", False, "sklearn"),
+            ("gauss", False, "pynndescent"),
+            ("umap", True, "sklearn"),
+            ("umap", True, "pynndescent"),
+        ],
+    )
+    def test_map_obs_pseudotime_self_mapping(self, adata_pbmc3k, kernel, self_edges, method):
+        """Test mapping pseudotime values in self-mapping mode - should have high correlation."""
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(adata_pbmc3k)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method=method)
+        cmap.compute_mapping_matrix(method=kernel, self_edges=self_edges)
+
+        # check that there are no self-edges in the connectivities.
+        # essentially, this makes sure we're not using each cells own value to predict itself
+        assert cmap.mapping_matrix is not None, "Mapping matrix should be computed"
+        assert (cmap.mapping_matrix.diagonal() == 0).all(), "Self edges should be removed from mapping matrix"
+
+        # Map pseudotime
+        cmap.map_obs(key="dpt_pseudotime")
+
+        # Check that pseudotime was mapped
+        assert "dpt_pseudotime_pred" in cmap.query.obs
+
+        # Check correlation between actual and predicted pseudotime values
+        query_original_pt = adata_pbmc3k.obs["dpt_pseudotime"]
+        query_predicted_pt = adata_pbmc3k.obs["dpt_pseudotime_pred"]
+
+        correlation, _ = pearsonr(query_original_pt, query_predicted_pt)
+
+        # Cross-mapping should still have reasonably high correlation, though lower than self-mapping
+        assert correlation > 0.99, f"Cross-mapping pseudotime correlation too low: {correlation}"
