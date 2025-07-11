@@ -7,6 +7,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
 from scipy.sparse.linalg import eigs
 
+from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 
 
@@ -259,6 +260,14 @@ class MappingOperator:
         if t == 1:
             # Fast path for t=1 regardless of method
             return self.mapping_matrix @ reference_data
+
+        # Warn about performance for large matrix powers with iterative method
+        if t > PackageConstants.SPECTRAL_METHOD_THRESHOLD and method == "iterative" and self.is_self_mapping:
+            logger.warning(
+                "Using iterative method for t=%d matrix powers may be slow for large datasets. "
+                "Consider using method='spectral' for better performance.",
+                t,
+            )
 
         # Apply the chosen method
         if method == "iterative":
