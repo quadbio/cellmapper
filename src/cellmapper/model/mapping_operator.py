@@ -127,20 +127,14 @@ class MappingOperator:
 
         # For row-stochastic matrices, we want the largest eigenvalues
         # Note: the mapping matrix is row-normalized, so largest eigenvalue should be 1
-        result = eigs(
+        eigenvalues, eigenvectors = eigs(  # type: ignore[misc]
             self.mapping_matrix,
             k=self.n_eigenvectors,
             which="LM",  # Largest magnitude
             return_eigenvectors=True,
         )
 
-        # Handle both return formats (eigenvalues only vs eigenvalues + eigenvectors)
-        if isinstance(result, tuple) and len(result) == 2:
-            eigenvalues, eigenvectors = result
-        else:
-            raise RuntimeError("Unexpected return format from eigs")
-
-        # Sort by eigenvalue magnitude (descending)
+        # Sort by eigenvalue magnitude (descending) for proper diffusion ordering
         idx = np.argsort(np.abs(eigenvalues))[::-1]
         eigenvalues = eigenvalues[idx]
         eigenvectors = eigenvectors[:, idx]
