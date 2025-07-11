@@ -231,7 +231,7 @@ class MappingOperator:
     def apply(
         self,
         reference_data,  # Allow any array-like data type
-        t: int = 1,
+        t: int | None = None,
         method: Literal["iterative", "spectral"] = "iterative",
     ):
         """
@@ -243,7 +243,8 @@ class MappingOperator:
             Data to map (reference_cells x features). Can be dense or sparse arrays,
             pandas DataFrames, or any array-like structure.
         t
-            Matrix power to apply
+            Matrix power to apply. If None (default), uses direct multiplication (fastest).
+            If t >= 1, allows method selection between iterative and spectral approaches.
         method
             Method for computing matrix powers. Options:
             - "iterative": Iterative matrix multiplication (default)
@@ -255,11 +256,13 @@ class MappingOperator:
             Result of M^t @ reference_data (query_cells x features).
             Maintains sparsity of input data when possible.
         """
-        self._validate_power(t)
-
-        if t == 1:
-            # Fast path for t=1 regardless of method
+        if t is None:
+            # Direct multiplication - fastest path
+            logger.debug("Using direct matrix multiplication (t=None)")
             return self.mapping_matrix @ reference_data
+
+        # Validate the power (only for non-None values)
+        self._validate_power(t)
 
         # Warn about performance for large matrix powers with iterative method
         if t > PackageConstants.SPECTRAL_METHOD_THRESHOLD and method == "iterative" and self.is_self_mapping:
@@ -269,7 +272,7 @@ class MappingOperator:
                 t,
             )
 
-        # Apply the chosen method
+        # Apply the chosen method for t >= 1
         if method == "iterative":
             return self._apply_iterative(reference_data, t)
         elif method == "spectral":
