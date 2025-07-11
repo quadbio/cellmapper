@@ -278,7 +278,8 @@ class MappingOperator:
         method
             Method for computing matrix powers. Options:
             - "iterative": Iterative matrix multiplication (exact but slow for large t)
-            - "spectral": Eigendecomposition-based approximation (faster for large t)
+            - "spectral": Eigendecomposition-based approximation (faster for large t,
+              becomes more accurate as t increases due to exponential decay of small eigenvalues)
 
         Returns
         -------
