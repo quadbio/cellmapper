@@ -12,7 +12,35 @@ from cellmapper.logging import logger
 
 
 class MappingOperator:
-    """Operator for applying powers of mapping matrices with validation and normalization."""
+    """
+    Operator for applying powers of mapping matrices with validation and normalization.
+
+    This class provides two methods for computing matrix powers M^t:
+
+    1. **Iterative method**: Computes M^t by repeated matrix multiplication (M @ M @ ... @ M).
+       This is exact but can be slow for large t.
+
+    2. **Spectral method**: Approximates M^t using eigendecomposition (M = V @ Λ @ V^(-1),
+       so M^t ≈ V @ Λ^t @ V^(-1)). This can be much faster for large t but is approximate.
+
+    **Approximation Quality Trade-offs:**
+
+    The spectral method approximates the full matrix using only the largest eigenvalues/eigenvectors.
+    The quality of this approximation depends on:
+
+    - **More eigenvectors**: Better approximation of the full matrix, higher accuracy
+    - **Fewer eigenvectors**: Faster computation, lower memory usage, but less accurate
+    - **Larger t**: Approximation becomes more accurate because smaller eigenvalues (excluded
+      from the approximation) decay exponentially as λ^t, making their contribution negligible
+    - **Smaller t**: Excluded eigenvalues still contribute significantly, making approximation less accurate
+
+    **Recommendations:**
+
+    - Use `t=None` for single-step mapping (fastest, exact)
+    - Use `method="iterative"` for small t (2-10 steps, exact but manageable cost)
+    - Use `method="spectral"` for large t (>10 steps, approximate but much faster AND relatively more accurate)
+    - Increase `n_eigenvectors` if spectral approximation quality is insufficient for your t values
+    """
 
     def __init__(
         self,
@@ -33,7 +61,9 @@ class MappingOperator:
         expected_shape
             Expected shape (n_query_cells, n_reference_cells)
         n_eigenvectors
-            Number of eigenvectors to compute for spectral decomposition
+            Number of eigenvectors to compute for spectral decomposition.
+            More eigenvectors = better approximation but slower computation.
+            Automatically capped to ensure numerical stability.
         """
         self.is_self_mapping = is_self_mapping
         self.expected_shape = expected_shape
@@ -247,14 +277,19 @@ class MappingOperator:
             If t >= 1, allows method selection between iterative and spectral approaches.
         method
             Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (default)
-            - "spectral": Eigendecomposition-based (only for self-mapping)
+            - "iterative": Iterative matrix multiplication (exact but slow for large t)
+            - "spectral": Eigendecomposition-based approximation (faster for large t)
 
         Returns
         -------
         mapped_data
             Result of M^t @ reference_data (query_cells x features).
             Maintains sparsity of input data when possible.
+
+        Notes
+        -----
+        The spectral method approximates the iterative method using eigendecomposition.
+        See the class docstring for detailed trade-offs between accuracy and performance.
         """
         if t is None:
             # Direct multiplication - fastest path

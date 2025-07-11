@@ -249,6 +249,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         | None = None,
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
+        n_eigenvectors: int = 50,
     ) -> None:
         """
         Compute the mapping matrix for label transfer.
@@ -276,6 +277,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             is supplied with self-edges. It does not determine whether the final connectivity matrix
             has self edges. For example, the `umap` kernel expectes self-edges, but does not
             produce them in the final connectivity matrix.
+        n_eigenvectors
+            Number of eigenvectors to compute for spectral decomposition. Only relevant
+            when using spectral methods for matrix powers.
 
         Returns
         -------
@@ -351,6 +355,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             mapping_matrix=mapping_matrix,
             is_self_mapping=self._is_self_mapping,
             expected_shape=(self.query.n_obs, self.reference.n_obs),
+            n_eigenvectors=n_eigenvectors,
         )
 
     def map_obsm(
