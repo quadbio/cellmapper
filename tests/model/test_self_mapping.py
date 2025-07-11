@@ -344,8 +344,8 @@ class TestSelfMapping:
 
         # check that there are no self-edges in the connectivities.
         # essentially, this makes sure we're not using each cells own value to predict itself
-        assert cmap.mapping_matrix is not None, "Mapping matrix should be computed"
-        assert (cmap.mapping_matrix.diagonal() == 0).all(), "Self edges should be removed from mapping matrix"
+        assert cmap.mapping_operator.matrix is not None, "Mapping matrix should be computed"
+        assert (cmap.mapping_operator.matrix.diagonal() == 0).all(), "Self edges should be removed from mapping matrix"
 
         # Map pseudotime
         cmap.map_obs(key="dpt_pseudotime")
