@@ -4,7 +4,7 @@ from functools import cached_property
 from typing import Literal
 
 import numpy as np
-from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
+from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
 from scipy.sparse.linalg import eigs
 
 from cellmapper.logging import logger
@@ -15,7 +15,7 @@ class MappingOperator:
 
     def __init__(
         self,
-        mapping_matrix: csr_matrix | coo_matrix | csc_matrix,
+        mapping_matrix: csr_matrix | coo_matrix | csc_matrix | np.ndarray,
         is_self_mapping: bool,
         expected_shape: tuple[int, int],
         n_eigenvectors: int = 50,
@@ -40,36 +40,43 @@ class MappingOperator:
         max_eigenvectors = max(1, min(expected_shape[0] - 2, n_eigenvectors))
         self.n_eigenvectors = max_eigenvectors
 
+        # Store matrix type information (set during validation)
+        self.is_sparse: bool
+        self.is_symmetric: bool | None
+
         # Validate and normalize the matrix
         self.mapping_matrix = self._validate_and_normalize_mapping_matrix(mapping_matrix)
 
     @property
-    def matrix(self) -> csr_matrix:
+    def matrix(self) -> csr_matrix | np.ndarray:
         """
         Get the underlying mapping matrix.
 
         Returns
         -------
-        csr_matrix
-            The validated and normalized mapping matrix
+        csr_matrix or np.ndarray
+            The validated and normalized mapping matrix in original format
         """
         return self.mapping_matrix
 
     def _validate_and_normalize_mapping_matrix(
-        self, mapping_matrix: csr_matrix | coo_matrix | csc_matrix
-    ) -> csr_matrix:
+        self, mapping_matrix: csr_matrix | coo_matrix | csc_matrix | np.ndarray
+    ) -> csr_matrix | np.ndarray:
         """
         Validate and normalize the mapping matrix.
 
         Parameters
         ----------
         mapping_matrix
-            The mapping matrix to validate and normalize
+            The mapping matrix to validate and normalize (sparse or dense)
 
         Returns
         -------
-        Validated and row-normalized mapping matrix in CSR format
+        Validated and row-normalized mapping matrix in original format
         """
+        # Determine if input is sparse or dense
+        self.is_sparse = issparse(mapping_matrix)
+
         # Validate the shape
         if mapping_matrix.shape != self.expected_shape:
             raise ValueError(
@@ -87,17 +94,55 @@ class MappingOperator:
                 "Consider setting is_self_mapping=True for matrix powers."
             )
 
-        # Row normalize the matrix
-        row_sums = mapping_matrix.sum(axis=1).A1  # Convert to 1D array
+        # Check for symmetry before row-normalization (only for self-mapping)
+        if self.is_self_mapping:
+            if self.is_sparse:
+                # Use sparse symmetry check - compute difference and check if all entries are zero
+                diff = mapping_matrix - mapping_matrix.T
+                self.is_symmetric = np.allclose(diff.data, 0, rtol=1e-10, atol=1e-12)
+            else:
+                # Dense matrix symmetry check
+                dense_array = np.asarray(mapping_matrix)
+                self.is_symmetric = np.allclose(dense_array, dense_array.T, rtol=1e-10, atol=1e-12)
+
+            if self.is_symmetric:
+                logger.info(
+                    "Input matrix is symmetric - will result in reversible Markov chain after row-normalization."
+                )
+            else:
+                logger.warning(
+                    "Input matrix is not symmetric - resulting Markov chain may not be reversible. "
+                    "Consider using a symmetric adjacency matrix for better spectral properties."
+                )
+        else:
+            # Non-self-mapping matrices cannot be checked for symmetry
+            self.is_symmetric = None
+            logger.info("Non-self-mapping matrix - symmetry check skipped.")
+
+        # Compute row sums (shared logic for sparse and dense)
+        if self.is_sparse:
+            row_sums = mapping_matrix.sum(axis=1).A1  # Convert to 1D array
+        else:
+            row_sums = np.asarray(mapping_matrix).sum(axis=1)
+
+        # Check for zero rows and handle them
         if np.any(row_sums == 0):
             logger.warning("Some rows in the mapping matrix have a sum of zero. These rows will be left unchanged.")
         row_sums[row_sums == 0] = 1  # Avoid division by zero
+
+        # Normalize if needed, otherwise keep original values
         if not np.allclose(row_sums, 1):
             logger.info("Row-normalizing the mapping matrix.")
-        mapping_matrix = mapping_matrix.multiply(1 / row_sums[:, None])
+            if self.is_sparse:
+                mapping_matrix = csr_matrix(mapping_matrix).multiply(1 / row_sums[:, None])
+            else:
+                mapping_matrix = np.asarray(mapping_matrix) / row_sums[:, None]
 
-        # Ensure the matrix is in CSR format and return as csr_matrix
-        return csr_matrix(mapping_matrix.tocsr().astype(np.float32))
+        # Ensure proper format and dtype
+        if self.is_sparse:
+            return csr_matrix(mapping_matrix).astype(np.float32)
+        else:
+            return np.asarray(mapping_matrix).astype(np.float32)
 
     def _validate_power(self, t: int) -> None:
         """Validate that the requested power is feasible."""
