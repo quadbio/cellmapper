@@ -4,6 +4,7 @@ from functools import cached_property
 from typing import Literal
 
 import numpy as np
+from scipy.linalg import eig
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
 from scipy.sparse.linalg import eigs
 
@@ -48,6 +49,7 @@ class MappingOperator:
         is_self_mapping: bool,
         expected_shape: tuple[int, int],
         n_eigenvectors: int = 50,
+        eigen_solver: Literal["partial", "complete"] = "partial",
     ):
         """
         Initialize mapping operator with automatic validation and normalization.
@@ -64,12 +66,25 @@ class MappingOperator:
             Number of eigenvectors to compute for spectral decomposition.
             More eigenvectors = better approximation but slower computation.
             Automatically capped to ensure numerical stability.
+        eigen_solver
+            Eigendecomposition method for spectral approach:
+            - "partial": Uses sparse eigendecomposition (scipy.sparse.linalg.eigs), faster
+            - "complete": Uses complete eigendecomposition (scipy.linalg.eig), exact for testing
         """
         self.is_self_mapping = is_self_mapping
         self.expected_shape = expected_shape
+        self.eigen_solver = eigen_solver
+
         # Ensure we don't compute too many eigenvectors for small matrices
-        max_eigenvectors = max(1, min(expected_shape[0] - 2, n_eigenvectors))
-        self.n_eigenvectors = max_eigenvectors
+        if eigen_solver == "complete":
+            # For complete eigendecomposition, use all eigenvectors
+            self.n_eigenvectors = expected_shape[0]
+        elif eigen_solver == "partial":
+            # For partial eigendecomposition, cap the number of eigenvectors
+            max_eigenvectors = max(1, min(expected_shape[0] - 2, n_eigenvectors))
+            self.n_eigenvectors = max_eigenvectors
+        else:
+            raise ValueError(f"Unknown eigen_solver: {eigen_solver}. Use 'partial' or 'complete'.")
 
         # Store matrix type information (set during validation)
         self.is_sparse: bool
@@ -196,19 +211,28 @@ class MappingOperator:
         if not self.is_self_mapping:
             raise RuntimeError("Eigendecomposition only available for self-mapping mode")
 
-        logger.info(
-            "Computing eigendecomposition with %d components for matrix powers",
-            self.n_eigenvectors,
-        )
+        if self.eigen_solver == "complete":
+            logger.info("Computing complete eigendecomposition for matrix powers")
+            # Convert to dense for complete eigendecomposition
+            if issparse(self.mapping_matrix):
+                dense_matrix = self.mapping_matrix.toarray()
+            else:
+                dense_matrix = np.asarray(self.mapping_matrix)
 
-        # For row-stochastic matrices, we want the largest eigenvalues
-        # Note: the mapping matrix is row-normalized, so largest eigenvalue should be 1
-        eigenvalues, eigenvectors = eigs(  # type: ignore[misc]
-            self.mapping_matrix,
-            k=self.n_eigenvectors,
-            which="LM",  # Largest magnitude
-            return_eigenvectors=True,
-        )
+            eigenvalues, eigenvectors = eig(dense_matrix)  # type: ignore[assignment]
+
+        else:
+            logger.info(
+                "Computing eigendecomposition with %d components for matrix powers",
+                self.n_eigenvectors,
+            )
+            # Use partial eigendecomposition (original implementation)
+            eigenvalues, eigenvectors = eigs(  # type: ignore[misc]
+                self.mapping_matrix,
+                k=self.n_eigenvectors,
+                which="LM",  # Largest magnitude
+                return_eigenvectors=True,
+            )
 
         # Sort by eigenvalue magnitude (descending) for proper diffusion ordering
         idx = np.argsort(np.abs(eigenvalues))[::-1]

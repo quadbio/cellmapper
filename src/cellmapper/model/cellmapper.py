@@ -250,6 +250,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
         n_eigenvectors: int = 50,
+        eigen_solver: Literal["partial", "complete"] = "partial",
     ) -> None:
         """
         Compute the mapping matrix for label transfer.
@@ -279,7 +280,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             produce them in the final connectivity matrix.
         n_eigenvectors
             Number of eigenvectors to compute for spectral decomposition. Only relevant
-            when using spectral methods for matrix powers.
+            when using spectral methods for matrix powers. Default is 50.
+        eigen_solver
+            Eigendecomposition method for spectral approach:
+            - "partial": Uses sparse eigendecomposition, faster (default)
+            - "complete": Uses complete eigendecomposition, exact for testing
 
         Returns
         -------
@@ -356,6 +361,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             is_self_mapping=self._is_self_mapping,
             expected_shape=(self.query.n_obs, self.reference.n_obs),
             n_eigenvectors=n_eigenvectors,
+            eigen_solver=eigen_solver,
         )
 
     def map_obsm(
