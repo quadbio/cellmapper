@@ -14,8 +14,7 @@ from cellmapper.logging import logger
 
 
 class MappingOperator:
-    """
-    Operator for applying powers of mapping matrices with validation and normalization.
+    """Operator for applying powers of mapping matrices with validation and normalization.
 
     This class provides two methods for computing matrix powers M^t:
 
@@ -52,8 +51,7 @@ class MappingOperator:
         n_eigenvectors: int = 50,
         eigen_solver: Literal["partial", "complete"] = "partial",
     ):
-        """
-        Initialize mapping operator with automatic validation and normalization.
+        """Initialize mapping operator with automatic validation and normalization.
 
         Parameters
         ----------
@@ -408,3 +406,84 @@ class MappingOperator:
         if hasattr(self, "_eigendecomposition"):
             delattr(self, "_eigendecomposition")
             logger.debug("Cleared eigendecomposition cache")
+
+    def __repr__(self) -> str:
+        """Return string representation of the MappingOperator.
+
+        Returns
+        -------
+        String representation with key properties
+        """
+        # Basic properties
+        shape_str = f"{self.expected_shape[0]}×{self.expected_shape[1]}"
+        matrix_type = "sparse" if self.is_sparse else "dense"
+        mapping_type = "self-mapping" if self.is_self_mapping else "cross-mapping"
+
+        # Symmetry information
+        if self.is_symmetric is None:
+            symmetry_str = "N/A"
+        elif self.is_symmetric:
+            symmetry_str = "symmetric"
+        else:
+            symmetry_str = "asymmetric"
+
+        # Matrix statistics
+        if self.is_sparse:
+            # Safe access to nnz attribute for sparse matrices
+            nnz = getattr(self.mapping_matrix, "nnz", 0)
+            sparsity = nnz / (self.expected_shape[0] * self.expected_shape[1])
+            sparsity_str = f", sparsity: {sparsity:.1%}"
+        else:
+            sparsity_str = ""
+
+        # Zero degree information
+        zero_degrees = np.sum(self.row_degrees == 0)
+        zero_str = f", zero-degree rows: {zero_degrees}" if zero_degrees > 0 else ""
+
+        # Eigendecomposition status (only check if self-mapping to avoid errors)
+        if self.is_self_mapping:
+            # Check if the cached property has been computed without triggering it
+            has_eigen = "_eigendecomposition" in self.__dict__
+            eigen_str = f", eigendecomp: {'cached' if has_eigen else 'not computed'}"
+        else:
+            eigen_str = ""
+
+        return (
+            f"MappingOperator({shape_str}, {mapping_type}, {matrix_type}, "
+            f"{symmetry_str}{sparsity_str}{zero_str}{eigen_str})"
+        )
+
+    def __str__(self) -> str:
+        """Return user-friendly string representation of the MappingOperator.
+
+        Returns
+        -------
+        User-friendly string representation
+        """
+        mapping_type = "Self-mapping" if self.is_self_mapping else "Cross-mapping"
+        matrix_type = "sparse" if self.is_sparse else "dense"
+
+        # Build description
+        desc = f"{mapping_type} operator ({self.expected_shape[0]}×{self.expected_shape[1]}, {matrix_type}"
+
+        if self.is_symmetric is not None:
+            symmetry = "symmetric" if self.is_symmetric else "asymmetric"
+            desc += f", {symmetry}"
+
+        if self.is_sparse:
+            nnz = getattr(self.mapping_matrix, "nnz", 0)
+            total_elements = self.expected_shape[0] * self.expected_shape[1]
+            sparsity = nnz / total_elements
+            desc += f", {sparsity:.1%} filled"
+
+        desc += ")"
+
+        # Add warnings/info
+        zero_degrees = np.sum(self.row_degrees == 0)
+        if zero_degrees > 0:
+            desc += f"\nWarning: {zero_degrees} rows have zero degree"
+
+        if self.is_self_mapping and not self.is_symmetric:
+            desc += "\nNote: Spectral methods require symmetric matrices"
+
+        return desc
