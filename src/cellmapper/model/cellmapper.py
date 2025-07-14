@@ -330,13 +330,13 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             # Type assertion for mypy - get_adjacency_matrices validates that xx is not None
             n_neighbors = self.knn.yx.n_neighbors
 
-            mapping_matrix = (yx @ xx.T) + (yy @ xy.T)
+            kernel_matrix = (yx @ xx.T) + (yy @ xy.T)
 
             if method == "jaccard":
-                mapping_matrix.data /= 4 * n_neighbors - mapping_matrix.data
+                kernel_matrix.data /= 4 * n_neighbors - kernel_matrix.data
             elif method == "hnoca":
-                mapping_matrix.data /= 2 * n_neighbors - mapping_matrix.data
-                mapping_matrix.data = mapping_matrix.data**2
+                kernel_matrix.data /= 2 * n_neighbors - kernel_matrix.data
+                kernel_matrix.data = kernel_matrix.data**2
 
         elif method in ["gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
             # Validate self-mapping-only kernels
@@ -349,7 +349,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 method,
             )
             # Type assertion for mypy - neighbors validation ensures yx is not None
-            mapping_matrix = self.knn.yx.knn_graph_connectivities(
+            kernel_matrix = self.knn.yx.knn_graph_connectivities(
                 kernel=kernel_method, symmetrize=symmetrize, self_edges=self_edges
             )
         else:
@@ -357,7 +357,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         # Create mapping operator with the computed matrix (single point of construction)
         self._mapping_operator = MappingOperator(
-            mapping_matrix=mapping_matrix,
+            kernel_matrix=kernel_matrix,
             is_self_mapping=self._is_self_mapping,
             expected_shape=(self.query.n_obs, self.reference.n_obs),
             n_eigenvectors=n_eigenvectors,

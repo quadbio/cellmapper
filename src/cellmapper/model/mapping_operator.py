@@ -45,7 +45,7 @@ class MappingOperator:
 
     def __init__(
         self,
-        mapping_matrix: csr_matrix | coo_matrix | csc_matrix | np.ndarray,
+        kernel_matrix: csr_matrix | coo_matrix | csc_matrix | np.ndarray,
         is_self_mapping: bool,
         expected_shape: tuple[int, int],
         n_eigenvectors: int = 50,
@@ -56,8 +56,8 @@ class MappingOperator:
 
         Parameters
         ----------
-        mapping_matrix
-            The mapping matrix to validate and normalize
+        kernel_matrix
+            The unnormalized kernel matrix to validate and normalize
         is_self_mapping
             Whether this is self-mapping (square matrix) or cross-mapping
         expected_shape
@@ -91,7 +91,7 @@ class MappingOperator:
         self.is_symmetric: bool | None
 
         # Validate and normalize the matrix
-        self.mapping_matrix = self._validate_and_normalize_mapping_matrix(mapping_matrix)
+        self.mapping_matrix = self._validate_and_normalize_mapping_matrix(kernel_matrix)
 
     @property
     def matrix(self) -> csr_matrix | np.ndarray:
@@ -106,33 +106,33 @@ class MappingOperator:
         return self.mapping_matrix
 
     def _validate_and_normalize_mapping_matrix(
-        self, mapping_matrix: csr_matrix | coo_matrix | csc_matrix | np.ndarray
+        self, kernel_matrix: csr_matrix | coo_matrix | csc_matrix | np.ndarray
     ) -> csr_matrix | np.ndarray:
         """
         Validate and normalize the mapping matrix.
 
         Parameters
         ----------
-        mapping_matrix
-            The mapping matrix to validate and normalize (sparse or dense)
+        kernel_matrix
+            The kernel matrix to validate and normalize (sparse or dense)
 
         Returns
         -------
         Validated and row-normalized mapping matrix in original format
         """
         # Determine if input is sparse or dense
-        self.is_sparse = issparse(mapping_matrix)
+        self.is_sparse = issparse(kernel_matrix)
 
         # Validate the shape
-        if mapping_matrix.shape != self.expected_shape:
+        if kernel_matrix.shape != self.expected_shape:
             raise ValueError(
-                f"Mapping matrix shape mismatch: expected {self.expected_shape}, but got {mapping_matrix.shape}."
+                f"Mapping matrix shape mismatch: expected {self.expected_shape}, but got {kernel_matrix.shape}."
             )
 
         # Validate self-mapping consistency
-        n_rows, n_cols = mapping_matrix.shape
+        n_rows, n_cols = kernel_matrix.shape
         if self.is_self_mapping and n_rows != n_cols:
-            raise ValueError(f"Self-mapping requires square matrix, got shape {mapping_matrix.shape}")
+            raise ValueError(f"Self-mapping requires square matrix, got shape {kernel_matrix.shape}")
 
         if not self.is_self_mapping and n_rows == n_cols:
             logger.warning(
@@ -144,17 +144,15 @@ class MappingOperator:
         if self.is_self_mapping:
             if self.is_sparse:
                 # Use sparse symmetry check - compute difference and check if all entries are zero
-                diff = mapping_matrix - mapping_matrix.T
+                diff = kernel_matrix - kernel_matrix.T
                 self.is_symmetric = np.allclose(diff.data, 0, rtol=1e-10, atol=1e-12)
             else:
                 # Dense matrix symmetry check
-                dense_array = np.asarray(mapping_matrix)
+                dense_array = np.asarray(kernel_matrix)
                 self.is_symmetric = np.allclose(dense_array, dense_array.T, rtol=1e-10, atol=1e-12)
 
             if self.is_symmetric:
-                logger.info(
-                    "Input matrix is symmetric - will result in reversible Markov chain after row-normalization."
-                )
+                logger.debug("Input matrix is symmetric - will result in reversible Markov chain.")
             else:
                 logger.warning(
                     "Input matrix is not symmetric - resulting Markov chain may not be reversible. "
@@ -163,32 +161,26 @@ class MappingOperator:
         else:
             # Non-self-mapping matrices cannot be checked for symmetry
             self.is_symmetric = None
-            logger.info("Non-self-mapping matrix - symmetry check skipped.")
+            logger.debug("Non-self-mapping matrix - symmetry check skipped.")
 
         # Compute row sums (shared logic for sparse and dense)
         if self.is_sparse:
-            row_sums = mapping_matrix.sum(axis=1).A1  # Convert to 1D array
+            row_sums = kernel_matrix.sum(axis=1).A1  # Convert to 1D array
         else:
-            row_sums = np.asarray(mapping_matrix).sum(axis=1)
+            row_sums = np.asarray(kernel_matrix).sum(axis=1)
 
         # Check for zero rows and handle them
         if np.any(row_sums == 0):
             logger.warning("Some rows in the mapping matrix have a sum of zero. These rows will be left unchanged.")
         row_sums[row_sums == 0] = 1  # Avoid division by zero
 
-        # Normalize if needed, otherwise keep original values
-        if not np.allclose(row_sums, 1):
-            logger.info("Row-normalizing the mapping matrix.")
-            if self.is_sparse:
-                mapping_matrix = csr_matrix(mapping_matrix).multiply(1 / row_sums[:, None])
-            else:
-                mapping_matrix = np.asarray(mapping_matrix) / row_sums[:, None]
-
-        # Ensure proper format and dtype
+        # (Asymmetric) row-normalization
         if self.is_sparse:
-            return csr_matrix(mapping_matrix).astype(np.float32)
+            kernel_matrix = csr_matrix(kernel_matrix).multiply(1 / row_sums[:, None]).astype(np.float32)
         else:
-            return np.asarray(mapping_matrix).astype(np.float32)
+            kernel_matrix = np.asarray(kernel_matrix) / row_sums[:, None].astype(np.float32)
+
+        return kernel_matrix
 
     def _validate_power(self, t: int) -> None:
         """Validate that the requested power is feasible."""
