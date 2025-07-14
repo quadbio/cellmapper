@@ -316,16 +316,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         logger.info("Computing mapping matrix using method '%s'.", method)
 
         # Compute kernel matrix using the new unified method
-        kernel_matrix = self.knn.compute_kernel_matrix(
+        self.knn.compute_kernel_matrix(
             method=method,
             symmetrize=symmetrize,
             self_edges=self_edges,
-            only_yx=self.only_yx,
         )
 
         # Create mapping operator with the computed matrix (single point of construction)
         self._mapping_operator = MappingOperator(
-            kernel_matrix=kernel_matrix,
+            kernel_matrix=self.knn.kernel_matrix,
             is_self_mapping=self._is_self_mapping,
             expected_shape=(self.query.n_obs, self.reference.n_obs),
             n_eigenvectors=n_eigenvectors,

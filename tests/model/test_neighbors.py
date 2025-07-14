@@ -41,7 +41,7 @@ class TestNeighbors:
         x, y = small_data
         neigh = Kernel(x, y)
         r = repr(neigh)
-        assert "Neighbors(" in r and "xrep_shape" in r and "yrep_shape" in r
+        assert "Kernel(" in r and "xrep_shape" in r and "yrep_shape" in r
         neigh.compute_neighbors(n_neighbors=2, method="sklearn")
         r2 = repr(neigh)
         assert "xx=True" in r2 and "yy=True" in r2 and "xy=True" in r2 and "yx=True" in r2

@@ -37,12 +37,20 @@ class Kernel:
         self.xy: Neighbors | None = None
         self.yx: Neighbors | None = None
 
+        # Initialize kernel matrix storage
+        self.kernel_matrix: csr_matrix | None = None
+        self.kernel_method: str | None = None
+        self.is_symmetric: bool | None = None
+
         # Flag to track if this is a self-mapping case
         # Use explicit parameter if provided, otherwise infer from yrep
         if is_self_mapping is not None:
             self._is_self_mapping = is_self_mapping
         else:
             self._is_self_mapping = yrep is None
+
+        # Store only_yx flag set during compute_neighbors
+        self.only_yx: bool | None = None
 
     @classmethod
     def from_distances(cls, distances_matrix: csr_matrix, remove_last_neighbor: bool = False) -> "Kernel":
@@ -164,6 +172,9 @@ class Kernel:
                 "(all neighbor matrices will contain the same information)."
             )
 
+        # Store only_yx as instance attribute for use in compute_kernel_matrix
+        self.only_yx = only_yx
+
         # issue a warning if using sklearn with large datasets
         if method == "sklearn" and (
             self.xrep.shape[0] > PackageConstants.SKLEARN_WARNING_CUTOFF
@@ -212,9 +223,8 @@ class Kernel:
         ],
         symmetrize: bool = False,
         self_edges: bool = False,
-        only_yx: bool = False,
         **kwargs,
-    ) -> csr_matrix:
+    ) -> None:
         """
         Compute the kernel matrix using the specified method.
 
@@ -235,19 +245,27 @@ class Kernel:
             ensure j→i exists with the same weight. Only valid for square matrices (self-mapping).
         self_edges
             Control self-edges in the kernel computation for square matrices.
-        only_yx
-            Whether only yx neighbors were computed (affects validation for some methods).
         **kwargs
             Additional keyword arguments for kernel computation.
 
         Returns
         -------
-        csr_matrix
-            The computed kernel matrix.
+        None
+
+        Notes
+        -----
+        Updates the following attributes:
+
+        - ``kernel_matrix``: The computed kernel matrix.
+        - ``kernel_method``: The method used to compute the kernel.
+        - ``is_symmetric``: Whether the resulting matrix is symmetric (self-mapping only).
+
+        The method uses the `only_yx` attribute set during `compute_neighbors` to determine
+        which neighbors were computed and validate method compatibility.
         """
-        if method in ["jaccard", "hnoca"]:
+        if method in PackageConstants.JACCARD_BASED_KERNELS:
             # In cross-mapping mode, we need all four adjacency matrices
-            if only_yx and not self._is_self_mapping:
+            if self.only_yx and not self._is_self_mapping:
                 raise ValueError(
                     "Jaccard and HNOCA methods require both x and y neighbors to be computed in cross-mapping mode. Set only_yx=False."
                 )  # Get adjacency matrices (self_edges=True for jaccard/hnoca computation)
@@ -266,7 +284,7 @@ class Kernel:
                 kernel_matrix.data /= 2 * n_neighbors - kernel_matrix.data
                 kernel_matrix.data = kernel_matrix.data**2
 
-        elif method in ["gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
+        elif method in PackageConstants.CONNECTIVITY_BASED_KERNELS:
             # Validate self-mapping-only kernels
             if method in PackageConstants.SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
                 raise ValueError(f"Method '{method}' is only supported for self-mapping mode.")
@@ -289,7 +307,15 @@ class Kernel:
         elif symmetrize and not self._is_self_mapping:
             raise ValueError("Symmetrization is only supported for self-mapping (square matrices).")
 
-        return kernel_matrix
+        # Store the computed kernel matrix and metadata
+        self.kernel_matrix = kernel_matrix
+        self.kernel_method = method
+
+        # Check if the resulting matrix is symmetric (for self-mapping only)
+        if self._is_self_mapping:
+            self.is_symmetric = self._check_symmetry(kernel_matrix)
+        else:
+            self.is_symmetric = None
 
     def _symmetrize_matrix(self, sparse_matrix: csr_matrix) -> csr_matrix:
         """
@@ -372,11 +398,56 @@ class Kernel:
 
         return xx_adj, yy_adj, xy_adj, yx_adj
 
+    def _check_symmetry(self, sparse_matrix: csr_matrix) -> bool:
+        """
+        Check if a sparse matrix is symmetric.
+
+        Parameters
+        ----------
+        sparse_matrix
+            Input sparse matrix to check for symmetry.
+
+        Returns
+        -------
+        bool
+            True if the matrix is symmetric, False otherwise.
+        """
+        # For sparse matrices, check if the difference from transpose has any nonzero entries
+        diff = sparse_matrix - sparse_matrix.T
+        return diff.nnz == 0
+
     def __repr__(self):
-        """Return a string representation of the Neighbors object."""
-        return (
-            f"Neighbors(xrep_shape={self.xrep.shape}, yrep_shape={self.yrep.shape}, "
-            f"xx={self.xx is not None}, yy={self.yy is not None}, "
-            f"xy={self.xy is not None}, yx={self.yx is not None}, "
-            f"self_mapping={self._is_self_mapping})"
-        )
+        """Return a string representation of the Kernel object."""
+        # Basic info
+        info_parts = [
+            f"xrep_shape={self.xrep.shape}",
+            f"yrep_shape={self.yrep.shape}",
+            f"self_mapping={self._is_self_mapping}",
+        ]
+
+        # Neighbors info
+        neighbors_computed = [
+            f"xx={self.xx is not None}",
+            f"yy={self.yy is not None}",
+            f"xy={self.xy is not None}",
+            f"yx={self.yx is not None}",
+        ]
+
+        # Kernel matrix info
+        if self.kernel_matrix is not None:
+            # Calculate sparsity percentage
+            total_elements = self.kernel_matrix.shape[0] * self.kernel_matrix.shape[1]
+            sparsity = self.kernel_matrix.nnz / total_elements
+
+            kernel_info = [
+                f"kernel='{self.kernel_method}'",
+                f"matrix_shape={self.kernel_matrix.shape}",
+                f"sparsity={sparsity:.1%}",
+            ]
+            if self.is_symmetric is not None:
+                kernel_info.append(f"symmetric={self.is_symmetric}")
+        else:
+            kernel_info = ["kernel=None"]
+
+        all_info = info_parts + neighbors_computed + kernel_info
+        return f"Kernel({', '.join(all_info)})"
