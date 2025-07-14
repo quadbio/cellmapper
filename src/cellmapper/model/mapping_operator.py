@@ -4,9 +4,10 @@ from functools import cached_property
 from typing import Literal
 
 import numpy as np
-from scipy.linalg import eig
+from scipy import sparse
+from scipy.linalg import eigh
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
-from scipy.sparse.linalg import eigs
+from scipy.sparse.linalg import eigsh
 
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
@@ -89,27 +90,25 @@ class MappingOperator:
         # Store matrix type information (set during validation)
         self.is_sparse: bool
         self.is_symmetric: bool | None
+        self.row_degrees: np.ndarray  # Row sums of original kernel matrix
 
         # Validate and normalize the matrix
         self.mapping_matrix = self._validate_and_normalize_mapping_matrix(kernel_matrix)
 
     @property
     def matrix(self) -> csr_matrix | np.ndarray:
-        """
-        Get the underlying mapping matrix.
+        """Get the underlying mapping matrix.
 
         Returns
         -------
-        csr_matrix or np.ndarray
-            The validated and normalized mapping matrix in original format
+        The validated and normalized mapping matrix in original format
         """
         return self.mapping_matrix
 
     def _validate_and_normalize_mapping_matrix(
         self, kernel_matrix: csr_matrix | coo_matrix | csc_matrix | np.ndarray
     ) -> csr_matrix | np.ndarray:
-        """
-        Validate and normalize the mapping matrix.
+        """Validate and normalize the mapping matrix.
 
         Parameters
         ----------
@@ -151,36 +150,39 @@ class MappingOperator:
                 dense_array = np.asarray(kernel_matrix)
                 self.is_symmetric = np.allclose(dense_array, dense_array.T, rtol=1e-10, atol=1e-12)
 
-            if self.is_symmetric:
-                logger.debug("Input matrix is symmetric - will result in reversible Markov chain.")
-            else:
+            if not self.is_symmetric:
                 logger.warning(
-                    "Input matrix is not symmetric - resulting Markov chain may not be reversible. "
-                    "Consider using a symmetric adjacency matrix for better spectral properties."
+                    "Input matrix is not symmetric - spectral methods require symmetric matrices. "
+                    "Consider using a symmetric adjacency matrix or the 'iterative' method."
                 )
+            else:
+                logger.debug("Input matrix is symmetric - will result in reversible Markov chain.")
         else:
             # Non-self-mapping matrices cannot be checked for symmetry
             self.is_symmetric = None
             logger.debug("Non-self-mapping matrix - symmetry check skipped.")
 
-        # Compute row sums (shared logic for sparse and dense)
+        # Compute and store row degrees (row sums of original kernel matrix)
         if self.is_sparse:
-            row_sums = kernel_matrix.sum(axis=1).A1  # Convert to 1D array
+            self.row_degrees = np.asarray(kernel_matrix.sum(axis=1)).flatten()
         else:
-            row_sums = np.asarray(kernel_matrix).sum(axis=1)
+            self.row_degrees = np.asarray(kernel_matrix).sum(axis=1)
 
         # Check for zero rows and handle them
-        if np.any(row_sums == 0):
+        if np.any(self.row_degrees == 0):
             logger.warning("Some rows in the mapping matrix have a sum of zero. These rows will be left unchanged.")
+
+        # Create a copy of row_degrees for normalization to avoid division by zero
+        row_sums = self.row_degrees.copy()
         row_sums[row_sums == 0] = 1  # Avoid division by zero
 
-        # (Asymmetric) row-normalization
+        # (Asymmetric) row-normalization and ensure proper format and dtype
         if self.is_sparse:
-            kernel_matrix = csr_matrix(kernel_matrix).multiply(1 / row_sums[:, None]).astype(np.float32)
+            kernel_matrix = csr_matrix(kernel_matrix).multiply(1 / row_sums[:, None])
+            return csr_matrix(kernel_matrix).astype(np.float32)
         else:
-            kernel_matrix = np.asarray(kernel_matrix) / row_sums[:, None].astype(np.float32)
-
-        return kernel_matrix
+            kernel_matrix = np.asarray(kernel_matrix) / row_sums[:, None]
+            return kernel_matrix.astype(np.float32)
 
     def _validate_power(self, t: int) -> None:
         """Validate that the requested power is feasible."""
@@ -192,35 +194,41 @@ class MappingOperator:
 
     @cached_property
     def _eigendecomposition(self) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Compute and cache eigendecomposition for self-mapping matrices.
+        """Compute and cache eigendecomposition for self-mapping matrices.
+
+        Uses symmetric eigendecomposition of T_sym = D^1/2 T_asym D^-1/2
+        and converts eigenvectors back to T_asym space using u = D^-1/2 w.
 
         Returns
         -------
         eigenvalues, eigenvectors
-            Real eigenvalues and corresponding eigenvectors for reversible Markov chain
+            Real eigenvalues and corresponding eigenvectors for the asymmetric transition matrix T_asym
         """
         if not self.is_self_mapping:
             raise RuntimeError("Eigendecomposition only available for self-mapping mode")
 
-        if self.eigen_solver == "complete":
-            logger.info("Computing complete eigendecomposition for matrix powers")
-            # Convert to dense for complete eigendecomposition
-            if issparse(self.mapping_matrix):
-                dense_matrix = self.mapping_matrix.toarray()
-            else:
-                dense_matrix = np.asarray(self.mapping_matrix)
+        # Get the symmetric matrix for eigendecomposition
+        symmetric_matrix = self._symmetric_mapping_matrix
 
-            eigenvalues, eigenvectors = eig(dense_matrix)  # type: ignore[assignment]
+        if self.eigen_solver == "complete":
+            logger.info("Computing complete symmetric eigendecomposition for matrix powers")
+            # Convert to dense for complete eigendecomposition
+            if self.is_sparse:
+                dense_matrix = symmetric_matrix.toarray()
+            else:
+                dense_matrix = np.asarray(symmetric_matrix)
+
+            # Use symmetric eigendecomposition (guaranteed real eigenvalues)
+            eigenvalues, eigenvectors_sym = eigh(dense_matrix)  # type: ignore[assignment]
 
         else:
             logger.info(
-                "Computing eigendecomposition with %d components for matrix powers",
+                "Computing symmetric eigendecomposition with %d components for matrix powers",
                 self.n_eigenvectors,
             )
-            # Use partial eigendecomposition (original implementation)
-            eigenvalues, eigenvectors = eigs(  # type: ignore[misc]
-                self.mapping_matrix,
+            # Use symmetric sparse eigendecomposition
+            eigenvalues, eigenvectors_sym = eigsh(  # type: ignore[misc]
+                symmetric_matrix,
                 k=self.n_eigenvectors,
                 which="LM",  # Largest magnitude
                 return_eigenvectors=True,
@@ -229,38 +237,103 @@ class MappingOperator:
         # Sort by eigenvalue magnitude (descending) for proper diffusion ordering
         idx = np.argsort(np.abs(eigenvalues))[::-1]
         eigenvalues = eigenvalues[idx]
-        eigenvectors = eigenvectors[:, idx]
+        eigenvectors_sym = eigenvectors_sym[:, idx]  # Convert symmetric eigenvectors to asymmetric space: u = D^-1/2 w
+        _, inv_sqrt_degrees = self._compute_degree_transforms()
 
-        # Check for complex eigenvalues and fail explicitly
-        if np.iscomplexobj(eigenvalues) and not np.allclose(np.imag(eigenvalues), 0):
+        # Apply D^-1/2 to each eigenvector
+        eigenvectors_asym = eigenvectors_sym * inv_sqrt_degrees[:, np.newaxis]
+
+        # All eigenvalues and eigenvectors are real due to symmetry
+        return eigenvalues.astype(np.float32), eigenvectors_asym.astype(np.float32)
+
+    @cached_property
+    def _symmetric_mapping_matrix(self) -> csr_matrix | np.ndarray:
+        """Generate symmetric mapping matrix on-the-fly for spectral methods.
+
+        Uses the relationship: T_sym = D^1/2 T_asym D^-1/2
+        where D is the diagonal matrix of row degrees.
+
+        Returns
+        -------
+        Symmetric mapping matrix for eigendecomposition
+        """
+        if not self.is_self_mapping:
+            raise RuntimeError("Symmetric mapping matrix only available for self-mapping mode")
+
+        if not self.is_symmetric:
             raise ValueError(
-                "Complex eigenvalues detected. The mapping matrix may not be reversible. "
-                "Consider using the 'iterative' method instead."
+                "Cannot generate symmetric mapping matrix from asymmetric kernel matrix. "
+                "Provide a symmetric adjacency/kernel matrix."
             )
 
-        if np.iscomplexobj(eigenvectors) and not np.allclose(np.imag(eigenvectors), 0):
-            raise ValueError(
-                "Complex eigenvectors detected. The mapping matrix may not be reversible. "
-                "Consider using the 'iterative' method instead."
-            )
+        # Compute D^1/2 and D^-1/2
+        sqrt_degrees, inv_sqrt_degrees = self._compute_degree_transforms()
 
-        # Convert to real arrays (safe since we checked for complex values)
-        eigenvalues_real = np.real(eigenvalues) if np.iscomplexobj(eigenvalues) else eigenvalues
-        eigenvectors_real = np.real(eigenvectors) if np.iscomplexobj(eigenvectors) else eigenvectors
+        # Compute T_sym = D^1/2 T_asym D^-1/2
+        if self.is_sparse:
+            # For sparse matrices, use diagonal matrices
+            D_sqrt = sparse.diags(sqrt_degrees, format="csr")
+            D_inv_sqrt = sparse.diags(inv_sqrt_degrees, format="csr")
+            symmetric_matrix = D_sqrt @ self.mapping_matrix @ D_inv_sqrt
+        else:
+            # For dense matrices, use broadcasting
+            symmetric_matrix = (sqrt_degrees[:, None] * self.mapping_matrix) * inv_sqrt_degrees[None, :]
 
-        return eigenvalues_real, eigenvectors_real
+        return symmetric_matrix
 
-    def _apply_iterative(self, reference_data, t: int):
-        """Apply matrix power using iterative multiplication."""
+    def _compute_degree_transforms(self) -> tuple[np.ndarray, np.ndarray]:
+        """Compute D^1/2 and D^-1/2 from row degrees.
+
+        Returns
+        -------
+        sqrt_degrees, inv_sqrt_degrees
+            Square root of degrees and inverse square root of degrees
+        """
+        sqrt_degrees = np.sqrt(self.row_degrees)
+        inv_sqrt_degrees = np.zeros_like(sqrt_degrees)
+
+        # Handle zero degrees (avoid division by zero)
+        nonzero_mask = sqrt_degrees > 0
+        inv_sqrt_degrees[nonzero_mask] = 1.0 / sqrt_degrees[nonzero_mask]
+
+        return sqrt_degrees, inv_sqrt_degrees
+
+    def _apply_iterative(self, reference_data: np.ndarray | csr_matrix, t: int) -> np.ndarray | csr_matrix:
+        """Apply matrix power using iterative multiplication.
+
+        Parameters
+        ----------
+        reference_data
+            Data to map (reference_cells x features)
+        t
+            Matrix power to apply (t >= 1)
+
+        Returns
+        -------
+        Result of M^t @ reference_data
+        """
         logger.debug("Using iterative multiplication for t=%d", t)
         result = reference_data.copy()
         for _ in range(t):
             result = self.mapping_matrix @ result
         return result
 
-    def _apply_spectral(self, reference_data, t: int):
-        """Apply matrix power using cached eigendecomposition."""
+    def _apply_spectral(self, reference_data: np.ndarray | csr_matrix, t: int) -> np.ndarray | csr_matrix:
+        """Apply matrix power using cached eigendecomposition.
+
+        Parameters
+        ----------
+        reference_data
+            Data to map (reference_cells x features)
+        t
+            Matrix power to apply (t >= 1)
+
+        Returns
+        -------
+        Result of M^t @ reference_data using spectral approximation
+        """
         logger.debug("Using spectral decomposition for t=%d", t)
+
         eigenvalues, eigenvectors = self._eigendecomposition
 
         # Project data onto eigenvector space
@@ -276,12 +349,11 @@ class MappingOperator:
 
     def apply(
         self,
-        reference_data,  # Allow any array-like data type
+        reference_data: np.ndarray | csr_matrix,
         t: int | None = None,
         method: Literal["iterative", "spectral"] = "iterative",
-    ):
-        """
-        Apply mapping matrix power: M^t @ reference_data.
+    ) -> np.ndarray | csr_matrix:
+        """Apply mapping matrix power: M^t @ reference_data.
 
         Parameters
         ----------
@@ -299,9 +371,8 @@ class MappingOperator:
 
         Returns
         -------
-        mapped_data
-            Result of M^t @ reference_data (query_cells x features).
-            Maintains sparsity of input data when possible.
+        Result of M^t @ reference_data (query_cells x features).
+        Maintains sparsity of input data when possible.
 
         Notes
         -----
