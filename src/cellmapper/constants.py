@@ -10,7 +10,7 @@ class PackageConstants:
     DEFAULT_CROSS_MAPPING_METHOD: str = "gauss"
 
     # Kernel methods that only work in self-mapping mode
-    SELF_MAPPING_ONLY_KERNELS = {"umap", "adaptive_gauss"}
+    SELF_MAPPING_ONLY_KERNELS = {"umap"}
 
     # Threshold for recommending spectral method over iterative for matrix powers
     SPECTRAL_METHOD_THRESHOLD: int = 10

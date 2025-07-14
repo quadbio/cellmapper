@@ -3,7 +3,7 @@ import pytest
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
-from cellmapper.model.neighbors import Neighbors
+from cellmapper.model.kernel import Kernel
 
 
 def assert_adjacency_equal(neigh1, neigh2, attrs=("xx", "yy", "xy", "yx")):
@@ -20,10 +20,10 @@ class TestNeighbors:
         x, y = small_data
         n_neighbors = 3
         # sklearn
-        neigh_skl = Neighbors(x, y)
+        neigh_skl = Kernel(x, y)
         neigh_skl.compute_neighbors(n_neighbors=n_neighbors, method="sklearn", only_yx=only_yx)
         # pynndescent
-        neigh_pynn = Neighbors(x, y)
+        neigh_pynn = Kernel(x, y)
         neigh_pynn.compute_neighbors(n_neighbors=n_neighbors, method="pynndescent", only_yx=only_yx)
         if only_yx:
             with pytest.raises(ValueError):
@@ -39,7 +39,7 @@ class TestNeighbors:
 
     def test_neighbors_repr(self, small_data):
         x, y = small_data
-        neigh = Neighbors(x, y)
+        neigh = Kernel(x, y)
         r = repr(neigh)
         assert "Neighbors(" in r and "xrep_shape" in r and "yrep_shape" in r
         neigh.compute_neighbors(n_neighbors=2, method="sklearn")
@@ -59,7 +59,7 @@ class TestNeighbors:
         distances = csr_matrix(distances_data)
 
         # Create Neighbors object using factory method
-        neighbors = Neighbors.from_distances(distances)
+        neighbors = Kernel.from_distances(distances)
 
         # Verify the object is created correctly
         assert neighbors is not None
@@ -110,7 +110,7 @@ class TestNeighbors:
         distances = csr_matrix((data, (rows, cols)), shape=(n_samples, n_samples))
 
         # Create Neighbors object
-        neighbors = Neighbors.from_distances(distances)
+        neighbors = Kernel.from_distances(distances)
 
         # Check the number of neighbors
         assert neighbors.xx.n_samples == n_samples
@@ -132,7 +132,7 @@ class TestNeighbors:
         distances = adata_spatial.obsp["distances"]
 
         # Create Neighbors object from distances
-        neighbors = Neighbors.from_distances(distances)
+        neighbors = Kernel.from_distances(distances)
 
         # Verify basic properties
         assert neighbors is not None
@@ -161,7 +161,7 @@ class TestNeighbors:
         print(distances)
 
         # Create Neighbors object
-        neighbors = Neighbors.from_distances(distances)
+        neighbors = Kernel.from_distances(distances)
 
         # Compute connectivities with different kernels
         connectivities = neighbors.xx.knn_graph_connectivities(kernel=kernel, self_edges=True)
