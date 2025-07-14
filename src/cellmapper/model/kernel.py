@@ -222,6 +222,7 @@ class Kernel:
             "umap",
         ],
         symmetrize: bool = False,
+        symmetrize_method: Literal["max", "mean"] = "max",
         self_edges: bool = False,
         **kwargs,
     ) -> None:
@@ -243,6 +244,10 @@ class Kernel:
         symmetrize
             If True, create a symmetric kernel matrix where for each edge i→j,
             ensure j→i exists with the same weight. Only valid for square matrices (self-mapping).
+        symmetrize_method
+            Method for symmetrization when symmetrize=True:
+            - "max": Take element-wise maximum between matrix and transpose (preserves strongest connections)
+            - "mean": Take element-wise average between matrix and transpose (smooths connections)
         self_edges
             Control self-edges in the kernel computation for square matrices.
         **kwargs
@@ -303,7 +308,7 @@ class Kernel:
 
         # Apply symmetrization if requested and matrix is square
         if symmetrize and self._is_self_mapping:
-            kernel_matrix = self._symmetrize_matrix(kernel_matrix)
+            kernel_matrix = self._symmetrize_matrix(kernel_matrix, method=symmetrize_method)
         elif symmetrize and not self._is_self_mapping:
             raise ValueError("Symmetrization is only supported for self-mapping (square matrices).")
 
@@ -317,42 +322,45 @@ class Kernel:
         else:
             self.is_symmetric = None
 
-    def _symmetrize_matrix(self, sparse_matrix: csr_matrix) -> csr_matrix:
+    def _symmetrize_matrix(self, sparse_matrix: csr_matrix, method: str = "max") -> csr_matrix:
         """
         Apply symmetrization to a sparse kernel matrix.
-
-        For each existing edge i→j, ensure that j→i exists with the same weight.
-        This creates undirected graphs by copying edge weights rather than adding them.
-
-        Only applies to square matrices (self-mapping).
 
         Parameters
         ----------
         sparse_matrix
             Input sparse kernel matrix to symmetrize.
+        method
+            Method for symmetrization:
+            - "max": Take element-wise maximum between matrix and transpose.
+              For each position (i,j), W_sym[i,j] = max(W[i,j], W[j,i]).
+            - "mean": Take element-wise average between matrix and transpose.
+              For each position (i,j), W_sym[i,j] = (W[i,j] + W[j,i]) / 2.
 
         Returns
         -------
         csr_matrix
-            Symmetrized sparse matrix where W[i,j] = W[j,i] for all existing edges.
+            Symmetrized sparse matrix where W[i,j] = W[j,i] for all positions.
+
+        Notes
+        -----
+        Only applies to square matrices (self-mapping).
+
+        The "max" method preserves the strongest connections and ensures that
+        existing edges are not weakened. The "mean" method averages the weights
+        and can provide smoother transitions but may weaken strong connections.
         """
         if not self._is_self_mapping:
             raise ValueError("Can only symmetrize square matrices (self-mapping)")
 
-        # Convert to LIL format for efficient item assignment
-        matrix_lil = sparse_matrix.tolil()
-
-        # Get all existing nonzero entries
-        nonzero_indices = sparse_matrix.nonzero()
-        rows, cols = nonzero_indices[0], nonzero_indices[1]
-
-        # For each existing edge i→j, ensure j→i exists with the same weight
-        for i, j in zip(rows, cols, strict=False):
-            if matrix_lil[j, i] == 0:  # If reverse edge j→i doesn't exist
-                matrix_lil[j, i] = matrix_lil[i, j]  # Copy forward edge weight
-
-        # Convert back to CSR format for efficiency
-        return csr_matrix(matrix_lil.tocsr())
+        if method == "max":
+            # Take element-wise maximum between matrix and its transpose
+            return sparse_matrix.maximum(sparse_matrix.T)
+        elif method == "mean":
+            # Take element-wise average: (M + M^T) / 2
+            return (sparse_matrix + sparse_matrix.T) / 2
+        else:
+            raise ValueError(f"Unknown symmetrization method: {method}. Use 'max' or 'mean'.")
 
     def get_adjacency_matrices(self, self_edges: bool = True) -> tuple[csr_matrix, csr_matrix, csr_matrix, csr_matrix]:
         """
