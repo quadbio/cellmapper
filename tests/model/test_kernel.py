@@ -15,7 +15,7 @@ def assert_adjacency_equal(neigh1, neigh2, attrs=("xx", "yy", "xy", "yx")):
 
 class TestKernel:
     @pytest.mark.parametrize("only_yx", [False, True])
-    def test_neighbors_sklearn_vs_pynndescent(self, small_data, only_yx):
+    def test_kernel_sklearn_vs_pynndescent(self, small_data, only_yx):
         pytest.importorskip("pynndescent")
         x, y = small_data
         n_neighbors = 3
@@ -37,7 +37,7 @@ class TestKernel:
         conn_pynn = neigh_pynn.yx.knn_graph_connectivities()
         assert np.allclose(conn_skl.toarray(), conn_pynn.toarray(), atol=1e-6)
 
-    def test_neighbors_repr(self, small_data):
+    def test_kernel_repr(self, small_data):
         x, y = small_data
         neigh = Kernel(x, y)
         r = repr(neigh)

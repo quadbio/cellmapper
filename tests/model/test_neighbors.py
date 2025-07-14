@@ -6,7 +6,7 @@ from cellmapper.model.neighbors import Neighbors
 
 
 class TestNeighbors:
-    def test_neighborsresults_init_shape(self, sample_distances, sample_indices):
+    def test_neighbors_init_shape(self, sample_distances, sample_indices):
         # Should not raise
         nr = Neighbors(distances=sample_distances, indices=sample_indices)
         assert nr.n_samples == 3
@@ -14,7 +14,7 @@ class TestNeighbors:
         assert nr.n_neighbors == 1
         assert nr.shape == (3, 3)
 
-    def test_neighborsresults_invalid_shape(self, sample_distances):
+    def test_neighbors_invalid_shape(self, sample_distances):
         # indices shape mismatch should raise
         bad_indices = np.array([[0, 1, 2], [1, 2, 0], [2, 0, 1]])
         with pytest.raises(ValueError):
