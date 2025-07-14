@@ -41,6 +41,12 @@ class MappingOperator:
     - Use `method="iterative"` for small t (2-10 steps, exact but manageable cost)
     - Use `method="spectral"` for large t (>10 steps, approximate but much faster AND relatively more accurate)
     - Increase `n_eigenvectors` if spectral approximation quality is insufficient for your t values
+
+    **Sparsity:**
+
+    - Iterative method preserves input sparsity when mapping matrix is sparse
+    - Spectral method always produces dense output due to eigendecomposition operations
+    - In practice, imputed matrices are typically dense regardless of method
     """
 
     def __init__(
@@ -328,7 +334,8 @@ class MappingOperator:
 
         Returns
         -------
-        Result of M^t @ reference_data using spectral approximation
+        Result of M^t @ reference_data using spectral approximation.
+        Always returns dense array due to eigendecomposition operations.
         """
         logger.debug("Using spectral decomposition for t=%d", t)
 
@@ -370,12 +377,19 @@ class MappingOperator:
         Returns
         -------
         Result of M^t @ reference_data (query_cells x features).
-        Maintains sparsity of input data when possible.
+        Iterative method preserves sparsity when mapping matrix is sparse.
+        Spectral method always returns dense arrays due to eigendecomposition operations.
 
         Notes
         -----
         The spectral method approximates the iterative method using eigendecomposition.
         See the class docstring for detailed trade-offs between accuracy and performance.
+
+        **Sparsity Considerations:**
+
+        - Iterative method preserves input sparsity when mapping matrix is sparse
+        - Spectral method always produces dense output due to eigenvector operations
+        - In practice, imputed matrices are typically dense regardless of method
         """
         if t is None:
             # Direct multiplication - fastest path
