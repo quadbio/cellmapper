@@ -2,9 +2,49 @@ import numpy as np
 import pytest
 import scanpy as sc
 from scanpy.neighbors import Neighbors
+from scipy.linalg import subspace_angles
+from scipy.sparse import csr_matrix
+from scipy.sparse.linalg import eigs
 from scipy.stats import pearsonr
 
 from cellmapper.model.cellmapper import CellMapper
+
+
+def analyze_by_cell_and_gene(
+    matrix_iterative: np.ndarray | csr_matrix, matrix_spectral: np.ndarray | csr_matrix
+) -> tuple[np.ndarray, np.ndarray]:
+    """Analyze differences at cell and gene levels.
+
+    Parameters
+    ----------
+    matrix_iterative
+        First matrix (typically from iterative method)
+    matrix_spectral
+        Second matrix (typically from spectral method)
+
+    Returns
+    -------
+    cell_correlations
+        Per-cell correlations between the two matrices
+    gene_correlations
+        Per-gene correlations between the two matrices
+    """
+    # Per-cell correlations
+    cell_correlations = []
+    for i in range(matrix_iterative.shape[0]):
+        correlation, _ = pearsonr(matrix_iterative[i, :], matrix_spectral[i, :])
+        cell_correlations.append(correlation)
+
+    # Per-gene correlations
+    gene_correlations = []
+    for j in range(matrix_iterative.shape[1]):
+        correlation, _ = pearsonr(matrix_iterative[:, j], matrix_spectral[:, j])
+        gene_correlations.append(correlation)
+
+    cell_correlations = np.array(cell_correlations)
+    gene_correlations = np.array(gene_correlations)
+
+    return cell_correlations, gene_correlations
 
 
 class TestUMAPConnectivityValidation:
@@ -361,3 +401,104 @@ class TestSelfMapping:
 
         # Cross-mapping should still have reasonably high correlation, though lower than self-mapping
         assert correlation > 0.99, f"Cross-mapping pseudotime correlation too low: {correlation}"
+
+
+class TestCellMapperImputation:
+    """Test CellMapper imputation functionality with iterative and spectral approaches."""
+
+    def test_symmetric_eigendecomposition_equivalence(self, adata_pbmc3k):
+        """
+        Test that symmetric eigendecomposition approach gives equivalent results
+        to direct eigendecomposition of the asymmetric matrix.
+        """
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(adata_pbmc3k)
+        cmap.compute_neighbors(only_yx=True, use_rep="X_pca")
+        cmap.compute_mapping_matrix(eigen_solver="partial", n_eigenvectors=100)
+
+        # Get eigendecomposition from CellMapper (symmetric approach)
+        mop = cmap.mapping_operator
+        eigenvalues_cmap, eigenvectors_cmap = mop._eigendecomposition
+
+        # Compute eigendecomposition directly on the non-symmetric matrix
+        eigenvalues, eigenvectors = eigs(
+            mop.matrix,
+            k=mop.n_eigenvectors,
+            which="LM",  # Largest magnitude
+            return_eigenvectors=True,
+        )
+
+        # Sort by eigenvalue magnitude (descending) for proper diffusion ordering
+        idx = np.argsort(np.abs(eigenvalues))[::-1]
+        eigenvalues = eigenvalues[idx]
+        eigenvectors = eigenvectors[:, idx]
+
+        # Check for complex eigenvalues and convert to real
+        if np.iscomplexobj(eigenvalues) and not np.allclose(np.imag(eigenvalues), 0):
+            pytest.skip("Complex eigenvalues detected, skipping test")
+
+        # Convert to real arrays (safe since we checked for complex values)
+        eigenvalues_real = np.real(eigenvalues) if np.iscomplexobj(eigenvalues) else eigenvalues
+        eigenvectors_real = np.real(eigenvectors) if np.iscomplexobj(eigenvectors) else eigenvectors
+
+        # Test eigenvalues are equivalent
+        assert np.allclose(eigenvalues_real, eigenvalues_cmap, atol=1e-5), "Eigenvalues differ"
+
+        # Test eigenvectors span the same subspace (using subspace angles)
+        assert np.allclose(subspace_angles(eigenvectors_real, eigenvectors_cmap), 0, atol=1e-3), "Eigenvectors differ"
+
+    def test_iterative_vs_complete_spectral_similarity(self, adata_pbmc3k):
+        """Test that iterative and complete spectral approaches give highly similar results."""
+
+        # Use a smaller subset for complete eigendecomposition (for speed)
+        bdata = adata_pbmc3k[:1000].copy()
+
+        # compute highly variable genes on the subset and filter to those
+        sc.pp.highly_variable_genes(bdata, subset=True)
+
+        # Create CellMapper and compute mapping matrix with complete eigendecomposition
+        cmap = CellMapper(bdata)
+        cmap.compute_neighbors(only_yx=True, use_rep="X_pca")
+        cmap.compute_mapping_matrix(eigen_solver="complete")
+
+        # Get spectral imputation
+        cmap.map_layers("X", t=10, method="spectral")
+        imputed_spectral = cmap.query_imputed.X  # returns dense matrix
+
+        # Get iterative imputation
+        cmap.map_layers("X", t=10, method="iterative")
+        imputed_iterative = cmap.query_imputed.X  # returns sparse matrix
+
+        # Compare the two imputed gene expression matrices
+        cell_corrs, gene_corrs = analyze_by_cell_and_gene(imputed_spectral, imputed_iterative.toarray())
+
+        # Assert high similarity
+        assert cell_corrs.mean() > 0.99, f"Cell correlations not high enough: {cell_corrs.mean():.6f}"
+        assert gene_corrs.mean() > 0.95, f"Gene correlations not high enough: {gene_corrs.mean():.6f}"
+
+    def test_iterative_vs_partial_spectral_similarity(self, adata_pbmc3k):
+        """Test that iterative and partial spectral approaches give highly similar results."""
+
+        # Filter to highly variable genes
+        adata = adata_pbmc3k[:, adata_pbmc3k.var["highly_variable"]].copy()
+
+        # Create CellMapper and compute mapping matrix with partial eigendecomposition
+        cmap = CellMapper(adata)
+        cmap.compute_neighbors(only_yx=True, use_rep="X_pca")
+        cmap.compute_mapping_matrix(eigen_solver="partial", n_eigenvectors=100)
+
+        # Get spectral imputation
+        cmap.map_layers("X", t=10, method="spectral")
+        imputed_spectral = cmap.query_imputed.X
+
+        # Get iterative imputation
+        cmap.map_layers("X", t=10, method="iterative")
+        imputed_iterative = cmap.query_imputed.X
+
+        # Compare the two imputed gene expression matrices
+        cell_corrs, gene_corrs = analyze_by_cell_and_gene(imputed_spectral, imputed_iterative.toarray())
+
+        # Assert high similarity
+        assert cell_corrs.mean() > 0.99, f"Cell correlations not high enough: {cell_corrs.mean():.6f}"
+        assert gene_corrs.mean() > 0.95, f"Gene correlations not high enough: {gene_corrs.mean():.6f}"
