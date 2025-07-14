@@ -1,7 +1,7 @@
 """k-NN based mapping of labels, embeddings, and expression values."""
 
 import gc
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -14,8 +14,8 @@ from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model.embedding import EmbeddingMixin
 from cellmapper.model.evaluate import EvaluationMixin
+from cellmapper.model.kernel import Kernel
 from cellmapper.model.mapping_operator import MappingOperator
-from cellmapper.model.neighbors import Neighbors
 from cellmapper.utils import create_imputed_anndata, get_n_comps
 
 
@@ -61,7 +61,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             )
 
         # Initialize result containers
-        self.knn: Neighbors | None = None
+        self.knn: Kernel | None = None
         self._mapping_operator: MappingOperator | None = None
         self.label_transfer_metrics: dict[str, Any] | None = None
         self.label_transfer_report: pd.DataFrame | None = None
@@ -220,7 +220,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         xrep = xrep[:, :n_comps]
         yrep = yrep[:, :n_comps]
 
-        self.knn = Neighbors(
+        self.knn = Kernel(
             np.ascontiguousarray(xrep),
             None if self._is_self_mapping else np.ascontiguousarray(yrep),
             is_self_mapping=self._is_self_mapping,
@@ -315,51 +315,25 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         logger.info("Computing mapping matrix using method '%s'.", method)
 
-        if method in ["jaccard", "hnoca"]:
-            # In cross-mapping mode, we need all four adjacency matrices
-            if self.only_yx and not self._is_self_mapping:
-                raise ValueError(
-                    "Jaccard and HNOCa methods require both x and y neighbors to be computed in cross-mapping mode. Set only_yx=False."
-                )
+        # Compute kernel matrix using the new unified method
+        self.knn.compute_kernel_matrix(
+            method=method,
+            symmetrize=symmetrize,
+            self_edges=self_edges,
+        )
 
-            # symmetrize and self_edges only apply to self-terms (xx, yy) in cross-mapping mode
-            xx, yy, xy, yx = self.knn.get_adjacency_matrices(
-                symmetrize=symmetrize,
-                self_edges=True,
+        # Validate expected shape before creating mapping operator
+        expected_shape = (self.query.n_obs, self.reference.n_obs)
+        actual_shape = self.knn.kernel_matrix.shape
+        if actual_shape != expected_shape:
+            raise ValueError(
+                f"Kernel matrix shape {actual_shape} does not match expected shape {expected_shape}. "
+                f"Expected ({self.query.n_obs} query cells, {self.reference.n_obs} reference cells)."
             )
-            # Type assertion for mypy - get_adjacency_matrices validates that xx is not None
-            n_neighbors = self.knn.yx.n_neighbors
 
-            kernel_matrix = (yx @ xx.T) + (yy @ xy.T)
-
-            if method == "jaccard":
-                kernel_matrix.data /= 4 * n_neighbors - kernel_matrix.data
-            elif method == "hnoca":
-                kernel_matrix.data /= 2 * n_neighbors - kernel_matrix.data
-                kernel_matrix.data = kernel_matrix.data**2
-
-        elif method in ["gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
-            # Validate self-mapping-only kernels
-            if method in PackageConstants.SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
-                raise ValueError(f"Method '{method}' is only supported for self-mapping mode. ")
-
-            # Type cast to satisfy the type checker since we've filtered to only valid kernel methods
-            kernel_method = cast(
-                Literal["gauss", "scarches", "inverse_distance", "random", "equal", "umap"],
-                method,
-            )
-            # Type assertion for mypy - neighbors validation ensures yx is not None
-            kernel_matrix = self.knn.yx.knn_graph_connectivities(
-                kernel=kernel_method, symmetrize=symmetrize, self_edges=self_edges
-            )
-        else:
-            raise NotImplementedError(f"Method '{method}' is not implemented.")
-
-        # Create mapping operator with the computed matrix (single point of construction)
+        # Create mapping operator with the computed matrix (simplified interface)
         self._mapping_operator = MappingOperator(
-            kernel_matrix=kernel_matrix,
-            is_self_mapping=self._is_self_mapping,
-            expected_shape=(self.query.n_obs, self.reference.n_obs),
+            kernel_matrix=self.knn,  # Pass the Kernel object directly
             n_eigenvectors=n_eigenvectors,
             eigen_solver=eigen_solver,
         )
@@ -663,7 +637,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             distances_matrix = csr_matrix(distances_matrix)
 
         # Create a neighbors object using the factory method
-        self.knn = Neighbors.from_distances(distances_matrix, remove_last_neighbor)
+        self.knn = Kernel.from_distances(distances_matrix, remove_last_neighbor)
 
         # Type assertion for mypy - from_distances creates a valid neighbors object with xx
         assert self.knn.xx is not None
