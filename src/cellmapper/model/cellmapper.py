@@ -322,11 +322,18 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self_edges=self_edges,
         )
 
-        # Create mapping operator with the computed matrix (single point of construction)
+        # Validate expected shape before creating mapping operator
+        expected_shape = (self.query.n_obs, self.reference.n_obs)
+        actual_shape = self.knn.kernel_matrix.shape
+        if actual_shape != expected_shape:
+            raise ValueError(
+                f"Kernel matrix shape {actual_shape} does not match expected shape {expected_shape}. "
+                f"Expected ({self.query.n_obs} query cells, {self.reference.n_obs} reference cells)."
+            )
+
+        # Create mapping operator with the computed matrix (simplified interface)
         self._mapping_operator = MappingOperator(
-            kernel_matrix=self.knn.kernel_matrix,
-            is_self_mapping=self._is_self_mapping,
-            expected_shape=(self.query.n_obs, self.reference.n_obs),
+            kernel_matrix=self.knn,  # Pass the Kernel object directly
             n_eigenvectors=n_eigenvectors,
             eigen_solver=eigen_solver,
         )

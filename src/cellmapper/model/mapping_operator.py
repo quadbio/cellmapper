@@ -11,6 +11,7 @@ from scipy.sparse.linalg import eigsh
 
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
+from cellmapper.model.kernel import Kernel
 
 
 class MappingOperator:
@@ -51,9 +52,8 @@ class MappingOperator:
 
     def __init__(
         self,
-        kernel_matrix: csr_matrix | coo_matrix | csc_matrix | np.ndarray,
-        is_self_mapping: bool,
-        expected_shape: tuple[int, int],
+        kernel_matrix: Kernel | csr_matrix | coo_matrix | csc_matrix | np.ndarray,
+        is_self_mapping: bool | None = None,
         n_eigenvectors: int = 50,
         eigen_solver: Literal["partial", "complete"] = "partial",
     ):
@@ -62,11 +62,12 @@ class MappingOperator:
         Parameters
         ----------
         kernel_matrix
-            The unnormalized kernel matrix to validate and normalize
+            The kernel matrix or Kernel object to use for mapping.
+            If a Kernel object is provided, kernel_matrix and is_self_mapping
+            are extracted automatically.
         is_self_mapping
-            Whether this is self-mapping (square matrix) or cross-mapping
-        expected_shape
-            Expected shape (n_query_cells, n_reference_cells)
+            Whether this is self-mapping (square matrix) or cross-mapping.
+            If None, will be inferred from the Kernel object or matrix shape.
         n_eigenvectors
             Number of eigenvectors to compute for spectral decomposition.
             More eigenvectors = better approximation but slower computation.
@@ -76,17 +77,43 @@ class MappingOperator:
             - "partial": Uses sparse eigendecomposition (scipy.sparse.linalg.eigs), faster
             - "complete": Uses complete eigendecomposition (scipy.linalg.eig), exact for testing
         """
+        # Extract matrix and metadata from Kernel object if provided
+
+        if isinstance(kernel_matrix, Kernel):
+            # This is a Kernel object
+            kernel_obj = kernel_matrix
+            actual_matrix = kernel_obj.kernel_matrix
+            if actual_matrix is None:
+                raise ValueError(
+                    "Kernel object does not have a computed kernel matrix. Call compute_kernel_matrix() first."
+                )
+
+            # Extract is_self_mapping from Kernel if not provided
+            if is_self_mapping is None:
+                is_self_mapping = kernel_obj._is_self_mapping
+
+            kernel_matrix = actual_matrix
+        else:
+            # This is a raw matrix
+            actual_matrix = kernel_matrix
+
+            # Infer is_self_mapping from matrix shape if not provided
+            if is_self_mapping is None:
+                n_rows, n_cols = actual_matrix.shape
+                is_self_mapping = n_rows == n_cols
+                logger.info("Inferred is_self_mapping=%s from matrix shape %s", is_self_mapping, actual_matrix.shape)
+
         self.is_self_mapping = is_self_mapping
-        self.expected_shape = expected_shape
         self.eigen_solver = eigen_solver
 
         # Ensure we don't compute too many eigenvectors for small matrices
+        matrix_size = actual_matrix.shape[0]
         if eigen_solver == "complete":
             # For complete eigendecomposition, use all eigenvectors
-            self.n_eigenvectors = expected_shape[0]
+            self.n_eigenvectors = matrix_size
         elif eigen_solver == "partial":
             # For partial eigendecomposition, cap the number of eigenvectors
-            max_eigenvectors = max(1, min(expected_shape[0] - 2, n_eigenvectors))
+            max_eigenvectors = max(1, min(matrix_size - 2, n_eigenvectors))
             self.n_eigenvectors = max_eigenvectors
         else:
             raise ValueError(f"Unknown eigen_solver: {eigen_solver}. Use 'partial' or 'complete'.")
@@ -97,7 +124,7 @@ class MappingOperator:
         self.row_degrees: np.ndarray  # Row sums of original kernel matrix
 
         # Validate and normalize the matrix
-        self.mapping_matrix = self._validate_and_normalize_mapping_matrix(kernel_matrix)
+        self.mapping_matrix = self._validate_and_normalize_mapping_matrix(actual_matrix)
 
     @property
     def matrix(self) -> csr_matrix | np.ndarray:
@@ -125,12 +152,6 @@ class MappingOperator:
         """
         # Determine if input is sparse or dense
         self.is_sparse = issparse(kernel_matrix)
-
-        # Validate the shape
-        if kernel_matrix.shape != self.expected_shape:
-            raise ValueError(
-                f"Mapping matrix shape mismatch: expected {self.expected_shape}, but got {kernel_matrix.shape}."
-            )
 
         # Validate self-mapping consistency
         n_rows, n_cols = kernel_matrix.shape
@@ -429,7 +450,7 @@ class MappingOperator:
         String representation with key properties
         """
         # Basic properties
-        shape_str = f"{self.expected_shape[0]}×{self.expected_shape[1]}"
+        shape_str = f"{self.mapping_matrix.shape[0]}×{self.mapping_matrix.shape[1]}"
         matrix_type = "sparse" if self.is_sparse else "dense"
         mapping_type = "self-mapping" if self.is_self_mapping else "cross-mapping"
 
@@ -445,7 +466,7 @@ class MappingOperator:
         if self.is_sparse:
             # Safe access to nnz attribute for sparse matrices
             nnz = getattr(self.mapping_matrix, "nnz", 0)
-            sparsity = nnz / (self.expected_shape[0] * self.expected_shape[1])
+            sparsity = nnz / (self.mapping_matrix.shape[0] * self.mapping_matrix.shape[1])
             sparsity_str = f", sparsity: {sparsity:.1%}"
         else:
             sparsity_str = ""
@@ -478,7 +499,7 @@ class MappingOperator:
         matrix_type = "sparse" if self.is_sparse else "dense"
 
         # Build description
-        desc = f"{mapping_type} operator ({self.expected_shape[0]}×{self.expected_shape[1]}, {matrix_type}"
+        desc = f"{mapping_type} operator ({self.mapping_matrix.shape[0]}×{self.mapping_matrix.shape[1]}, {matrix_type}"
 
         if self.is_symmetric is not None:
             symmetry = "symmetric" if self.is_symmetric else "asymmetric"
@@ -486,7 +507,7 @@ class MappingOperator:
 
         if self.is_sparse:
             nnz = getattr(self.mapping_matrix, "nnz", 0)
-            total_elements = self.expected_shape[0] * self.expected_shape[1]
+            total_elements = self.mapping_matrix.shape[0] * self.mapping_matrix.shape[1]
             sparsity = nnz / total_elements
             desc += f", {sparsity:.1%} filled"
 
