@@ -7,15 +7,14 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import coo_matrix, csc_matrix, csr_matrix
+from scipy.sparse import csr_matrix
 from sklearn.preprocessing import OneHotEncoder
 
-from cellmapper.constants import (
-    PackageConstants,
-)
+from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model.embedding import EmbeddingMixin
 from cellmapper.model.evaluate import EvaluationMixin
+from cellmapper.model.mapping_operator import MappingOperator
 from cellmapper.model.neighbors import Neighbors
 from cellmapper.utils import create_imputed_anndata, get_n_comps
 
@@ -63,7 +62,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         # Initialize result containers
         self.knn: Neighbors | None = None
-        self._mapping_matrix: csr_matrix | None = None
+        self._mapping_operator: MappingOperator | None = None
         self.label_transfer_metrics: dict[str, Any] | None = None
         self.label_transfer_report: pd.DataFrame | None = None
         self.prediction_postfix: str | None = None
@@ -83,72 +82,26 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             return f"CellMapper(query={query_summary}, reference={reference_summary}"
 
     @property
-    def mapping_matrix(self):
+    def mapping_operator(self) -> MappingOperator:
         """
-        Get the mapping matrix.
+        Get the mapping operator for applying matrix powers.
+
+        The mapping operator encapsulates the mapping matrix and provides methods
+        for applying matrix powers M^t for t-step diffusion processes.
 
         Returns
         -------
-        scipy.sparse.csr_matrix
-            The mapping matrix.
+        MappingOperator
+            The mapping operator containing the validated and normalized mapping matrix
+
+        Raises
+        ------
+        ValueError
+            If the mapping matrix has not been computed yet
         """
-        return self._mapping_matrix
-
-    @mapping_matrix.setter
-    def mapping_matrix(self, value):
-        """
-        Set and validate the mapping matrix.
-
-        Parameters
-        ----------
-        value
-            The new mapping matrix to set.
-        """
-        if value is not None:
-            # Validate and normalize the matrix
-            self._mapping_matrix = self._validate_and_normalize_mapping_matrix(value)
-        else:
-            self._mapping_matrix = None
-
-    def _validate_and_normalize_mapping_matrix(
-        self, mapping_matrix: csr_matrix | coo_matrix | csc_matrix
-    ) -> csr_matrix:
-        """
-        Validate and normalize the mapping matrix.
-
-        Parameters
-        ----------
-        mapping_matrix
-            The mapping matrix to validate and normalize.
-        n_reference_cells
-            Number of reference cells (rows).
-        n_query_cells
-            Number of query cells (columns).
-
-        Returns
-        -------
-        Validated and row-normalized mapping matrix.
-        """
-        # Validate the shape
-        if mapping_matrix.shape != (self.query.n_obs, self.reference.n_obs):
-            raise ValueError(
-                f"Mapping matrix shape mismatch: expected ({self.query.n_obs}, {self.reference.n_obs}), "
-                f"but got {mapping_matrix.shape}."
-            )
-
-        # Row normalize the matrix
-        row_sums = mapping_matrix.sum(axis=1).A1  # Convert to 1D array
-        if np.any(row_sums == 0):
-            logger.warning("Some rows in the mapping matrix have a sum of zero. These rows will be left unchanged.")
-        row_sums[row_sums == 0] = 1  # Avoid division by zero
-        if not np.allclose(row_sums, 1):
-            logger.info("Row-normalizing the mapping matrix.")
-        mapping_matrix = mapping_matrix.multiply(1 / row_sums[:, None])
-
-        # Ensure the matrix is in CSR format
-        mapping_matrix = mapping_matrix.tocsr().astype(np.float32)
-
-        return mapping_matrix
+        if self._mapping_operator is None:
+            raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
+        return self._mapping_operator
 
     def compute_neighbors(
         self,
@@ -296,6 +249,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         | None = None,
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
+        n_eigenvectors: int = 50,
+        eigen_solver: Literal["partial", "complete"] = "partial",
     ) -> None:
         """
         Compute the mapping matrix for label transfer.
@@ -323,6 +278,13 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             is supplied with self-edges. It does not determine whether the final connectivity matrix
             has self edges. For example, the `umap` kernel expectes self-edges, but does not
             produce them in the final connectivity matrix.
+        n_eigenvectors
+            Number of eigenvectors to compute for spectral decomposition. Only relevant
+            when using spectral methods for matrix powers. Default is 50.
+        eigen_solver
+            Eigendecomposition method for spectral approach:
+            - "partial": Uses sparse eigendecomposition, faster (default)
+            - "complete": Uses complete eigendecomposition, exact for testing
 
         Returns
         -------
@@ -332,7 +294,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         -----
         Updates the following attributes:
 
-        - ``mapping_matrix``: Mapping matrix to transfer labels, embeddings, or expression values.
+        - ``mapping_operator``: Mapping operator to transfer labels, embeddings, or expression values.
         """
         if self.knn is None:
             raise ValueError("Neighbors have not been computed. Call compute_neighbors() first.")
@@ -368,15 +330,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             # Type assertion for mypy - get_adjacency_matrices validates that xx is not None
             n_neighbors = self.knn.yx.n_neighbors
 
-            jaccard = (yx @ xx.T) + (yy @ xy.T)
+            kernel_matrix = (yx @ xx.T) + (yy @ xy.T)
 
             if method == "jaccard":
-                jaccard.data /= 4 * n_neighbors - jaccard.data
+                kernel_matrix.data /= 4 * n_neighbors - kernel_matrix.data
             elif method == "hnoca":
-                jaccard.data /= 2 * n_neighbors - jaccard.data
-                jaccard.data = jaccard.data**2
+                kernel_matrix.data /= 2 * n_neighbors - kernel_matrix.data
+                kernel_matrix.data = kernel_matrix.data**2
 
-            self.mapping_matrix = jaccard
         elif method in ["gauss", "scarches", "inverse_distance", "random", "equal", "umap"]:
             # Validate self-mapping-only kernels
             if method in PackageConstants.SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
@@ -388,23 +349,46 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 method,
             )
             # Type assertion for mypy - neighbors validation ensures yx is not None
-            self.mapping_matrix = self.knn.yx.knn_graph_connectivities(
+            kernel_matrix = self.knn.yx.knn_graph_connectivities(
                 kernel=kernel_method, symmetrize=symmetrize, self_edges=self_edges
             )
         else:
             raise NotImplementedError(f"Method '{method}' is not implemented.")
 
-    def map_obsm(self, key: str, prediction_postfix: str = "pred") -> None:
+        # Create mapping operator with the computed matrix (single point of construction)
+        self._mapping_operator = MappingOperator(
+            kernel_matrix=kernel_matrix,
+            is_self_mapping=self._is_self_mapping,
+            expected_shape=(self.query.n_obs, self.reference.n_obs),
+            n_eigenvectors=n_eigenvectors,
+            eigen_solver=eigen_solver,
+        )
+
+    def map_obsm(
+        self,
+        key: str,
+        t: int | None = None,
+        method: Literal["iterative", "spectral"] = "iterative",
+        prediction_postfix: str = "pred",
+    ) -> None:
         """
-        Map embeddings from reference dataset to query dataset.
+        Map embeddings with optional multi-step diffusion.
 
         Uses matrix multiplication to transfer embeddings from the reference
-        dataset to the query dataset.
+        dataset to the query dataset. For t > 1, applies matrix powers representing
+        t-step diffusion processes (only supported in self-mapping mode).
 
         Parameters
         ----------
         key
             Key in ``reference.obsm`` storing the embeddings to be transferred
+        t
+            Matrix power to apply. If None, uses direct multiplication (fastest).
+            If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
+        method
+            Method for computing matrix powers. Options:
+            - "iterative": Iterative matrix multiplication (default)
+            - "spectral": Eigendecomposition-based (only for self-mapping)
         prediction_postfix
             Postfix to append to the output key in ``query.obsm`` where the transferred embeddings will be stored
 
@@ -418,32 +402,50 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         - ``query.obsm``: Contains the transferred embeddings.
         """
-        if self.mapping_matrix is None:
+        if self._mapping_operator is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
-        logger.info("Mapping embeddings for key '%s'.", key)
+        # Log the actual operation being performed
+        if t is None:
+            logger.info("Mapping embeddings for key '%s' using direct multiplication", key)
+        else:
+            logger.info("Mapping embeddings for key '%s' with t=%d steps using %s method", key, t, method)
 
-        # Perform matrix multiplication to transfer embeddings
+        # Perform matrix power multiplication to transfer embeddings
         reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
-        query_embeddings = self.mapping_matrix @ reference_embeddings  # shape = (n_query_cells x n_embedding_dims)
 
-        # Store the transferred embeddings in query.obsm
+        # Apply matrix power while preserving sparsity
+        query_embeddings = self.mapping_operator.apply(
+            reference_embeddings, t=t, method=method
+        )  # shape = (n_query_cells x n_embedding_dims)
+
+        # Store the transferred embeddings in query.obsm with descriptive key
         output_key = f"{key}_{prediction_postfix}"
         self.query.obsm[output_key] = query_embeddings
+        logger.info("Embeddings mapped and stored in query.obsm['%s']", output_key)
 
-        logger.info("Embeddings mapped and stored in query.obsm['%s'].", output_key)
-
-    def map_layers(self, key: str) -> None:
+    def map_layers(
+        self, key: str, t: int | None = None, method: Literal["iterative", "spectral"] = "iterative"
+    ) -> None:
         """
-        Map expression values from reference dataset to query dataset.
+        Map expression values with optional multi-step diffusion.
 
         Transfers expression values (e.g., .X or entries from .layers) from reference
         dataset to a new imputed query AnnData object using matrix multiplication.
+        For t > 1, applies matrix powers representing t-step diffusion processes
+        (only supported in self-mapping mode).
 
         Parameters
         ----------
         key
             Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``
+        t
+            Matrix power to apply. If None, uses direct multiplication (fastest).
+            If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
+        method
+            Method for computing matrix powers. Options:
+            - "iterative": Iterative matrix multiplication (default)
+            - "spectral": Eigendecomposition-based (only for self-mapping)
 
         Returns
         -------
@@ -454,13 +456,22 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         Creates ``self.query_imputed`` with the transferred data in .X.
         The new AnnData object will have the same cells as the query, but the features (genes) of the reference.
         """
-        if self.mapping_matrix is None:
+        if self._mapping_operator is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
-        logger.info("Mapping layer for key '%s'.", key)
+        # Log the actual operation being performed
+        if t is None:
+            logger.info("Mapping layer for key '%s' using direct multiplication", key)
+        else:
+            logger.info("Mapping layer for key '%s' with t=%d steps using %s method", key, t, method)
+
         # Get the reference layer (or .X if key is "X")
         reference_layer = self.reference.X if key == "X" else self.reference.layers[key]
-        query_layer = self.mapping_matrix @ reference_layer  # shape = (n_query_cells x n_reference_features)
+
+        # Apply matrix power while preserving sparsity
+        query_layer = self.mapping_operator.apply(
+            reference_layer, t=t, method=method
+        )  # shape = (n_query_cells x n_reference_features)
 
         # Create query_imputed using the property setter for consistent behavior
         self.query_imputed = query_layer
@@ -518,6 +529,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         obs_keys: str | list[str] | None = None,
         obsm_keys: str | list[str] | None = None,
         layer_key: str | None = None,
+        t: int | None = None,
+        method: Literal["iterative", "spectral"] = "iterative",
         n_neighbors: int = 30,
         use_rep: str | None = None,
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
@@ -548,6 +561,13 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             One or more keys in ``reference.obsm`` storing the embeddings to be mapped.
         layer_key
             Key in ``reference.layers`` to be mapped. Use "X" to map ``reference.X``.
+        t
+            Matrix power to apply. If None, uses direct multiplication (fastest).
+            If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
+        method
+            Method for computing matrix powers. Options:
+            - "iterative": Iterative matrix multiplication (default)
+            - "spectral": Eigendecomposition-based (only for self-mapping)
         n_neighbors
             Number of nearest neighbors.
         use_rep
@@ -576,19 +596,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if obs_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obs_keys, str):
-                self.map_obs(key=obs_keys, prediction_postfix=prediction_postfix)
+                self.map_obs(key=obs_keys, t=t, method=method, prediction_postfix=prediction_postfix)
             else:
                 for obs_key in obs_keys:
-                    self.map_obs(key=obs_key, prediction_postfix=prediction_postfix)
+                    self.map_obs(key=obs_key, t=t, method=method, prediction_postfix=prediction_postfix)
         if obsm_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obsm_keys, str):
-                self.map_obsm(key=obsm_keys, prediction_postfix=prediction_postfix)
+                self.map_obsm(key=obsm_keys, t=t, method=method, prediction_postfix=prediction_postfix)
             else:
                 for obsm_key in obsm_keys:
-                    self.map_obsm(key=obsm_key, prediction_postfix=prediction_postfix)
+                    self.map_obsm(key=obsm_key, t=t, method=method, prediction_postfix=prediction_postfix)
         if layer_key is not None:
-            self.map_layers(key=layer_key)
+            self.map_layers(key=layer_key, t=t, method=method)
         if obs_keys is None and obsm_keys is None and layer_key is None:
             logger.warning(
                 "Neither ``obs_keys``, ``obsm_keys`` or ``layer_key`` provided. No labels, embeddings or layers were transferred. "
@@ -654,7 +674,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self.knn.xx.n_neighbors,
         )
 
-    def map_obs(self, key: str, prediction_postfix: str = "pred", confidence_postfix: str = "conf") -> None:
+    def map_obs(
+        self,
+        key: str,
+        t: int | None = None,
+        method: Literal["iterative", "spectral"] = "iterative",
+        prediction_postfix: str = "pred",
+        confidence_postfix: str = "conf",
+    ) -> None:
         """
         Map observation data from reference dataset to query dataset.
 
@@ -667,6 +694,13 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         ----------
         key
             Key in ``reference.obs`` to be transferred into ``query.obs``
+        t
+            Matrix power to apply. If None, uses direct multiplication (fastest).
+            If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
+        method
+            Method for computing matrix powers. Options:
+            - "iterative": Iterative matrix multiplication (default)
+            - "spectral": Eigendecomposition-based (only for self-mapping)
         prediction_postfix
             Postfix added to create new keys in ``query.obs`` for the transferred data
         confidence_postfix
@@ -683,7 +717,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         - ``query.obs``: Contains the transferred data and confidence scores (for categorical data).
         """
-        if self.mapping_matrix is None:
+        if self._mapping_operator is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
 
         if key not in self.reference.obs.columns:
@@ -702,20 +736,34 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             or pd.api.types.is_string_dtype(reference_data)
         )
 
-        if is_categorical:
-            logger.info("Mapping categorical data for key '%s' using one-hot encoding.", key)
-            self._map_obs_categorical(key, prediction_postfix, confidence_postfix)
+        # Log the operation being performed
+        data_type = "categorical" if is_categorical else "numerical"
+        if t is None:
+            logger.info("Mapping %s data for key '%s' using direct multiplication.", data_type, key)
         else:
-            logger.info("Mapping numerical data for key '%s' using direct matrix multiplication.", key)
-            self._map_obs_numerical(key, prediction_postfix)
+            logger.info("Mapping %s data for key '%s' with t=%d steps using %s method.", data_type, key, t, method)
 
-    def _map_obs_categorical(self, key: str, prediction_postfix: str, confidence_postfix: str) -> None:
+        if is_categorical:
+            self._map_obs_categorical(key, prediction_postfix, confidence_postfix, t, method)
+        else:
+            self._map_obs_numerical(key, prediction_postfix, t, method)
+
+    def _map_obs_categorical(
+        self,
+        key: str,
+        prediction_postfix: str,
+        confidence_postfix: str,
+        t: int | None,
+        method: Literal["iterative", "spectral"],
+    ) -> None:
         """Map categorical observation data using one-hot encoding."""
         onehot = OneHotEncoder(dtype=np.float32)
         xtab = onehot.fit_transform(
             self.reference.obs[[key]],
         )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
-        ytab = self.mapping_matrix @ xtab  # shape = (n_query_cells x n_categories), sparse csr matrix, float32
+        ytab = self.mapping_operator.apply(
+            xtab, t=t, method=method
+        )  # shape = (n_query_cells x n_categories), sparse csr matrix, float32
 
         pred = pd.Series(
             data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1],
@@ -745,10 +793,12 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         del onehot, xtab, ytab, pred, conf
         gc.collect()
 
-    def _map_obs_numerical(self, key: str, prediction_postfix: str) -> None:
+    def _map_obs_numerical(
+        self, key: str, prediction_postfix: str, t: int | None, method: Literal["iterative", "spectral"]
+    ) -> None:
         """Map numerical observation data using direct matrix multiplication."""
         reference_values = np.array(self.reference.obs[key]).reshape(-1, 1)  # shape = (n_reference_cells, 1)
-        mapped_values = self.mapping_matrix @ reference_values  # shape = (n_query_cells, 1)
+        mapped_values = self.mapping_operator.apply(reference_values, t=t, method=method)  # shape = (n_query_cells, 1)
 
         pred = pd.Series(
             data=mapped_values.ravel(),

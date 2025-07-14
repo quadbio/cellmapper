@@ -11,3 +11,6 @@ class PackageConstants:
 
     # Kernel methods that only work in self-mapping mode
     SELF_MAPPING_ONLY_KERNELS = {"umap", "adaptive_gauss"}
+
+    # Threshold for recommending spectral method over iterative for matrix powers
+    SPECTRAL_METHOD_THRESHOLD: int = 10

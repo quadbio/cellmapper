@@ -36,7 +36,7 @@ class TestQueryToReferenceMapping:
     @pytest.mark.parametrize("method", ["gauss", "scarches", "random", "inverse_distance", "jaccard", "hnoca", "equal"])
     def test_compute_mapping_matrix_all_methods(self, cmap, method):
         cmap.compute_mapping_matrix(method=method)
-        assert cmap.mapping_matrix is not None
+        assert cmap.mapping_operator.matrix is not None
 
     @pytest.mark.parametrize("layer_key", ["X", "counts"])
     def test_expression_transfer_layers(self, cmap, layer_key):
