@@ -28,7 +28,7 @@ class TestEvaluate:
         ],
     )
     def test_presence_score_overall(self, cmap, log, percentile):
-        cmap.estimate_presence_score(log=log, percentile=percentile)
+        cmap.compute_presence_score(log=log, percentile=percentile)
         assert "presence_score" in cmap.reference.obs
         scores = cmap.reference.obs["presence_score"]
         assert isinstance(scores, pd.Series | np.ndarray)
@@ -37,7 +37,7 @@ class TestEvaluate:
 
     @pytest.mark.parametrize("groupby", ["batch", "modality"])
     def test_presence_score_groupby(self, cmap, groupby):
-        cmap.estimate_presence_score(groupby=groupby)
+        cmap.compute_presence_score(groupby=groupby)
         # Overall score should always be present in .obs
         assert "presence_score" in cmap.reference.obs
         # Per-group scores should be present in .obsm

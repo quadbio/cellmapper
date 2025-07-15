@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, issparse
 from sklearn.preprocessing import OneHotEncoder
 
 from cellmapper.constants import PackageConstants
@@ -352,6 +352,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         dataset to the query dataset. For t > 1, applies matrix powers representing
         t-step diffusion processes (only supported in self-mapping mode).
 
+        When the reference embeddings are stored as a pandas DataFrame, the method
+        preserves the DataFrame structure by reconstructing it with the query cell
+        index and the original column names after mapping.
+
         Parameters
         ----------
         key
@@ -374,7 +378,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         -----
         Updates the following attributes:
 
-        - ``query.obsm``: Contains the transferred embeddings.
+        - ``query.obsm``: Contains the transferred embeddings. If the reference embeddings
+          were a pandas DataFrame, the transferred embeddings will also be a DataFrame
+          with the same column names and the query cell names as the index.
         """
         if self._mapping_operator is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
@@ -386,16 +392,35 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             logger.info("Mapping embeddings for key '%s' with t=%d steps using %s method", key, t, method)
 
         # Perform matrix power multiplication to transfer embeddings
-        reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
+        reference_data = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
+
+        # Handle pandas DataFrame case
+        if isinstance(reference_data, pd.DataFrame):
+            # Extract values for the mapping operation
+            columns = reference_data.columns
+            reference_values = reference_data.values
+            is_dataframe = True
+        else:
+            reference_values = reference_data  # type: ignore[assignment]
+            is_dataframe = False
 
         # Apply matrix power while preserving sparsity
-        query_embeddings = self.mapping_operator.apply(
-            reference_embeddings, t=t, method=method
+        query_data = self.mapping_operator.apply(
+            reference_values,
+            t=t,
+            method=method,
         )  # shape = (n_query_cells x n_embedding_dims)
+
+        if is_dataframe:
+            query_data = pd.DataFrame(
+                data=query_data.toarray() if issparse(query_data) else query_data,  # type: ignore[attr-defined]
+                index=self.query.obs_names,
+                columns=columns,
+            )
 
         # Store the transferred embeddings in query.obsm with descriptive key
         output_key = f"{key}_{prediction_postfix}"
-        self.query.obsm[output_key] = query_embeddings
+        self.query.obsm[output_key] = query_data
         logger.info("Embeddings mapped and stored in query.obsm['%s']", output_key)
 
     def map_layers(
@@ -504,7 +529,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         obsm_keys: str | list[str] | None = None,
         layer_key: str | None = None,
         t: int | None = None,
-        method: Literal["iterative", "spectral"] = "iterative",
+        diffusion_method: Literal["iterative", "spectral"] = "iterative",
         n_neighbors: int = 30,
         use_rep: str | None = None,
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
@@ -538,10 +563,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         t
             Matrix power to apply. If None, uses direct multiplication (fastest).
             If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
-        method
-            Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (default)
-            - "spectral": Eigendecomposition-based (only for self-mapping)
+        diffusion_method
+            Method for computing matrix powers in self-mapping mode. Options:
+            - "iterative": Iterative matrix multiplication
+            - "spectral": Eigendecomposition-based
         n_neighbors
             Number of nearest neighbors.
         use_rep
@@ -570,19 +595,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if obs_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obs_keys, str):
-                self.map_obs(key=obs_keys, t=t, method=method, prediction_postfix=prediction_postfix)
+                self.map_obs(key=obs_keys, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
             else:
                 for obs_key in obs_keys:
-                    self.map_obs(key=obs_key, t=t, method=method, prediction_postfix=prediction_postfix)
+                    self.map_obs(key=obs_key, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
         if obsm_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obsm_keys, str):
-                self.map_obsm(key=obsm_keys, t=t, method=method, prediction_postfix=prediction_postfix)
+                self.map_obsm(key=obsm_keys, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
             else:
                 for obsm_key in obsm_keys:
-                    self.map_obsm(key=obsm_key, t=t, method=method, prediction_postfix=prediction_postfix)
+                    self.map_obsm(key=obsm_key, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
         if layer_key is not None:
-            self.map_layers(key=layer_key, t=t, method=method)
+            self.map_layers(key=layer_key, t=t, method=diffusion_method)
         if obs_keys is None and obsm_keys is None and layer_key is None:
             logger.warning(
                 "Neither ``obs_keys``, ``obsm_keys`` or ``layer_key`` provided. No labels, embeddings or layers were transferred. "

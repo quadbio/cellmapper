@@ -384,8 +384,7 @@ class MappingOperator:
         Parameters
         ----------
         reference_data
-            Data to map (reference_cells x features). Can be dense or sparse arrays,
-            pandas DataFrames, or any array-like structure.
+            Data to map (reference_cells x features). Can be dense or sparse arrays.
         t
             Matrix power to apply. If None (default), uses direct multiplication (fastest).
             If t >= 1, allows method selection between iterative and spectral approaches.

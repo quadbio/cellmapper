@@ -423,7 +423,7 @@ class EvaluationMixin:
             n_test_genes,
         )
 
-    def estimate_presence_score(
+    def compute_presence_score(
         self,
         groupby: str | None = None,
         key_added: str = "presence_score",
