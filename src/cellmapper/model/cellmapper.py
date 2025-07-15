@@ -393,8 +393,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             reference_embeddings, t=t, method=method
         )  # shape = (n_query_cells x n_embedding_dims)
 
-        query_embeddings.index = self.query.obs.index
-        print(query_embeddings.head())
+        # fix index for dataframes
+        if isinstance(reference_embeddings, pd.DataFrame):
+            query_embeddings.index = self.query.obs.index
 
         # Store the transferred embeddings in query.obsm with descriptive key
         output_key = f"{key}_{prediction_postfix}"

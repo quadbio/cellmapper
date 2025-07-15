@@ -4,6 +4,7 @@ from functools import cached_property
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 from scipy import sparse
 from scipy.linalg import eigh
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
@@ -375,10 +376,10 @@ class MappingOperator:
 
     def apply(
         self,
-        reference_data: np.ndarray | csr_matrix,
+        reference_data: np.ndarray | csr_matrix | pd.DataFrame,
         t: int | None = None,
         method: Literal["iterative", "spectral"] = "iterative",
-    ) -> np.ndarray | csr_matrix:
+    ) -> np.ndarray | csr_matrix | pd.DataFrame:
         """Apply mapping matrix power: M^t @ reference_data.
 
         Parameters
