@@ -4,7 +4,6 @@ from functools import cached_property
 from typing import Literal
 
 import numpy as np
-import pandas as pd
 from scipy import sparse
 from scipy.linalg import eigh
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
@@ -376,17 +375,16 @@ class MappingOperator:
 
     def apply(
         self,
-        reference_data: np.ndarray | csr_matrix | pd.DataFrame,
+        reference_data: np.ndarray | csr_matrix,
         t: int | None = None,
         method: Literal["iterative", "spectral"] = "iterative",
-    ) -> np.ndarray | csr_matrix | pd.DataFrame:
+    ) -> np.ndarray | csr_matrix:
         """Apply mapping matrix power: M^t @ reference_data.
 
         Parameters
         ----------
         reference_data
-            Data to map (reference_cells x features). Can be dense or sparse arrays,
-            pandas DataFrames, or any array-like structure.
+            Data to map (reference_cells x features). Can be dense or sparse arrays.
         t
             Matrix power to apply. If None (default), uses direct multiplication (fastest).
             If t >= 1, allows method selection between iterative and spectral approaches.

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, issparse
 from sklearn.preprocessing import OneHotEncoder
 
 from cellmapper.constants import PackageConstants
@@ -352,6 +352,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         dataset to the query dataset. For t > 1, applies matrix powers representing
         t-step diffusion processes (only supported in self-mapping mode).
 
+        When the reference embeddings are stored as a pandas DataFrame, the method
+        preserves the DataFrame structure by reconstructing it with the query cell
+        index and the original column names after mapping.
+
         Parameters
         ----------
         key
@@ -374,7 +378,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         -----
         Updates the following attributes:
 
-        - ``query.obsm``: Contains the transferred embeddings.
+        - ``query.obsm``: Contains the transferred embeddings. If the reference embeddings
+          were a pandas DataFrame, the transferred embeddings will also be a DataFrame
+          with the same column names and the query cell names as the index.
         """
         if self._mapping_operator is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
@@ -386,20 +392,35 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             logger.info("Mapping embeddings for key '%s' with t=%d steps using %s method", key, t, method)
 
         # Perform matrix power multiplication to transfer embeddings
-        reference_embeddings = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
+        reference_data = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
+
+        # Handle pandas DataFrame case
+        if isinstance(reference_data, pd.DataFrame):
+            # Extract values for the mapping operation
+            columns = reference_data.columns
+            reference_values = reference_data.values
+            is_dataframe = True
+        else:
+            reference_values = reference_data  # type: ignore[assignment]
+            is_dataframe = False
 
         # Apply matrix power while preserving sparsity
-        query_embeddings = self.mapping_operator.apply(
-            reference_embeddings, t=t, method=method
+        query_data = self.mapping_operator.apply(
+            reference_values,
+            t=t,
+            method=method,
         )  # shape = (n_query_cells x n_embedding_dims)
 
-        # fix index for dataframes
-        if isinstance(reference_embeddings, pd.DataFrame):
-            query_embeddings.index = self.query.obs.index
+        if is_dataframe:
+            query_data = pd.DataFrame(
+                data=query_data.toarray() if issparse(query_data) else query_data,  # type: ignore[attr-defined]
+                index=self.query.obs_names,
+                columns=columns,
+            )
 
         # Store the transferred embeddings in query.obsm with descriptive key
         output_key = f"{key}_{prediction_postfix}"
-        self.query.obsm[output_key] = query_embeddings
+        self.query.obsm[output_key] = query_data
         logger.info("Embeddings mapped and stored in query.obsm['%s']", output_key)
 
     def map_layers(
