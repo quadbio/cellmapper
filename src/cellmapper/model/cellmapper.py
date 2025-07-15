@@ -529,7 +529,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         obsm_keys: str | list[str] | None = None,
         layer_key: str | None = None,
         t: int | None = None,
-        method: Literal["iterative", "spectral"] = "iterative",
+        diffusion_method: Literal["iterative", "spectral"] = "iterative",
         n_neighbors: int = 30,
         use_rep: str | None = None,
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
@@ -563,10 +563,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         t
             Matrix power to apply. If None, uses direct multiplication (fastest).
             If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
-        method
-            Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (default)
-            - "spectral": Eigendecomposition-based (only for self-mapping)
+        diffusion_method
+            Method for computing matrix powers in self-mapping mode. Options:
+            - "iterative": Iterative matrix multiplication
+            - "spectral": Eigendecomposition-based
         n_neighbors
             Number of nearest neighbors.
         use_rep
@@ -595,19 +595,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if obs_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obs_keys, str):
-                self.map_obs(key=obs_keys, t=t, method=method, prediction_postfix=prediction_postfix)
+                self.map_obs(key=obs_keys, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
             else:
                 for obs_key in obs_keys:
-                    self.map_obs(key=obs_key, t=t, method=method, prediction_postfix=prediction_postfix)
+                    self.map_obs(key=obs_key, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
         if obsm_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obsm_keys, str):
-                self.map_obsm(key=obsm_keys, t=t, method=method, prediction_postfix=prediction_postfix)
+                self.map_obsm(key=obsm_keys, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
             else:
                 for obsm_key in obsm_keys:
-                    self.map_obsm(key=obsm_key, t=t, method=method, prediction_postfix=prediction_postfix)
+                    self.map_obsm(key=obsm_key, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
         if layer_key is not None:
-            self.map_layers(key=layer_key, t=t, method=method)
+            self.map_layers(key=layer_key, t=t, method=diffusion_method)
         if obs_keys is None and obsm_keys is None and layer_key is None:
             logger.warning(
                 "Neither ``obs_keys``, ``obsm_keys`` or ``layer_key`` provided. No labels, embeddings or layers were transferred. "
