@@ -544,7 +544,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             "hnoca",
             "equal",
             "umap",
-        ] = "gauss",
+        ]
+        | None = None,
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
         prediction_postfix: str = "pred",
