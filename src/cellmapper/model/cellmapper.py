@@ -1,6 +1,5 @@
 """k-NN based mapping of labels, embeddings, and expression values."""
 
-import gc
 from typing import Any, Literal
 
 import numpy as np
@@ -544,7 +543,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             "hnoca",
             "equal",
             "umap",
-        ] = "gauss",
+        ]
+        | None = None,
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
         prediction_postfix: str = "pred",
@@ -680,7 +680,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         method: Literal["iterative", "spectral"] = "iterative",
         prediction_postfix: str = "pred",
         confidence_postfix: str = "conf",
-    ) -> None:
+        return_probabilities: bool = False,
+    ) -> np.ndarray | csr_matrix | None:
         """
         Map observation data from reference dataset to query dataset.
 
@@ -705,10 +706,16 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         confidence_postfix
             Postfix added to create new keys in ``query.obs`` for confidence scores
             (only applicable for categorical data)
+        return_probabilities
+            If True, return the probability matrix for categorical data.
+            Only applicable for categorical data. The matrix is never densified.
 
         Returns
         -------
-        None
+        np.ndarray, csr_matrix or None
+            For categorical data with ``return_probabilities=True``: dense or sparse matrix
+            of shape (n_query_cells, n_categories) containing probabilities.
+            For numerical data or when ``return_probabilities=False``: None.
 
         Notes
         -----
@@ -743,9 +750,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             logger.info("Mapping %s data for key '%s' with t=%d steps using %s method.", data_type, key, t, method)
 
         if is_categorical:
-            self._map_obs_categorical(key, prediction_postfix, confidence_postfix, t, method)
+            return self._map_obs_categorical(
+                key, prediction_postfix, confidence_postfix, t, method, return_probabilities
+            )
         else:
+            if return_probabilities:
+                logger.warning("return_probabilities=True is only applicable for categorical data, ignoring.")
             self._map_obs_numerical(key, prediction_postfix, t, method)
+            return None
 
     def _map_obs_categorical(
         self,
@@ -754,7 +766,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         confidence_postfix: str,
         t: int | None,
         method: Literal["iterative", "spectral"],
-    ) -> None:
+        return_probabilities: bool = False,
+    ) -> np.ndarray | csr_matrix | None:
         """Map categorical observation data using one-hot encoding."""
         onehot = OneHotEncoder(dtype=np.float32)
         xtab = onehot.fit_transform(
@@ -765,7 +778,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         )  # shape = (n_query_cells x n_categories), sparse csr matrix, float32
 
         pred = pd.Series(
-            data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1],
+            data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1 if issparse(ytab) else ytab.argmax(axis=1)],
             index=self.query.obs_names,
             dtype=self.reference.obs[key].dtype,
         )
@@ -788,9 +801,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         logger.info("Categorical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
 
-        # Free memory explicitly
-        del onehot, xtab, ytab, pred, conf
-        gc.collect()
+        # Return probabilities if requested (never densify)
+        if return_probabilities:
+            return ytab
+        else:
+            return None
 
     def _map_obs_numerical(
         self, key: str, prediction_postfix: str, t: int | None, method: Literal["iterative", "spectral"]
