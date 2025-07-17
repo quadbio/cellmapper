@@ -185,8 +185,8 @@ def cmap(query_reference_adata):
     )
 
     # Compute neighbors and mapping matrix
-    cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-    cmap.compute_mapping_matrix(method="gauss")
+    cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+    cmap.compute_mapping_matrix(kernel_method="gauss")
 
     return cmap
 

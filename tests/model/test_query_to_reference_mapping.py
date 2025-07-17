@@ -33,9 +33,11 @@ class TestQueryToReferenceMapping:
         cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
         assert_metrics_close(cmap.expression_transfer_metrics, expected_expression_transfer_metrics)
 
-    @pytest.mark.parametrize("method", ["gauss", "scarches", "random", "inverse_distance", "jaccard", "hnoca", "equal"])
-    def test_compute_mapping_matrix_all_methods(self, cmap, method):
-        cmap.compute_mapping_matrix(method=method)
+    @pytest.mark.parametrize(
+        "kernel_method", ["gauss", "scarches", "random", "inverse_distance", "jaccard", "hnoca", "equal"]
+    )
+    def test_compute_mapping_matrix_all_methods(self, cmap, kernel_method):
+        cmap.compute_mapping_matrix(kernel_method=kernel_method)
         assert cmap.mapping_operator.matrix is not None
 
     @pytest.mark.parametrize("layer_key", ["X", "counts"])
@@ -76,7 +78,7 @@ class TestQueryToReferenceMapping:
         cm = CellMapper(reference, reference)
         cm.map(
             knn_method="sklearn",
-            mapping_method="jaccard",
+            kernel_method="jaccard",
             obs_keys="leiden",
             use_rep="X_pca",
             n_neighbors=1,
@@ -268,8 +270,8 @@ class TestQueryToReferenceMapping:
 
         # Create CellMapper and compute mapping matrix
         cmap = CellMapper(query=query, reference=reference)
-        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-        cmap.compute_mapping_matrix(method="gauss")
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
 
         # Test float and integer data
         for key in ["numerical_score", "integer_score"]:
@@ -283,8 +285,8 @@ class TestQueryToReferenceMapping:
 
         # Create CellMapper and compute mapping matrix
         cmap = CellMapper(query=query, reference=reference)
-        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-        cmap.compute_mapping_matrix(method="gauss")
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
 
         # Map pseudotime
         cmap.map_obs(key="dpt_pseudotime")

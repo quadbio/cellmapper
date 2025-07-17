@@ -141,7 +141,7 @@ class TestUMAPConnectivityValidation:
             n_neighbors=n_neighbors,
             use_rep="X_pca",
             n_comps=n_pcs,
-            method=transformer,
+            knn_method=transformer,
             metric="euclidean",
         )
 
@@ -182,7 +182,7 @@ class TestSelfMapping:
         cm = CellMapper(adata_pbmc3k)
         cm.map(
             knn_method="sklearn",
-            mapping_method="jaccard",
+            kernel_method="jaccard",
             obs_keys=obs_key,
             use_rep="X_pca",
             n_neighbors=1,
@@ -206,7 +206,7 @@ class TestSelfMapping:
 
         # Test with typical parameters
         cm.compute_neighbors(n_neighbors=5, use_rep="X_pca")
-        cm.compute_mapping_matrix(method="gauss")
+        cm.compute_mapping_matrix(kernel_method="gauss")
 
         # Test label transfer
         cm.map_obs(key="leiden")
@@ -246,7 +246,7 @@ class TestSelfMapping:
         assert cm.knn.xx.n_neighbors + 1 == n_neighbors
 
         # Test the full pipeline with precomputed distances
-        cm.compute_mapping_matrix(method="gauss")
+        cm.compute_mapping_matrix(kernel_method="gauss")
         cm.map_obs(key="leiden")
 
         assert "leiden_pred" in cm.query.obs
@@ -305,7 +305,7 @@ class TestSelfMapping:
             ).all()
 
         # Test the mapping pipeline
-        cm.compute_mapping_matrix(method="gauss")
+        cm.compute_mapping_matrix(kernel_method="gauss")
         cm.map_obs(key="leiden")
 
         assert "leiden_pred" in cm.query.obs
@@ -342,7 +342,7 @@ class TestSelfMapping:
         assert not adjacency_without_self.diagonal().any(), "Diagonal should be False with self_edges=False"
 
         # Test the mapping pipeline
-        cm.compute_mapping_matrix(method="gauss")
+        cm.compute_mapping_matrix(kernel_method="gauss")
         cm.map_obs(key="leiden")
 
         assert "leiden_pred" in cm.query.obs
@@ -355,7 +355,7 @@ class TestSelfMapping:
 
         # Test with no representation provided
         cm.compute_neighbors(n_neighbors=5, use_rep=None, n_comps=10)
-        cm.compute_mapping_matrix(method="gauss")
+        cm.compute_mapping_matrix(kernel_method="gauss")
 
         # Verify joint PCA was computed
         assert "X_pca" in adata_pbmc3k.obsm
@@ -366,7 +366,7 @@ class TestSelfMapping:
         assert "leiden_pred" in cm.query.obs
 
     @pytest.mark.parametrize(
-        "kernel,self_edges,method",
+        "kernel_method,self_edges,knn_method",
         [
             ("gauss", False, "sklearn"),
             ("gauss", False, "pynndescent"),
@@ -374,13 +374,13 @@ class TestSelfMapping:
             ("umap", True, "pynndescent"),
         ],
     )
-    def test_map_obs_pseudotime_self_mapping(self, adata_pbmc3k, kernel, self_edges, method):
+    def test_map_obs_pseudotime_self_mapping(self, adata_pbmc3k, kernel_method, self_edges, knn_method):
         """Test mapping pseudotime values in self-mapping mode - should have high correlation."""
 
         # Create CellMapper and compute mapping matrix
         cmap = CellMapper(adata_pbmc3k)
-        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method=method)
-        cmap.compute_mapping_matrix(method=kernel, self_edges=self_edges)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method=knn_method)
+        cmap.compute_mapping_matrix(kernel_method=kernel_method, self_edges=self_edges)
 
         # check that there are no self-edges in the connectivities.
         # essentially, this makes sure we're not using each cells own value to predict itself
@@ -463,11 +463,11 @@ class TestCellMapperImputation:
         cmap.compute_mapping_matrix(eigen_solver="complete")
 
         # Get spectral imputation
-        cmap.map_layers("X", t=10, method="spectral")
+        cmap.map_layers("X", t=10, diffusion_method="spectral")
         imputed_spectral = cmap.query_imputed.X  # returns dense matrix
 
         # Get iterative imputation
-        cmap.map_layers("X", t=10, method="iterative")
+        cmap.map_layers("X", t=10, diffusion_method="iterative")
         imputed_iterative = cmap.query_imputed.X  # returns sparse matrix
 
         # Compare the two imputed gene expression matrices
@@ -489,11 +489,11 @@ class TestCellMapperImputation:
         cmap.compute_mapping_matrix(eigen_solver="partial", n_eigenvectors=100)
 
         # Get spectral imputation
-        cmap.map_layers("X", t=10, method="spectral")
+        cmap.map_layers("X", t=10, diffusion_method="spectral")
         imputed_spectral = cmap.query_imputed.X
 
         # Get iterative imputation
-        cmap.map_layers("X", t=10, method="iterative")
+        cmap.map_layers("X", t=10, diffusion_method="iterative")
         imputed_iterative = cmap.query_imputed.X
 
         # Compare the two imputed gene expression matrices

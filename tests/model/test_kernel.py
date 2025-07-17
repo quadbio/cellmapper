@@ -21,10 +21,10 @@ class TestKernel:
         n_neighbors = 3
         # sklearn
         neigh_skl = Kernel(x, y)
-        neigh_skl.compute_neighbors(n_neighbors=n_neighbors, method="sklearn", only_yx=only_yx)
+        neigh_skl.compute_neighbors(n_neighbors=n_neighbors, knn_method="sklearn", only_yx=only_yx)
         # pynndescent
         neigh_pynn = Kernel(x, y)
-        neigh_pynn.compute_neighbors(n_neighbors=n_neighbors, method="pynndescent", only_yx=only_yx)
+        neigh_pynn.compute_neighbors(n_neighbors=n_neighbors, knn_method="pynndescent", only_yx=only_yx)
         if only_yx:
             with pytest.raises(ValueError):
                 neigh_skl.get_adjacency_matrices()
@@ -42,7 +42,7 @@ class TestKernel:
         neigh = Kernel(x, y)
         r = repr(neigh)
         assert "Kernel(" in r and "xrep_shape" in r and "yrep_shape" in r
-        neigh.compute_neighbors(n_neighbors=2, method="sklearn")
+        neigh.compute_neighbors(n_neighbors=2, knn_method="sklearn")
         r2 = repr(neigh)
         assert "xx=True" in r2 and "yy=True" in r2 and "xy=True" in r2 and "yx=True" in r2
 

@@ -154,10 +154,10 @@ _BACKENDS = {
 }
 
 
-def get_backend(method: str, n_neighbors: int, metric: str, random_state: int = 0, **kwargs: Any) -> _KNNBackend:
+def get_backend(knn_method: str, n_neighbors: int, metric: str, random_state: int = 0, **kwargs: Any) -> _KNNBackend:
     """Factory to get a configured KNN backend."""
     try:
-        backend_cls = _BACKENDS[method]
+        backend_cls = _BACKENDS[knn_method]
     except KeyError:
-        raise ValueError(f"Unknown method: {method}. Supported methods: {list(_BACKENDS)}") from KeyError
+        raise ValueError(f"Unknown method: {knn_method}. Supported methods: {list(_BACKENDS)}") from KeyError
     return backend_cls(n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)
