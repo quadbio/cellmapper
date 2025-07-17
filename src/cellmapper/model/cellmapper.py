@@ -9,6 +9,7 @@ from anndata import AnnData
 from scipy.sparse import csr_matrix, issparse
 from sklearn.preprocessing import OneHotEncoder
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model.embedding import EmbeddingMixin
@@ -337,6 +338,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             eigen_solver=eigen_solver,
         )
 
+    @d.dedent
     def map_obsm(
         self,
         key: str,
@@ -359,15 +361,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         ----------
         key
             Key in ``reference.obsm`` storing the embeddings to be transferred
-        t
-            Matrix power to apply. If None, uses direct multiplication (fastest).
-            If >= 1, allows diffusion_method selection. Values t > 1 are only supported in self-mapping mode.
-        diffusion_method
-            Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication, inspired by MAGIC :cite:`van2018recovering`.
-            - "spectral": Eigendecomposition-based (only for self-mapping)
-        prediction_postfix
-            Postfix to append to the output key in ``query.obsm`` where the transferred embeddings will be stored
+        %(t)s
+        %(diffusion_method)s
+        %(prediction_postfix)s
 
         Returns
         -------
@@ -424,6 +420,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.query.obsm[output_key] = query_data
         logger.info("Embeddings mapped and stored in query.obsm['%s']", output_key)
 
+    @d.dedent
     def map_layers(
         self, key: str, t: int | None = None, diffusion_method: Literal["iterative", "spectral"] = "iterative"
     ) -> None:
@@ -439,13 +436,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         ----------
         key
             Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``
-        t
-            Matrix power to apply. If None, uses direct multiplication (fastest).
-            If >= 1, allows diffusion_method selection. Values t > 1 are only supported in self-mapping mode.
-        diffusion_method
-            Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication, inspired by MAGIC :cite:`van2018recovering`.
-            - "spectral": Eigendecomposition-based (only for self-mapping)
+        %(t)s
+        %(diffusion_method)s
 
         Returns
         -------
@@ -526,6 +518,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             expression_data=value, query_adata=self.query, reference_adata=self.reference
         )
 
+    @d.dedent
     def map(
         self,
         obs_keys: str | list[str] | None = None,
@@ -564,13 +557,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             One or more keys in ``reference.obsm`` storing the embeddings to be mapped.
         layer_key
             Key in ``reference.layers`` to be mapped. Use "X" to map ``reference.X``.
-        t
-            Matrix power to apply. If None, uses direct multiplication (fastest).
-            If >= 1, allows diffusion_method selection. Values t > 1 are only supported in self-mapping mode.
-        diffusion_method
-            Method for computing matrix powers in self-mapping mode. Options:
-            - "iterative": Iterative matrix multiplication, inspired by MAGIC :cite:`van2018recovering`
-            - "spectral": Eigendecomposition-based
+        %(t)s
+        %(diffusion_method)s
         n_neighbors
             Number of nearest neighbors.
         use_rep
@@ -589,8 +577,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self_edges
             Control self-edges (diagonal entries) for square matrices (self-mapping).
             If None (default), uses False for self-mapping (scanpy style) and None for cross-mapping.
-        prediction_postfix
-            Postfix added to create new keys in ``query.obs`` for the mapped labels or in ``query.obsm`` for the mapped embeddings.
+        %(prediction_postfix)s
         """
         self.compute_neighbors(
             n_neighbors=n_neighbors, use_rep=use_rep, method=knn_method, metric=metric, only_yx=only_yx
@@ -685,6 +672,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self.knn.xx.n_neighbors,
         )
 
+    @d.dedent
     def map_obs(
         self,
         key: str,
@@ -706,15 +694,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         ----------
         key
             Key in ``reference.obs`` to be transferred into ``query.obs``
-        t
-            Matrix power to apply. If None, uses direct multiplication (fastest).
-            If >= 1, allows diffusion_method selection. Values t > 1 are only supported in self-mapping mode.
-        diffusion_method
-            Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication, inspired by MAGIC :cite:`van2018recovering`
-            - "spectral": Eigendecomposition-based.
-        prediction_postfix
-            Postfix added to create new keys in ``query.obs`` for the transferred data
+        %(t)s
+        %(diffusion_method)s
+        %(prediction_postfix)s
         confidence_postfix
             Postfix added to create new keys in ``query.obs`` for confidence scores
             (only applicable for categorical data)
