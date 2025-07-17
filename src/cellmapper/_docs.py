@@ -12,7 +12,7 @@ t
 
 _diffusion_method = """\
 diffusion_method
-    Method for computing the diffusion operator (only valid in self-mapping mode). Options are "iterative" for
+    Method for computing powers of the mapping matrix (only valid in self-mapping mode). Options are "iterative" for
     iterative matrix multiplication (inspired by MAGIC :cite:`van2018recovering`) and "spectral" for
     eigendecomposition-based approach. """
 
@@ -20,8 +20,55 @@ _prediction_postfix = """\
 prediction_postfix
     Postfix to add to mapped variables to identify them as predictions."""
 
+_symmetrize = """\
+symmetrize
+    If True, create a symmetrize connectivity matrix. Only valid for square matrices (self-mapping).
+    If None (default), uses True for self-mapping and False for cross-mapping."""
+
+_self_edges = """\
+self_edges
+    Control self-edges (diagonal entries) for square matrices (self-mapping).
+    If None (default), uses False for self-mapping (scanpy style) and None for cross-mapping.
+    This controls whether or not the kernel used to compute the connectivities is supplied with self-edges.
+    It does not determine whether the final connectivity matrix has self edges. For example, the `umap`
+    kernel expectes self-edges, but does not produce them in the final connectivity matrix."""
+
+_knn_method = """\
+method
+    Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU,
+    "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact
+    neighbor search. With GPU acceleration, "faiss" is usually fastest and more
+    memory efficient than "rapids". All methods return exactly `n_neighbors` neighbors,
+    including the reference cell itself (in self-mapping mode). For faiss and sklearn,
+    distances to self are very small positive numbers, for rapids and sklearn, they are exactly 0."""
+
+_only_yx = """\
+only_yx
+    If True, only compute the xy neighbors. In self-mapping mode, this is
+    automatically set to True for efficiency since all neighbor matrices contain the same information.
+    This is faster, but not suitable for Jaccard or HNOCA methods in cross-mapping mode."""
+
+_mapping_method = """\
+method
+    Method to use for computing the mapping matrix. Options include:
+
+    - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
+    - "gauss": Gaussian kernel with (global) bandwith equal to the mean distance.
+    - "scarches": scArches kernel. Inspired by scArches :cite:`lotfollahi2022mapping`
+    - "inverse_distance": Inverse distance kernel.
+    - "random": Random kernel, useful for testing.
+    - "hnoca": HNOCA kernel. Inspired by HNOCA-tools :cite:`he2024integrated`
+    - "equal": All neighbors are equally weighted (1/n_neighbors).
+    - "umap": UMAP fuzzy simplicial set connectivities. Only available for self-mapping with true k-NN graphs."""
+
+
 d = DocstringProcessor(
     t=_t,
     diffusion_method=_diffusion_method,
     prediction_postfix=_prediction_postfix,
+    symmetrize=_symmetrize,
+    self_edges=_self_edges,
+    knn_method=_knn_method,
+    only_yx=_only_yx,
+    mapping_method=_mapping_method,
 )

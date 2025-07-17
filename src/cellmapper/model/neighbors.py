@@ -24,7 +24,6 @@ class Neighbors:
     - Multiple connectivity kernels (Gaussian, adaptive Gaussian, inverse distance, etc.)
     - Support for both square (self-mapping) and non-square (cross-mapping) matrices
     - Configurable self-edge inclusion for square matrices in connectivity computations
-    - Symmetrization options for creating undirected graphs
     - Robust handling of variable neighbor counts and invalid entries
 
 
@@ -165,10 +164,7 @@ class Neighbors:
         ----------
         kernel
             Connectivity kernel to use. Supported: 'gauss', 'scarches', 'random', 'inverse_distance', 'equal', 'umap'.
-        self_edges
-            Control self-edges in the neighbor graph for square matrices:
-            - True: Include self-edges in the connectivity computation
-            - False: Exclude self-edges from the connectivity computation
+        %(self_edges)s
         dtype
             Data type for the matrix values.
         **kwargs
@@ -205,8 +201,7 @@ class Neighbors:
         ----------
         kernel
             Kernel type to use for computing connectivities.
-        self_edges
-            Whether to include self-edges in the computation.
+        %(self_edges)s
         dtype
             Data type for the matrix values.
         **kwargs
@@ -272,8 +267,7 @@ class Neighbors:
 
         Parameters
         ----------
-        self_edges
-            Whether to include self-edges in the computation.
+        %(self_edges)s
         **kwargs
             Additional parameters for UMAP kernel:
             - set_op_mix_ratio: float, default 1.0
@@ -324,10 +318,7 @@ class Neighbors:
         ----------
         dtype
             Data type for the matrix values.
-        self_edges
-            Control self-edges in the neighbor graph for square matrices:
-            - True: Include self-edges in the adjacency computation
-            - False: Exclude self-edges from the adjacency computation
+        %(self_edges)s
 
         Returns
         -------
@@ -368,10 +359,7 @@ class Neighbors:
 
         Parameters
         ----------
-        self_edges
-            Control self-edge inclusion:
-            - True: Add self-edges as first column with distance 0.0
-            - False: Return stored arrays (without self-edges)
+        %(self_edges)s
 
         Returns
         -------

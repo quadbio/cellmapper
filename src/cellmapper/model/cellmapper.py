@@ -103,6 +103,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
         return self._mapping_operator
 
+    @d.dedent
     def compute_neighbors(
         self,
         n_neighbors: int = 30,
@@ -136,20 +137,12 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Number of components to use. If a pre-computed representation is provided via `use_rep`,
             we will use the number of components from that representation. Otherwiese, if `use_rep=None`,
             we will compute the given number of components using the fallback representation method.
-        method
-            Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU,
-            "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact
-            neighbor search. With GPU acceleration, "faiss" is usually fastest and more
-            memory efficient than "rapids". All methods return exactly `n_neighbors` neighbors,
-            including the reference cell itself (in self-mapping mode). For faiss and sklearn,
-            distances to self are very small positive numbers, for rapids and sklearn, they are exactly 0.
+        %(knn_method)s
         metric
             Distance metric to use for nearest neighbors.
         random_state
             Random seed for reproducibility. Only used by "pynndescent" method.
-        only_yx
-            If True, only compute the xy neighbors. This is faster, but not suitable for
-            Jaccard or HNOCA methods in cross-mapping mode.
+        %(only_yx)s
         neighbors_kwargs
             Additional keyword arguments to pass to the neighbors computation method.
         fallback_representation
@@ -234,6 +227,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             **(neighbors_kwargs or {}),
         )
 
+    @d.dedent
     def compute_mapping_matrix(
         self,
         method: Literal[
@@ -257,27 +251,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         Parameters
         ----------
-        method
-            Method to use for computing the mapping matrix. Options include:
-
-            - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
-            - "gauss": Gaussian kernel with (global) bandwith equal to the mean distance.
-            - "scarches": scArches kernel. Inspired by scArches :cite:`lotfollahi2022mapping`
-            - "inverse_distance": Inverse distance kernel.
-            - "random": Random kernel, useful for testing.
-            - "hnoca": HNOCA kernel. Inspired by HNOCA-tools :cite:`he2024integrated`
-            - "equal": All neighbors are equally weighted (1/n_neighbors).
-            - "umap": UMAP fuzzy simplicial set connectivities. Only available for self-mapping with true k-NN graphs.
-        symmetrize
-            If True, create a symmetrize connectivity matrix where for each edge i→j,
-            ensure j→i exists with the same weight. Only valid for square matrices (self-mapping).
-            If None (default), uses True for self-mapping and False for cross-mapping.
-        self_edges
-            Control self-edges (diagonal entries) for square matrices (self-mapping):
-            This controls whether or not the kernel used to compute the connectivities
-            is supplied with self-edges. It does not determine whether the final connectivity matrix
-            has self edges. For example, the `umap` kernel expectes self-edges, but does not
-            produce them in the final connectivity matrix.
+        %(mapping_method)s
+        %(symmetrize)s
+        %(self_edges)s
         n_eigenvectors
             Number of eigenvectors to compute for spectral decomposition. Only relevant
             when using spectral methods for matrix powers. Default is 50.
@@ -563,20 +539,13 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Number of nearest neighbors.
         use_rep
             Data representation based on which to find nearest neighbors.
-        knn_method
-            Method to use for computing neighbors.
+        %(knn_method)s
         metric
             Distance metric to use for nearest neighbors.
-        only_yx
-            If True, only compute the xy neighbors. This is faster, but not suitable for Jaccard or HNOCA methods.
-        mapping_method
-            Method to use for computing the mapping matrix.
-        symmetrize
-            If True, create a symmetrize connectivity matrix. Only valid for square matrices (self-mapping).
-            If None (default), uses True for self-mapping and False for cross-mapping.
-        self_edges
-            Control self-edges (diagonal entries) for square matrices (self-mapping).
-            If None (default), uses False for self-mapping (scanpy style) and None for cross-mapping.
+        %(only_yx)s
+        %(mapping_method)s
+        %(symmetrize)s
+        %(self_edges)s
         %(prediction_postfix)s
         """
         self.compute_neighbors(

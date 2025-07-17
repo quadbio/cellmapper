@@ -3,6 +3,7 @@ from typing import Literal, cast
 import numpy as np
 from scipy.sparse import csr_matrix
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model._knn_backend import get_backend
@@ -104,6 +105,7 @@ class Kernel:
 
         return neighbors
 
+    @d.dedent
     def compute_neighbors(
         self,
         n_neighbors: int = 30,
@@ -120,16 +122,12 @@ class Kernel:
         ----------
          n_neighbors
             Number of nearest neighbors.
-        method
-            Method to use for computing neighbors.
+        %(knn_method)s
         metric
             Distance metric to use for nearest neighbors.
         random_state
             Random state for reproducibility.
-        only_yx
-            If True, only compute the xy neighbors. In self-mapping mode, this is
-            automatically set to True for efficiency since all neighbor matrices
-            contain the same information.
+        %(only_yx)s
         **kwargs
             Additional keyword arguments to pass to the underlying k-NN algorithm.
             These are method-specific and will be passed directly to the algorithm's
@@ -209,6 +207,7 @@ class Kernel:
         self.xy = Neighbors(distances=xy_d, indices=xy_i, n_targets=self.yrep.shape[0])
         self.yx = Neighbors(distances=yx_d, indices=yx_i, n_targets=self.xrep.shape[0])
 
+    @d.dedent
     def compute_kernel_matrix(
         self,
         method: Literal[
@@ -231,25 +230,13 @@ class Kernel:
 
         Parameters
         ----------
-        method
-            Method to use for computing the kernel matrix. Options include:
-            - "jaccard": Jaccard similarity
-            - "gauss": Gaussian kernel
-            - "scarches": scArches kernel
-            - "inverse_distance": Inverse distance kernel
-            - "random": Random kernel
-            - "hnoca": HNOCA kernel
-            - "equal": Equal weights kernel
-            - "umap": UMAP fuzzy simplicial set connectivities
-        symmetrize
-            If True, create a symmetric kernel matrix where for each edge i→j,
-            ensure j→i exists with the same weight. Only valid for square matrices (self-mapping).
+        %(mapping_method)s
+        %(symmetrize)s
         symmetrize_method
             Method for symmetrization when symmetrize=True:
             - "max": Take element-wise maximum between matrix and transpose (preserves strongest connections)
             - "mean": Take element-wise average between matrix and transpose (smooths connections)
-        self_edges
-            Control self-edges in the kernel computation for square matrices.
+        %(self_edges)s
         **kwargs
             Additional keyword arguments for kernel computation.
 
@@ -368,11 +355,7 @@ class Kernel:
 
         Parameters
         ----------
-        self_edges
-            Control self-edges for self-terms (xx, yy). Cross-terms (xy, yx) are not affected.
-            - True: Include self-edges (set diagonal entries to 1)
-            - False: Exclude self-edges (set diagonal entries to 0)
-            - None: Leave as-is (preserve original neighbor graph structure)
+        %(self_edges)s
 
         Returns
         -------

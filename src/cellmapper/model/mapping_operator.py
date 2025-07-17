@@ -9,6 +9,7 @@ from scipy.linalg import eigh
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
 from scipy.sparse.linalg import eigsh
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model.kernel import Kernel
@@ -375,6 +376,7 @@ class MappingOperator:
 
         return result
 
+    @d.dedent
     def apply(
         self,
         reference_data: np.ndarray | csr_matrix,
@@ -387,14 +389,8 @@ class MappingOperator:
         ----------
         reference_data
             Data to map (reference_cells x features). Can be dense or sparse arrays.
-        t
-            Matrix power to apply. If None (default), uses direct multiplication (fastest).
-            If t >= 1, allows method selection between iterative and spectral approaches.
-        method
-            Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (exact but slow for large t), inspired by MAGIC :cite:`van2018recovering`
-            - "spectral": Eigendecomposition-based approximation (faster for large t,
-              becomes more accurate as t increases due to exponential decay of small eigenvalues)
+        %(t)s
+        %(diffusion_method)s
 
         Returns
         -------
