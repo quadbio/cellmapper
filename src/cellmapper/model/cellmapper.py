@@ -341,7 +341,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self,
         key: str,
         t: int | None = None,
-        method: Literal["iterative", "spectral"] = "iterative",
+        diffusion_method: Literal["iterative", "spectral"] = "iterative",
         prediction_postfix: str = "pred",
     ) -> None:
         """
@@ -351,7 +351,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         dataset to the query dataset. For t > 1, applies matrix powers representing
         t-step diffusion processes (only supported in self-mapping mode).
 
-        When the reference embeddings are stored as a pandas DataFrame, the method
+        When the reference embeddings are stored as a pandas DataFrame, the diffusion_method
         preserves the DataFrame structure by reconstructing it with the query cell
         index and the original column names after mapping.
 
@@ -361,10 +361,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Key in ``reference.obsm`` storing the embeddings to be transferred
         t
             Matrix power to apply. If None, uses direct multiplication (fastest).
-            If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
-        method
+            If >= 1, allows diffusion_method selection. Values t > 1 are only supported in self-mapping mode.
+        diffusion_method
             Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (default)
+            - "iterative": Iterative matrix multiplication, inspired by MAGIC :cite:`van2018recovering`.
             - "spectral": Eigendecomposition-based (only for self-mapping)
         prediction_postfix
             Postfix to append to the output key in ``query.obsm`` where the transferred embeddings will be stored
@@ -388,7 +388,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if t is None:
             logger.info("Mapping embeddings for key '%s' using direct multiplication", key)
         else:
-            logger.info("Mapping embeddings for key '%s' with t=%d steps using %s method", key, t, method)
+            logger.info(
+                "Mapping embeddings for key '%s' with t=%d steps using %s diffusion_method", key, t, diffusion_method
+            )
 
         # Perform matrix power multiplication to transfer embeddings
         reference_data = self.reference.obsm[key]  # shape = (n_reference_cells x n_embedding_dims)
@@ -407,7 +409,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         query_data = self.mapping_operator.apply(
             reference_values,
             t=t,
-            method=method,
+            method=diffusion_method,
         )  # shape = (n_query_cells x n_embedding_dims)
 
         if is_dataframe:
@@ -423,7 +425,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         logger.info("Embeddings mapped and stored in query.obsm['%s']", output_key)
 
     def map_layers(
-        self, key: str, t: int | None = None, method: Literal["iterative", "spectral"] = "iterative"
+        self, key: str, t: int | None = None, diffusion_method: Literal["iterative", "spectral"] = "iterative"
     ) -> None:
         """
         Map expression values with optional multi-step diffusion.
@@ -439,10 +441,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``
         t
             Matrix power to apply. If None, uses direct multiplication (fastest).
-            If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
-        method
+            If >= 1, allows diffusion_method selection. Values t > 1 are only supported in self-mapping mode.
+        diffusion_method
             Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (default)
+            - "iterative": Iterative matrix multiplication, inspired by MAGIC :cite:`van2018recovering`.
             - "spectral": Eigendecomposition-based (only for self-mapping)
 
         Returns
@@ -461,14 +463,16 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if t is None:
             logger.info("Mapping layer for key '%s' using direct multiplication", key)
         else:
-            logger.info("Mapping layer for key '%s' with t=%d steps using %s method", key, t, method)
+            logger.info(
+                "Mapping layer for key '%s' with t=%d steps using %s diffusion_method", key, t, diffusion_method
+            )
 
         # Get the reference layer (or .X if key is "X")
         reference_layer = self.reference.X if key == "X" else self.reference.layers[key]
 
         # Apply matrix power while preserving sparsity
         query_layer = self.mapping_operator.apply(
-            reference_layer, t=t, method=method
+            reference_layer, t=t, method=diffusion_method
         )  # shape = (n_query_cells x n_reference_features)
 
         # Create query_imputed using the property setter for consistent behavior
@@ -562,10 +566,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Key in ``reference.layers`` to be mapped. Use "X" to map ``reference.X``.
         t
             Matrix power to apply. If None, uses direct multiplication (fastest).
-            If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
+            If >= 1, allows diffusion_method selection. Values t > 1 are only supported in self-mapping mode.
         diffusion_method
             Method for computing matrix powers in self-mapping mode. Options:
-            - "iterative": Iterative matrix multiplication
+            - "iterative": Iterative matrix multiplication, inspired by MAGIC :cite:`van2018recovering`
             - "spectral": Eigendecomposition-based
         n_neighbors
             Number of nearest neighbors.
@@ -595,19 +599,27 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if obs_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obs_keys, str):
-                self.map_obs(key=obs_keys, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
+                self.map_obs(
+                    key=obs_keys, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
+                )
             else:
                 for obs_key in obs_keys:
-                    self.map_obs(key=obs_key, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
+                    self.map_obs(
+                        key=obs_key, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
+                    )
         if obsm_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obsm_keys, str):
-                self.map_obsm(key=obsm_keys, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
+                self.map_obsm(
+                    key=obsm_keys, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
+                )
             else:
                 for obsm_key in obsm_keys:
-                    self.map_obsm(key=obsm_key, t=t, method=diffusion_method, prediction_postfix=prediction_postfix)
+                    self.map_obsm(
+                        key=obsm_key, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
+                    )
         if layer_key is not None:
-            self.map_layers(key=layer_key, t=t, method=diffusion_method)
+            self.map_layers(key=layer_key, t=t, diffusion_method=diffusion_method)
         if obs_keys is None and obsm_keys is None and layer_key is None:
             logger.warning(
                 "Neither ``obs_keys``, ``obsm_keys`` or ``layer_key`` provided. No labels, embeddings or layers were transferred. "
@@ -677,7 +689,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self,
         key: str,
         t: int | None = None,
-        method: Literal["iterative", "spectral"] = "iterative",
+        diffusion_method: Literal["iterative", "spectral"] = "iterative",
         prediction_postfix: str = "pred",
         confidence_postfix: str = "conf",
         return_probabilities: bool = False,
@@ -696,11 +708,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Key in ``reference.obs`` to be transferred into ``query.obs``
         t
             Matrix power to apply. If None, uses direct multiplication (fastest).
-            If >= 1, allows method selection. Values t > 1 are only supported in self-mapping mode.
-        method
+            If >= 1, allows diffusion_method selection. Values t > 1 are only supported in self-mapping mode.
+        diffusion_method
             Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (default)
-            - "spectral": Eigendecomposition-based (only for self-mapping)
+            - "iterative": Iterative matrix multiplication, inspired by MAGIC :cite:`van2018recovering`
+            - "spectral": Eigendecomposition-based.
         prediction_postfix
             Postfix added to create new keys in ``query.obs`` for the transferred data
         confidence_postfix
@@ -747,16 +759,22 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if t is None:
             logger.info("Mapping %s data for key '%s' using direct multiplication.", data_type, key)
         else:
-            logger.info("Mapping %s data for key '%s' with t=%d steps using %s method.", data_type, key, t, method)
+            logger.info(
+                "Mapping %s data for key '%s' with t=%d steps using %s diffusion_method.",
+                data_type,
+                key,
+                t,
+                diffusion_method,
+            )
 
         if is_categorical:
             return self._map_obs_categorical(
-                key, prediction_postfix, confidence_postfix, t, method, return_probabilities
+                key, prediction_postfix, confidence_postfix, t, diffusion_method, return_probabilities
             )
         else:
             if return_probabilities:
                 logger.warning("return_probabilities=True is only applicable for categorical data, ignoring.")
-            self._map_obs_numerical(key, prediction_postfix, t, method)
+            self._map_obs_numerical(key, prediction_postfix, t, diffusion_method)
             return None
 
     def _map_obs_categorical(
@@ -765,7 +783,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         prediction_postfix: str,
         confidence_postfix: str,
         t: int | None,
-        method: Literal["iterative", "spectral"],
+        diffusion_method: Literal["iterative", "spectral"],
         return_probabilities: bool = False,
     ) -> np.ndarray | csr_matrix | None:
         """Map categorical observation data using one-hot encoding."""
@@ -774,7 +792,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self.reference.obs[[key]],
         )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
         ytab = self.mapping_operator.apply(
-            xtab, t=t, method=method
+            xtab, t=t, method=diffusion_method
         )  # shape = (n_query_cells x n_categories), sparse csr matrix, float32
 
         pred = pd.Series(
@@ -808,11 +826,13 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             return None
 
     def _map_obs_numerical(
-        self, key: str, prediction_postfix: str, t: int | None, method: Literal["iterative", "spectral"]
+        self, key: str, prediction_postfix: str, t: int | None, diffusion_method: Literal["iterative", "spectral"]
     ) -> None:
         """Map numerical observation data using direct matrix multiplication."""
         reference_values = np.array(self.reference.obs[key]).reshape(-1, 1)  # shape = (n_reference_cells, 1)
-        mapped_values = self.mapping_operator.apply(reference_values, t=t, method=method)  # shape = (n_query_cells, 1)
+        mapped_values = self.mapping_operator.apply(
+            reference_values, t=t, method=diffusion_method
+        )  # shape = (n_query_cells, 1)
 
         pred = pd.Series(
             data=mapped_values.ravel(),

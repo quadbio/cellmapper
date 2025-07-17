@@ -20,7 +20,7 @@ class MappingOperator:
     This class provides two methods for computing matrix powers M^t:
 
     1. **Iterative method**: Computes M^t by repeated matrix multiplication (M @ M @ ... @ M).
-       This is exact but can be slow for large t.
+       This is exact but can be slow for large t, inspired by MAGIC :cite:`van2018recovering`.
 
     2. **Spectral method**: Approximates M^t using eigendecomposition (M = V @ Λ @ V^(-1),
        so M^t ≈ V @ Λ^t @ V^(-1)). This can be much faster for large t but is approximate.
@@ -326,6 +326,8 @@ class MappingOperator:
     def _apply_iterative(self, reference_data: np.ndarray | csr_matrix, t: int) -> np.ndarray | csr_matrix:
         """Apply matrix power using iterative multiplication.
 
+        This is based on ideas from MAGIC :cite:`van2018recovering`.
+
         Parameters
         ----------
         reference_data
@@ -390,7 +392,7 @@ class MappingOperator:
             If t >= 1, allows method selection between iterative and spectral approaches.
         method
             Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (exact but slow for large t)
+            - "iterative": Iterative matrix multiplication (exact but slow for large t), inspired by MAGIC :cite:`van2018recovering`
             - "spectral": Eigendecomposition-based approximation (faster for large t,
               becomes more accurate as t increases due to exponential decay of small eigenvalues)
 
