@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.2.0]
+
+### Added
+- Added a tutorial on same-modality query to reference mapping {pr}`38`
+- Added a tutorial on data smoothing {pr}`37`
+- Added an option to return the mapping probabilities for categorical `.obs` mapping {pr}`39`
+- Added a `MappingOperator` class which allows for iterative mapping matrix applicatino in self-mapping mode {pr}`35`
+- Add the `umap` method to compute symmetric k-NN connectivities in self-mapping mode {pr}`34`
+
+### Changed
+- Refectored the neighbors classes into a `Neighobrs` and a `Kernel` class and moved symmetrization into the `Kernel` class {pr}`36`
+
+
 ## [v0.1.4]
 ### Changed
 - Rename mapping methods to `map_obs`, `map_obsm`, and `map_layers`, and improve support for numerical `.obs` annotations {pr}`30`.
