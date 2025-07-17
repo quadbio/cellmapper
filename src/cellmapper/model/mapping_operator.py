@@ -381,7 +381,7 @@ class MappingOperator:
         self,
         reference_data: np.ndarray | csr_matrix,
         t: int | None = None,
-        method: Literal["iterative", "spectral"] = "iterative",
+        diffusion_method: Literal["iterative", "spectral"] = "iterative",
     ) -> np.ndarray | csr_matrix:
         """Apply mapping matrix power: M^t @ reference_data.
 
@@ -418,7 +418,7 @@ class MappingOperator:
         self._validate_power(t)
 
         # Warn about performance for large matrix powers with iterative method
-        if t > PackageConstants.SPECTRAL_METHOD_THRESHOLD and method == "iterative" and self.is_self_mapping:
+        if t > PackageConstants.SPECTRAL_METHOD_THRESHOLD and diffusion_method == "iterative" and self.is_self_mapping:
             logger.warning(
                 "Using iterative method for t=%d matrix powers may be slow for large datasets. "
                 "Consider using method='spectral' for better performance.",
@@ -426,12 +426,12 @@ class MappingOperator:
             )
 
         # Apply the chosen method for t >= 1
-        if method == "iterative":
+        if diffusion_method == "iterative":
             return self._apply_iterative(reference_data, t)
-        elif method == "spectral":
+        elif diffusion_method == "spectral":
             return self._apply_spectral(reference_data, t)
         else:
-            raise ValueError(f"Unknown method: {method}")
+            raise ValueError(f"Unknown diffusion method: {diffusion_method}")
 
     def clear_cache(self) -> None:
         """Clear cached eigendecomposition to free memory."""

@@ -109,7 +109,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         n_neighbors: int = 30,
         use_rep: str | None = None,
         n_comps: int | None = None,
-        method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
+        knn_method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
         metric: str = "euclidean",
         random_state: int = 0,
         only_yx: bool = False,
@@ -220,7 +220,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         )
         self.knn.compute_neighbors(
             n_neighbors=n_neighbors,
-            method=method,
+            knn_method=knn_method,
             metric=metric,
             only_yx=self.only_yx,
             random_state=random_state,
@@ -230,7 +230,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
     @d.dedent
     def compute_mapping_matrix(
         self,
-        method: Literal[
+        kernel_method: Literal[
             "jaccard",
             "gauss",
             "scarches",
@@ -251,7 +251,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         Parameters
         ----------
-        %(mapping_method)s
+        %(kernel_method)s
         %(symmetrize)s
         %(self_edges)s
         n_eigenvectors
@@ -277,8 +277,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         assert self.knn.yx is not None, "Neighbors object must have yx neighbors computed."
 
         # Default mapping method if not provided
-        if method is None:
-            method = (
+        if kernel_method is None:
+            kernel_method = (
                 PackageConstants.DEFAULT_SELF_MAPPING_METHOD
                 if self._is_self_mapping
                 else PackageConstants.DEFAULT_CROSS_MAPPING_METHOD  # type: ignore[assignment]
@@ -289,11 +289,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         if self_edges is None:
             self_edges = self._is_self_mapping  # same
 
-        logger.info("Computing mapping matrix using method '%s'.", method)
+        logger.info("Computing mapping matrix using kernel method '%s'.", kernel_method)
 
         # Compute kernel matrix using the new unified method
         self.knn.compute_kernel_matrix(
-            method=method,
+            kernel_method=kernel_method,
             symmetrize=symmetrize,
             self_edges=self_edges,
         )
@@ -381,7 +381,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         query_data = self.mapping_operator.apply(
             reference_values,
             t=t,
-            method=diffusion_method,
+            diffusion_method=diffusion_method,
         )  # shape = (n_query_cells x n_embedding_dims)
 
         if is_dataframe:
@@ -440,7 +440,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         # Apply matrix power while preserving sparsity
         query_layer = self.mapping_operator.apply(
-            reference_layer, t=t, method=diffusion_method
+            reference_layer, t=t, diffusion_method=diffusion_method
         )  # shape = (n_query_cells x n_reference_features)
 
         # Create query_imputed using the property setter for consistent behavior
@@ -507,7 +507,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
         metric: str = "euclidean",
         only_yx: bool = False,
-        mapping_method: Literal[
+        kernel_method: Literal[
             "jaccard",
             "gauss",
             "scarches",
@@ -543,15 +543,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         metric
             Distance metric to use for nearest neighbors.
         %(only_yx)s
-        %(mapping_method)s
+        %(kernel_method)s
         %(symmetrize)s
         %(self_edges)s
         %(prediction_postfix)s
         """
         self.compute_neighbors(
-            n_neighbors=n_neighbors, use_rep=use_rep, method=knn_method, metric=metric, only_yx=only_yx
+            n_neighbors=n_neighbors, use_rep=use_rep, knn_method=knn_method, metric=metric, only_yx=only_yx
         )
-        self.compute_mapping_matrix(method=mapping_method, symmetrize=symmetrize, self_edges=self_edges)
+        self.compute_mapping_matrix(kernel_method=kernel_method, symmetrize=symmetrize, self_edges=self_edges)
         if obs_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obs_keys, str):
@@ -743,7 +743,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self.reference.obs[[key]],
         )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
         ytab = self.mapping_operator.apply(
-            xtab, t=t, method=diffusion_method
+            xtab, t=t, diffusion_method=diffusion_method
         )  # shape = (n_query_cells x n_categories), sparse csr matrix, float32
 
         pred = pd.Series(
@@ -782,7 +782,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         """Map numerical observation data using direct matrix multiplication."""
         reference_values = np.array(self.reference.obs[key]).reshape(-1, 1)  # shape = (n_reference_cells, 1)
         mapped_values = self.mapping_operator.apply(
-            reference_values, t=t, method=diffusion_method
+            reference_values, t=t, diffusion_method=diffusion_method
         )  # shape = (n_query_cells, 1)
 
         pred = pd.Series(

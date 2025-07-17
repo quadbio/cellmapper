@@ -34,7 +34,7 @@ self_edges
     kernel expectes self-edges, but does not produce them in the final connectivity matrix."""
 
 _knn_method = """\
-method
+knn_method
     Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU,
     "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact
     neighbor search. With GPU acceleration, "faiss" is usually fastest and more
@@ -48,8 +48,8 @@ only_yx
     automatically set to True for efficiency since all neighbor matrices contain the same information.
     This is faster, but not suitable for Jaccard or HNOCA methods in cross-mapping mode."""
 
-_mapping_method = """\
-method
+_kernel_method = """\
+kernel_method
     Method to use for computing the mapping matrix. Options include:
 
     - "jaccard": Jaccard similarity. Inspired by GLUE :cite:`cao2022multi`
@@ -70,5 +70,5 @@ d = DocstringProcessor(
     self_edges=_self_edges,
     knn_method=_knn_method,
     only_yx=_only_yx,
-    mapping_method=_mapping_method,
+    mapping_method=_kernel_method,
 )
