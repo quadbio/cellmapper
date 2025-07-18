@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.2.1]
+### Changed
+- Move some duplicated docstrings into a central _docs.py file {pr}`41`
+
+### Added
+- Added some tests for edge cases in the `MappingOperator` class {pr}`41`
+- Treat faiss-cpu and faiss-gpu separately {pr}`41`
+
+
 ## [v0.2.0]
 
 ### Added
