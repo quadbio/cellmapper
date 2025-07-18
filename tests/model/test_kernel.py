@@ -3,7 +3,7 @@ import pytest
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
-from cellmapper.model._knn_backend import _BACKENDS, get_backend
+from cellmapper.model._knn_backend import _BACKENDS, _FaissCpuBackend, get_backend
 from cellmapper.model.kernel import Kernel
 
 
@@ -50,8 +50,6 @@ class TestKernel:
         assert backend is not None
 
         # Verify it's the right type
-        from cellmapper.model._knn_backend import _FaissCpuBackend
-
         assert isinstance(backend, _FaissCpuBackend)
 
     def test_kernel_repr(self, small_data):
