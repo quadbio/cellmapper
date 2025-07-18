@@ -411,7 +411,7 @@ class EvaluationMixin:
 
         # Store metrics
         self.expression_transfer_metrics = {
-            "method": comparison_method,
+            "comparison_method": comparison_method,
             "average": avg_value,
             "n_shared_genes": len(shared_genes),
             "n_test_genes": n_test_genes,

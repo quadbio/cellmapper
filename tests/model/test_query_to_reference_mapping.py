@@ -30,7 +30,7 @@ class TestQueryToReferenceMapping:
 
     def test_expression_transfer(self, cmap, expected_expression_transfer_metrics):
         cmap.map_layers(key="X")
-        cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="pearson")
         assert_metrics_close(cmap.expression_transfer_metrics, expected_expression_transfer_metrics)
 
     @pytest.mark.parametrize(
@@ -109,9 +109,9 @@ class TestQueryToReferenceMapping:
         assert cmap.query_imputed.var.equals(cmap.reference.var)
 
         # Test evaluation works with custom imputed data
-        cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="pearson")
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == "pearson"
+        assert cmap.expression_transfer_metrics["comparison_method"] == "pearson"
 
     def test_query_imputed_property_sparse_matrix(self, cmap, sparse_imputed_data):
         """Test setting query_imputed with a sparse matrix."""
@@ -126,9 +126,9 @@ class TestQueryToReferenceMapping:
         assert issparse(cmap.query_imputed.X)
 
         # Test evaluation works with custom sparse imputed data
-        cmap.evaluate_expression_transfer(layer_key="X", method="spearman")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="spearman")
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == "spearman"
+        assert cmap.expression_transfer_metrics["comparison_method"] == "spearman"
 
     def test_query_imputed_property_dataframe(self, cmap, dataframe_imputed_data):
         """Test setting query_imputed with a pandas DataFrame."""
@@ -141,9 +141,9 @@ class TestQueryToReferenceMapping:
         assert np.allclose(cmap.query_imputed.X, dataframe_imputed_data.values)
 
         # Test evaluation works with DataFrame-sourced imputed data
-        cmap.evaluate_expression_transfer(layer_key="X", method="js")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="js")
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == "js"
+        assert cmap.expression_transfer_metrics["comparison_method"] == "js"
 
     def test_query_imputed_property_anndata(self, cmap, custom_anndata_imputed):
         """Test setting query_imputed with a pre-made AnnData object."""
@@ -154,9 +154,9 @@ class TestQueryToReferenceMapping:
         assert cmap.query_imputed is custom_anndata_imputed
 
         # Test evaluation works with custom AnnData
-        cmap.evaluate_expression_transfer(layer_key="X", method="rmse")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="rmse")
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == "rmse"
+        assert cmap.expression_transfer_metrics["comparison_method"] == "rmse"
 
     def test_query_imputed_invalid_shape(self, cmap, invalid_shape_data):
         """Test that setting query_imputed with wrong shape raises an error."""
@@ -208,16 +208,16 @@ class TestQueryToReferenceMapping:
         # The samples should be different since we're using random data
         assert not np.allclose(original_data_sample, new_data_sample)
 
-    @pytest.mark.parametrize("method", ["pearson", "spearman", "js", "rmse"])
-    def test_evaluate_with_custom_imputation(self, cmap, random_imputed_data, method):
+    @pytest.mark.parametrize("comparison_method", ["pearson", "spearman", "js", "rmse"])
+    def test_evaluate_with_custom_imputation(self, cmap, random_imputed_data, comparison_method):
         """Test evaluation with imputed data from an alternative method."""
         # Set the imputed data
         cmap.query_imputed = random_imputed_data
 
         # Evaluate using the specified method
-        cmap.evaluate_expression_transfer(layer_key="X", method=method)
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method=comparison_method)
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == method
+        assert cmap.expression_transfer_metrics["comparison_method"] == comparison_method
 
     def test_imputation_without_copying(self, cmap, random_imputed_data):
         """Test that query_imputed correctly reflects metadata changes."""

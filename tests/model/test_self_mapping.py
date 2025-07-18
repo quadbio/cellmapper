@@ -142,7 +142,7 @@ class TestUMAPConnectivityValidation:
             use_rep="X_pca",
             n_comps=n_pcs,
             knn_method=transformer,
-            metric="euclidean",
+            knn_dist_metric="euclidean",
         )
 
         # Extract CellMapper results
@@ -225,7 +225,7 @@ class TestSelfMapping:
         cm.evaluate_label_transfer(label_key="leiden")
         assert cm.label_transfer_metrics is not None
 
-        cm.evaluate_expression_transfer(layer_key="X", method="pearson")
+        cm.evaluate_expression_transfer(layer_key="X", comparison_method="pearson")
         assert cm.expression_transfer_metrics is not None
 
     @pytest.mark.parametrize("n_neighbors", [5, 15, 30])
