@@ -35,12 +35,15 @@ self_edges
 
 _knn_method = """\
 knn_method
-    Method to use for computing neighbors. "sklearn" and "pynndescent" run on CPU,
-    "rapids" and "faiss" run on GPU. Note that all but "pynndescent" perform exact
-    neighbor search. With GPU acceleration, "faiss" is usually fastest and more
-    memory efficient than "rapids". All methods return exactly `n_neighbors` neighbors,
-    including the reference cell itself (in self-mapping mode). For faiss and sklearn,
-    distances to self are very small positive numbers, for rapids and sklearn, they are exactly 0."""
+    Method for computing k-nearest neighbors. Options include:
+    - "sklearn": Scikit-learn's NearestNeighbors. See https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.NearestNeighbors.html
+    - "pynndescent": Pynndescent's approximate nearest neighbors. See https://pynndescent.readthedocs.io/en/latest/
+    - "rapids": RAPIDS cuML's NearestNeighbors (GPU). See https://docs.rapids.ai/api/cuml/stable/api.html#cuml.neighbors.NearestNeighbors
+    - "faiss-cpu": Facebook AI Similarity Search (FAISS) on CPU. See https://faiss.ai/
+    - "faiss-gpu": Facebook AI Similarity Search (FAISS) on GPU. See https://faiss.ai/
+
+
+    All methods return exactly `n_neighbors` neighbors, including the reference cell itself (in self-mapping mode)."""
 
 _only_yx = """\
 only_yx

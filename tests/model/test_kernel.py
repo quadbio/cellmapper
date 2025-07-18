@@ -3,6 +3,7 @@ import pytest
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
+from cellmapper.model._knn_backend import _BACKENDS, get_backend
 from cellmapper.model.kernel import Kernel
 
 
@@ -37,20 +38,21 @@ class TestKernel:
         conn_pynn = neigh_pynn.yx.knn_graph_connectivities()
         assert np.allclose(conn_skl.toarray(), conn_pynn.toarray(), atol=1e-6)
 
-    def test_kernel_faiss_backend_creation(self, small_data):
-        """Test that faiss-cpu backend can be created without crashing."""
+    def test_kernel_faiss_backend_availability(self):
+        """Test that faiss-cpu backend is available and can be imported."""
         pytest.importorskip("faiss")
 
-        # Just test that we can create the backend without errors
-        from cellmapper.model._knn_backend import get_backend
+        assert "faiss-cpu" in _BACKENDS
+        assert "faiss-gpu" in _BACKENDS
 
-        backend = get_backend(knn_method="faiss-cpu", n_neighbors=2, metric="euclidean")
+        # This should not raise an exception
+        backend = get_backend(knn_method="faiss-cpu", n_neighbors=3, metric="euclidean")
         assert backend is not None
 
-        # Test that we can access faiss module
-        import faiss
+        # Verify it's the right type
+        from cellmapper.model._knn_backend import _FaissCpuBackend
 
-        assert faiss is not None
+        assert isinstance(backend, _FaissCpuBackend)
 
     def test_kernel_repr(self, small_data):
         x, y = small_data
