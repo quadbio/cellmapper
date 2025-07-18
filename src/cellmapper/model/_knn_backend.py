@@ -67,11 +67,15 @@ class _FaissCpuBackend(_KNNBackend):
     def fit(self, data: np.ndarray) -> None:
         dims = data.shape[1]
         index = self.faiss.IndexFlatL2(dims)
-        index.add(data.astype(np.float32))
+        # Ensure data is float32 and C-contiguous
+        data_f32 = np.ascontiguousarray(data.astype(np.float32))
+        index.add(data_f32)
         self._index = index
 
     def query(self, points: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
-        distances, indices = self._index.search(points.astype(np.float32), k)
+        # Ensure points are float32 and C-contiguous
+        points_f32 = np.ascontiguousarray(points.astype(np.float32))
+        distances, indices = self._index.search(points_f32, k)
         return distances, indices
 
 
@@ -94,11 +98,15 @@ class _FaissGpuBackend(_KNNBackend):
         dims = data.shape[1]
         flat = self.faiss.IndexFlatL2(dims)
         gpu_index = self.faiss.index_cpu_to_gpu(self.res, 0, flat)
-        gpu_index.add(data.astype(np.float32))
+        # Ensure data is float32 and C-contiguous
+        data_f32 = np.ascontiguousarray(data.astype(np.float32))
+        gpu_index.add(data_f32)
         self._index = gpu_index
 
     def query(self, points: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
-        distances, indices = self._index.search(points.astype(np.float32), k)
+        # Ensure points are float32 and C-contiguous
+        points_f32 = np.ascontiguousarray(points.astype(np.float32))
+        distances, indices = self._index.search(points_f32, k)
         return distances, indices
 
 
