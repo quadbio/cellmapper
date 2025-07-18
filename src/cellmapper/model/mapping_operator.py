@@ -9,6 +9,7 @@ from scipy.linalg import eigh
 from scipy.sparse import coo_matrix, csc_matrix, csr_matrix, issparse
 from scipy.sparse.linalg import eigsh
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model.kernel import Kernel
@@ -20,7 +21,7 @@ class MappingOperator:
     This class provides two methods for computing matrix powers M^t:
 
     1. **Iterative method**: Computes M^t by repeated matrix multiplication (M @ M @ ... @ M).
-       This is exact but can be slow for large t.
+       This is exact but can be slow for large t, inspired by MAGIC :cite:`van2018recovering`.
 
     2. **Spectral method**: Approximates M^t using eigendecomposition (M = V @ Λ @ V^(-1),
        so M^t ≈ V @ Λ^t @ V^(-1)). This can be much faster for large t but is approximate.
@@ -326,6 +327,8 @@ class MappingOperator:
     def _apply_iterative(self, reference_data: np.ndarray | csr_matrix, t: int) -> np.ndarray | csr_matrix:
         """Apply matrix power using iterative multiplication.
 
+        This is based on ideas from MAGIC :cite:`van2018recovering`.
+
         Parameters
         ----------
         reference_data
@@ -373,11 +376,12 @@ class MappingOperator:
 
         return result
 
+    @d.dedent
     def apply(
         self,
         reference_data: np.ndarray | csr_matrix,
         t: int | None = None,
-        method: Literal["iterative", "spectral"] = "iterative",
+        diffusion_method: Literal["iterative", "spectral"] = "iterative",
     ) -> np.ndarray | csr_matrix:
         """Apply mapping matrix power: M^t @ reference_data.
 
@@ -385,14 +389,8 @@ class MappingOperator:
         ----------
         reference_data
             Data to map (reference_cells x features). Can be dense or sparse arrays.
-        t
-            Matrix power to apply. If None (default), uses direct multiplication (fastest).
-            If t >= 1, allows method selection between iterative and spectral approaches.
-        method
-            Method for computing matrix powers. Options:
-            - "iterative": Iterative matrix multiplication (exact but slow for large t)
-            - "spectral": Eigendecomposition-based approximation (faster for large t,
-              becomes more accurate as t increases due to exponential decay of small eigenvalues)
+        %(t)s
+        %(diffusion_method)s
 
         Returns
         -------
@@ -420,7 +418,7 @@ class MappingOperator:
         self._validate_power(t)
 
         # Warn about performance for large matrix powers with iterative method
-        if t > PackageConstants.SPECTRAL_METHOD_THRESHOLD and method == "iterative" and self.is_self_mapping:
+        if t > PackageConstants.SPECTRAL_METHOD_THRESHOLD and diffusion_method == "iterative" and self.is_self_mapping:
             logger.warning(
                 "Using iterative method for t=%d matrix powers may be slow for large datasets. "
                 "Consider using method='spectral' for better performance.",
@@ -428,12 +426,12 @@ class MappingOperator:
             )
 
         # Apply the chosen method for t >= 1
-        if method == "iterative":
+        if diffusion_method == "iterative":
             return self._apply_iterative(reference_data, t)
-        elif method == "spectral":
+        elif diffusion_method == "spectral":
             return self._apply_spectral(reference_data, t)
         else:
-            raise ValueError(f"Unknown method: {method}")
+            raise ValueError(f"Unknown diffusion method: {diffusion_method}")
 
     def clear_cache(self) -> None:
         """Clear cached eigendecomposition to free memory."""

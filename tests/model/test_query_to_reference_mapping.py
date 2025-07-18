@@ -30,12 +30,14 @@ class TestQueryToReferenceMapping:
 
     def test_expression_transfer(self, cmap, expected_expression_transfer_metrics):
         cmap.map_layers(key="X")
-        cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="pearson")
         assert_metrics_close(cmap.expression_transfer_metrics, expected_expression_transfer_metrics)
 
-    @pytest.mark.parametrize("method", ["gauss", "scarches", "random", "inverse_distance", "jaccard", "hnoca", "equal"])
-    def test_compute_mapping_matrix_all_methods(self, cmap, method):
-        cmap.compute_mapping_matrix(method=method)
+    @pytest.mark.parametrize(
+        "kernel_method", ["gauss", "scarches", "random", "inverse_distance", "jaccard", "hnoca", "equal"]
+    )
+    def test_compute_mapping_matrix_all_methods(self, cmap, kernel_method):
+        cmap.compute_mapping_matrix(kernel_method=kernel_method)
         assert cmap.mapping_operator.matrix is not None
 
     @pytest.mark.parametrize("layer_key", ["X", "counts"])
@@ -76,7 +78,7 @@ class TestQueryToReferenceMapping:
         cm = CellMapper(reference, reference)
         cm.map(
             knn_method="sklearn",
-            mapping_method="jaccard",
+            kernel_method="jaccard",
             obs_keys="leiden",
             use_rep="X_pca",
             n_neighbors=1,
@@ -107,9 +109,9 @@ class TestQueryToReferenceMapping:
         assert cmap.query_imputed.var.equals(cmap.reference.var)
 
         # Test evaluation works with custom imputed data
-        cmap.evaluate_expression_transfer(layer_key="X", method="pearson")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="pearson")
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == "pearson"
+        assert cmap.expression_transfer_metrics["comparison_method"] == "pearson"
 
     def test_query_imputed_property_sparse_matrix(self, cmap, sparse_imputed_data):
         """Test setting query_imputed with a sparse matrix."""
@@ -124,9 +126,9 @@ class TestQueryToReferenceMapping:
         assert issparse(cmap.query_imputed.X)
 
         # Test evaluation works with custom sparse imputed data
-        cmap.evaluate_expression_transfer(layer_key="X", method="spearman")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="spearman")
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == "spearman"
+        assert cmap.expression_transfer_metrics["comparison_method"] == "spearman"
 
     def test_query_imputed_property_dataframe(self, cmap, dataframe_imputed_data):
         """Test setting query_imputed with a pandas DataFrame."""
@@ -139,9 +141,9 @@ class TestQueryToReferenceMapping:
         assert np.allclose(cmap.query_imputed.X, dataframe_imputed_data.values)
 
         # Test evaluation works with DataFrame-sourced imputed data
-        cmap.evaluate_expression_transfer(layer_key="X", method="js")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="js")
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == "js"
+        assert cmap.expression_transfer_metrics["comparison_method"] == "js"
 
     def test_query_imputed_property_anndata(self, cmap, custom_anndata_imputed):
         """Test setting query_imputed with a pre-made AnnData object."""
@@ -152,9 +154,9 @@ class TestQueryToReferenceMapping:
         assert cmap.query_imputed is custom_anndata_imputed
 
         # Test evaluation works with custom AnnData
-        cmap.evaluate_expression_transfer(layer_key="X", method="rmse")
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method="rmse")
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == "rmse"
+        assert cmap.expression_transfer_metrics["comparison_method"] == "rmse"
 
     def test_query_imputed_invalid_shape(self, cmap, invalid_shape_data):
         """Test that setting query_imputed with wrong shape raises an error."""
@@ -206,16 +208,16 @@ class TestQueryToReferenceMapping:
         # The samples should be different since we're using random data
         assert not np.allclose(original_data_sample, new_data_sample)
 
-    @pytest.mark.parametrize("method", ["pearson", "spearman", "js", "rmse"])
-    def test_evaluate_with_custom_imputation(self, cmap, random_imputed_data, method):
+    @pytest.mark.parametrize("comparison_method", ["pearson", "spearman", "js", "rmse"])
+    def test_evaluate_with_custom_imputation(self, cmap, random_imputed_data, comparison_method):
         """Test evaluation with imputed data from an alternative method."""
         # Set the imputed data
         cmap.query_imputed = random_imputed_data
 
         # Evaluate using the specified method
-        cmap.evaluate_expression_transfer(layer_key="X", method=method)
+        cmap.evaluate_expression_transfer(layer_key="X", comparison_method=comparison_method)
         assert cmap.expression_transfer_metrics is not None
-        assert cmap.expression_transfer_metrics["method"] == method
+        assert cmap.expression_transfer_metrics["comparison_method"] == comparison_method
 
     def test_imputation_without_copying(self, cmap, random_imputed_data):
         """Test that query_imputed correctly reflects metadata changes."""
@@ -268,8 +270,8 @@ class TestQueryToReferenceMapping:
 
         # Create CellMapper and compute mapping matrix
         cmap = CellMapper(query=query, reference=reference)
-        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-        cmap.compute_mapping_matrix(method="gauss")
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
 
         # Test float and integer data
         for key in ["numerical_score", "integer_score"]:
@@ -283,8 +285,8 @@ class TestQueryToReferenceMapping:
 
         # Create CellMapper and compute mapping matrix
         cmap = CellMapper(query=query, reference=reference)
-        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-        cmap.compute_mapping_matrix(method="gauss")
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
 
         # Map pseudotime
         cmap.map_obs(key="dpt_pseudotime")

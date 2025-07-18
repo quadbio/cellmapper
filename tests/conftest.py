@@ -185,8 +185,8 @@ def cmap(query_reference_adata):
     )
 
     # Compute neighbors and mapping matrix
-    cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", method="sklearn")
-    cmap.compute_mapping_matrix(method="gauss")
+    cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+    cmap.compute_mapping_matrix(kernel_method="gauss")
 
     return cmap
 
@@ -206,7 +206,7 @@ def expected_label_transfer_metrics():
 @pytest.fixture
 def expected_expression_transfer_metrics():
     return {
-        "method": "pearson",
+        "comparison_method": "pearson",
         "average": 0.376,
         "n_shared_genes": 300,
         "n_test_genes": 300,
@@ -262,3 +262,56 @@ def invalid_shape_data(query_reference_adata):
     too_few_cells = np.random.rand(query.n_obs - 5, reference.n_vars)
     too_few_genes = np.random.rand(query.n_obs, reference.n_vars - 10)
     return {"too_few_cells": too_few_cells, "too_few_genes": too_few_genes}
+
+
+@pytest.fixture
+def small_symmetric_matrix():
+    """Small symmetric matrix for MappingOperator testing."""
+    matrix = np.array([[0.0, 1.0, 0.5], [1.0, 0.0, 0.8], [0.5, 0.8, 0.0]], dtype=np.float64)
+    return matrix
+
+
+@pytest.fixture
+def small_asymmetric_matrix():
+    """Small asymmetric matrix for MappingOperator testing."""
+    matrix = np.array([[0.0, 1.0, 0.5], [0.8, 0.0, 0.9], [0.3, 0.6, 0.0]], dtype=np.float64)
+    return matrix
+
+
+@pytest.fixture
+def rectangular_matrix():
+    """Rectangular matrix for cross-mapping testing."""
+    matrix = np.array([[0.8, 0.2, 0.1, 0.0], [0.1, 0.7, 0.3, 0.2], [0.0, 0.1, 0.8, 0.5]], dtype=np.float64)
+    return matrix
+
+
+@pytest.fixture
+def matrix_with_zero_rows():
+    """Matrix with zero row sums for edge case testing."""
+    matrix = np.array(
+        [
+            [0.0, 1.0, 0.5],
+            [0.0, 0.0, 0.0],  # Zero row
+            [0.5, 0.8, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    return matrix
+
+
+@pytest.fixture
+def sparse_symmetric_matrix():
+    """Sparse symmetric matrix for testing."""
+    from scipy.sparse import csr_matrix
+
+    matrix = np.array(
+        [[0.0, 1.0, 0.0, 0.5], [1.0, 0.0, 0.8, 0.0], [0.0, 0.8, 0.0, 0.3], [0.5, 0.0, 0.3, 0.0]], dtype=np.float64
+    )
+    return csr_matrix(matrix)
+
+
+@pytest.fixture
+def test_data_for_mapping():
+    """Test data matrix for mapping operations."""
+    data = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]], dtype=np.float64)
+    return data

@@ -6,6 +6,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 from umap.umap_ import fuzzy_simplicial_set
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 
@@ -24,7 +25,6 @@ class Neighbors:
     - Multiple connectivity kernels (Gaussian, adaptive Gaussian, inverse distance, etc.)
     - Support for both square (self-mapping) and non-square (cross-mapping) matrices
     - Configurable self-edge inclusion for square matrices in connectivity computations
-    - Symmetrization options for creating undirected graphs
     - Robust handling of variable neighbor counts and invalid entries
 
 
@@ -151,6 +151,7 @@ class Neighbors:
         # Create sparse matrix with distances as values
         return self._create_sparse_matrix_from_arrays(distances, indices, valid_mask, dtype=dtype)
 
+    @d.dedent
     def knn_graph_connectivities(
         self,
         kernel: Literal["gauss", "scarches", "random", "inverse_distance", "equal", "umap"] = "gauss",
@@ -165,10 +166,7 @@ class Neighbors:
         ----------
         kernel
             Connectivity kernel to use. Supported: 'gauss', 'scarches', 'random', 'inverse_distance', 'equal', 'umap'.
-        self_edges
-            Control self-edges in the neighbor graph for square matrices:
-            - True: Include self-edges in the connectivity computation
-            - False: Exclude self-edges from the connectivity computation
+        %(self_edges)s
         dtype
             Data type for the matrix values.
         **kwargs
@@ -191,6 +189,7 @@ class Neighbors:
 
         return conn_matrix
 
+    @d.dedent
     def _compute_kernel_values(
         self,
         kernel: Literal["gauss", "scarches", "random", "inverse_distance", "equal"],
@@ -205,8 +204,7 @@ class Neighbors:
         ----------
         kernel
             Kernel type to use for computing connectivities.
-        self_edges
-            Whether to include self-edges in the computation.
+        %(self_edges)s
         dtype
             Data type for the matrix values.
         **kwargs
@@ -263,6 +261,7 @@ class Neighbors:
         # Create and return sparse matrix
         return self._create_sparse_matrix_from_arrays(connectivities, indices, valid_mask, dtype=dtype)
 
+    @d.dedent
     def _compute_umap_kernel(self, self_edges: bool, **kwargs) -> csr_matrix:
         """
         Compute UMAP fuzzy simplicial set connectivities following scanpy implementation.
@@ -272,8 +271,7 @@ class Neighbors:
 
         Parameters
         ----------
-        self_edges
-            Whether to include self-edges in the computation.
+        %(self_edges)s
         **kwargs
             Additional parameters for UMAP kernel:
             - set_op_mix_ratio: float, default 1.0
@@ -316,6 +314,7 @@ class Neighbors:
         # Return as CSR matrix
         return connectivities_sparse.tocsr()
 
+    @d.dedent
     def boolean_adjacency(self, dtype=np.float64, self_edges: bool = False) -> csr_matrix:
         """
         Construct a boolean adjacency matrix from neighbor indices.
@@ -324,10 +323,7 @@ class Neighbors:
         ----------
         dtype
             Data type for the matrix values.
-        self_edges
-            Control self-edges in the neighbor graph for square matrices:
-            - True: Include self-edges in the adjacency computation
-            - False: Exclude self-edges from the adjacency computation
+        %(self_edges)s
 
         Returns
         -------
@@ -363,15 +359,13 @@ class Neighbors:
             self.indices = self.indices[:, 1:]
             self.distances = self.distances[:, 1:]
 
+    @d.dedent
     def _get_distances_and_indices(self, self_edges: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Get distances and indices with optional self-edge handling, plus valid entries mask.
 
         Parameters
         ----------
-        self_edges
-            Control self-edge inclusion:
-            - True: Add self-edges as first column with distance 0.0
-            - False: Return stored arrays (without self-edges)
+        %(self_edges)s
 
         Returns
         -------

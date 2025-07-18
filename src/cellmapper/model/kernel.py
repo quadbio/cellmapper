@@ -3,6 +3,7 @@ from typing import Literal, cast
 import numpy as np
 from scipy.sparse import csr_matrix
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model._knn_backend import get_backend
@@ -104,11 +105,12 @@ class Kernel:
 
         return neighbors
 
+    @d.dedent
     def compute_neighbors(
         self,
         n_neighbors: int = 30,
-        method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
-        metric: str = "euclidean",
+        knn_method: Literal["sklearn", "pynndescent", "rapids", "faiss-cpu", "faiss-gpu"] = "sklearn",
+        knn_dist_metric: str = "euclidean",
         random_state: int = 0,
         only_yx: bool = False,
         **kwargs,
@@ -120,16 +122,11 @@ class Kernel:
         ----------
          n_neighbors
             Number of nearest neighbors.
-        method
-            Method to use for computing neighbors.
-        metric
-            Distance metric to use for nearest neighbors.
+        %(knn_method)s
+        %(knn_dist_metric)s
         random_state
             Random state for reproducibility.
-        only_yx
-            If True, only compute the xy neighbors. In self-mapping mode, this is
-            automatically set to True for efficiency since all neighbor matrices
-            contain the same information.
+        %(only_yx)s
         **kwargs
             Additional keyword arguments to pass to the underlying k-NN algorithm.
             These are method-specific and will be passed directly to the algorithm's
@@ -155,14 +152,6 @@ class Kernel:
 
         In self-mapping mode, all four matrices will reference the same NeighborsResults
         object for memory efficiency.
-
-        Examples
-        --------
-        >>> neighbors = Neighbors(xrep, yrep)
-        >>> # sklearn with custom parameters
-        >>> neighbors.compute_neighbors(method="sklearn", algorithm="ball_tree", leaf_size=20)
-        >>> # pynndescent with custom parameters (inherits scanpy-style defaults)
-        >>> neighbors.compute_neighbors(method="pynndescent", n_trees=32, verbose=True)
         """
         # Optimize for self-mapping: only compute yx and reuse for all matrices
         if self._is_self_mapping:
@@ -176,7 +165,7 @@ class Kernel:
         self.only_yx = only_yx
 
         # issue a warning if using sklearn with large datasets
-        if method == "sklearn" and (
+        if knn_method == "sklearn" and (
             self.xrep.shape[0] > PackageConstants.SKLEARN_WARNING_CUTOFF
             or self.yrep.shape[0] > PackageConstants.SKLEARN_WARNING_CUTOFF
         ):
@@ -187,8 +176,10 @@ class Kernel:
             )
 
         # use strategy pattern to reduce duplication
-        logger.info("Using %s to compute %d neighbors.", method, n_neighbors)
-        backend_x = get_backend(method, n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)
+        logger.info("Using %s to compute %d neighbors.", knn_method, n_neighbors)
+        backend_x = get_backend(
+            knn_method, n_neighbors=n_neighbors, metric=knn_dist_metric, random_state=random_state, **kwargs
+        )
         backend_x.fit(self.xrep)
 
         if only_yx:
@@ -196,7 +187,9 @@ class Kernel:
             self.yx = Neighbors(distances=dists, indices=idx, n_targets=self.xrep.shape[0])
             return
 
-        backend_y = get_backend(method, n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)
+        backend_y = get_backend(
+            knn_method, n_neighbors=n_neighbors, metric=knn_dist_metric, random_state=random_state, **kwargs
+        )
         backend_y.fit(self.yrep)
 
         x_d, x_i = backend_x.query(self.xrep, k=n_neighbors)
@@ -209,9 +202,10 @@ class Kernel:
         self.xy = Neighbors(distances=xy_d, indices=xy_i, n_targets=self.yrep.shape[0])
         self.yx = Neighbors(distances=yx_d, indices=yx_i, n_targets=self.xrep.shape[0])
 
+    @d.dedent
     def compute_kernel_matrix(
         self,
-        method: Literal[
+        kernel_method: Literal[
             "jaccard",
             "gauss",
             "scarches",
@@ -231,25 +225,13 @@ class Kernel:
 
         Parameters
         ----------
-        method
-            Method to use for computing the kernel matrix. Options include:
-            - "jaccard": Jaccard similarity
-            - "gauss": Gaussian kernel
-            - "scarches": scArches kernel
-            - "inverse_distance": Inverse distance kernel
-            - "random": Random kernel
-            - "hnoca": HNOCA kernel
-            - "equal": Equal weights kernel
-            - "umap": UMAP fuzzy simplicial set connectivities
-        symmetrize
-            If True, create a symmetric kernel matrix where for each edge i→j,
-            ensure j→i exists with the same weight. Only valid for square matrices (self-mapping).
+        %(kernel_method)s
+        %(symmetrize)s
         symmetrize_method
             Method for symmetrization when symmetrize=True:
             - "max": Take element-wise maximum between matrix and transpose (preserves strongest connections)
             - "mean": Take element-wise average between matrix and transpose (smooths connections)
-        self_edges
-            Control self-edges in the kernel computation for square matrices.
+        %(self_edges)s
         **kwargs
             Additional keyword arguments for kernel computation.
 
@@ -268,7 +250,7 @@ class Kernel:
         The method uses the `only_yx` attribute set during `compute_neighbors` to determine
         which neighbors were computed and validate method compatibility.
         """
-        if method in PackageConstants.JACCARD_BASED_KERNELS:
+        if kernel_method in PackageConstants.JACCARD_BASED_KERNELS:
             # In cross-mapping mode, we need all four adjacency matrices
             if self.only_yx and not self._is_self_mapping:
                 raise ValueError(
@@ -283,28 +265,28 @@ class Kernel:
             # Compute kernel matrix
             kernel_matrix = (yx @ xx.T) + (yy @ xy.T)
 
-            if method == "jaccard":
+            if kernel_method == "jaccard":
                 kernel_matrix.data /= 4 * n_neighbors - kernel_matrix.data
-            elif method == "hnoca":
+            elif kernel_method == "hnoca":
                 kernel_matrix.data /= 2 * n_neighbors - kernel_matrix.data
                 kernel_matrix.data = kernel_matrix.data**2
 
-        elif method in PackageConstants.CONNECTIVITY_BASED_KERNELS:
+        elif kernel_method in PackageConstants.CONNECTIVITY_BASED_KERNELS:
             # Validate self-mapping-only kernels
-            if method in PackageConstants.SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
-                raise ValueError(f"Method '{method}' is only supported for self-mapping mode.")
+            if kernel_method in PackageConstants.SELF_MAPPING_ONLY_KERNELS and not self._is_self_mapping:
+                raise ValueError(f"Method '{kernel_method}' is only supported for self-mapping mode.")
 
             # Type cast to satisfy the type checker
             kernel_method = cast(
                 Literal["gauss", "scarches", "inverse_distance", "random", "equal", "umap"],
-                method,
+                kernel_method,
             )
 
             # Use yx neighbors to compute kernel
             assert self.yx is not None, "yx neighbors must be computed"
             kernel_matrix = self.yx.knn_graph_connectivities(kernel=kernel_method, self_edges=self_edges, **kwargs)
         else:
-            raise NotImplementedError(f"Method '{method}' is not implemented.")
+            raise NotImplementedError(f"Method '{kernel_method}' is not implemented.")
 
         # Apply symmetrization if requested and matrix is square
         if symmetrize and self._is_self_mapping:
@@ -314,7 +296,7 @@ class Kernel:
 
         # Store the computed kernel matrix and metadata
         self.kernel_matrix = kernel_matrix
-        self.kernel_method = method
+        self.kernel_method = kernel_method
 
         # Check if the resulting matrix is symmetric (for self-mapping only)
         if self._is_self_mapping:
@@ -362,17 +344,14 @@ class Kernel:
         else:
             raise ValueError(f"Unknown symmetrization method: {method}. Use 'max' or 'mean'.")
 
+    @d.dedent
     def get_adjacency_matrices(self, self_edges: bool = True) -> tuple[csr_matrix, csr_matrix, csr_matrix, csr_matrix]:
         """
         Compute unweighted adjacency matrices for all k-NN graphs.
 
         Parameters
         ----------
-        self_edges
-            Control self-edges for self-terms (xx, yy). Cross-terms (xy, yx) are not affected.
-            - True: Include self-edges (set diagonal entries to 1)
-            - False: Exclude self-edges (set diagonal entries to 0)
-            - None: Leave as-is (preserve original neighbor graph structure)
+        %(self_edges)s
 
         Returns
         -------

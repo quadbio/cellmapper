@@ -3,6 +3,7 @@ import pytest
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
+from cellmapper.model._knn_backend import _BACKENDS, _FaissCpuBackend, get_backend
 from cellmapper.model.kernel import Kernel
 
 
@@ -21,10 +22,10 @@ class TestKernel:
         n_neighbors = 3
         # sklearn
         neigh_skl = Kernel(x, y)
-        neigh_skl.compute_neighbors(n_neighbors=n_neighbors, method="sklearn", only_yx=only_yx)
+        neigh_skl.compute_neighbors(n_neighbors=n_neighbors, knn_method="sklearn", only_yx=only_yx)
         # pynndescent
         neigh_pynn = Kernel(x, y)
-        neigh_pynn.compute_neighbors(n_neighbors=n_neighbors, method="pynndescent", only_yx=only_yx)
+        neigh_pynn.compute_neighbors(n_neighbors=n_neighbors, knn_method="pynndescent", only_yx=only_yx)
         if only_yx:
             with pytest.raises(ValueError):
                 neigh_skl.get_adjacency_matrices()
@@ -37,12 +38,26 @@ class TestKernel:
         conn_pynn = neigh_pynn.yx.knn_graph_connectivities()
         assert np.allclose(conn_skl.toarray(), conn_pynn.toarray(), atol=1e-6)
 
+    def test_kernel_faiss_backend_availability(self):
+        """Test that faiss-cpu backend is available and can be imported."""
+        pytest.importorskip("faiss")
+
+        assert "faiss-cpu" in _BACKENDS
+        assert "faiss-gpu" in _BACKENDS
+
+        # This should not raise an exception
+        backend = get_backend(knn_method="faiss-cpu", n_neighbors=3, metric="euclidean")
+        assert backend is not None
+
+        # Verify it's the right type
+        assert isinstance(backend, _FaissCpuBackend)
+
     def test_kernel_repr(self, small_data):
         x, y = small_data
         neigh = Kernel(x, y)
         r = repr(neigh)
         assert "Kernel(" in r and "xrep_shape" in r and "yrep_shape" in r
-        neigh.compute_neighbors(n_neighbors=2, method="sklearn")
+        neigh.compute_neighbors(n_neighbors=2, knn_method="sklearn")
         r2 = repr(neigh)
         assert "xx=True" in r2 and "yy=True" in r2 and "xy=True" in r2 and "yx=True" in r2
 

@@ -50,7 +50,7 @@ class _SklearnBackend(_KNNBackend):
         return distances, indices
 
 
-class _FaissBackend(_KNNBackend):
+class _FaissCpuBackend(_KNNBackend):
     def __init__(
         self,
         n_neighbors: int,
@@ -58,7 +58,36 @@ class _FaissBackend(_KNNBackend):
         random_state: int = 0,
         **kwargs: Any,
     ):
-        check_deps("faiss")
+        check_deps("faiss-cpu")
+        import faiss
+
+        self.faiss = faiss
+        self._index = None
+
+    def fit(self, data: np.ndarray) -> None:
+        dims = data.shape[1]
+        index = self.faiss.IndexFlatL2(dims)
+        # Ensure data is float32 and C-contiguous
+        data_f32 = np.ascontiguousarray(data.astype(np.float32))
+        index.add(data_f32)
+        self._index = index
+
+    def query(self, points: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+        # Ensure points are float32 and C-contiguous
+        points_f32 = np.ascontiguousarray(points.astype(np.float32))
+        distances, indices = self._index.search(points_f32, k)
+        return distances, indices
+
+
+class _FaissGpuBackend(_KNNBackend):
+    def __init__(
+        self,
+        n_neighbors: int,
+        metric: str,
+        random_state: int = 0,
+        **kwargs: Any,
+    ):
+        check_deps("faiss-gpu")
         import faiss
 
         self.faiss = faiss
@@ -69,11 +98,15 @@ class _FaissBackend(_KNNBackend):
         dims = data.shape[1]
         flat = self.faiss.IndexFlatL2(dims)
         gpu_index = self.faiss.index_cpu_to_gpu(self.res, 0, flat)
-        gpu_index.add(data.astype(np.float32))
+        # Ensure data is float32 and C-contiguous
+        data_f32 = np.ascontiguousarray(data.astype(np.float32))
+        gpu_index.add(data_f32)
         self._index = gpu_index
 
     def query(self, points: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
-        distances, indices = self._index.search(points.astype(np.float32), k)
+        # Ensure points are float32 and C-contiguous
+        points_f32 = np.ascontiguousarray(points.astype(np.float32))
+        distances, indices = self._index.search(points_f32, k)
         return distances, indices
 
 
@@ -148,16 +181,17 @@ class _PyNNDescentBackend(_KNNBackend):
 
 _BACKENDS = {
     "sklearn": _SklearnBackend,
-    "faiss": _FaissBackend,
+    "faiss-cpu": _FaissCpuBackend,
+    "faiss-gpu": _FaissGpuBackend,
     "rapids": _RapidsBackend,
     "pynndescent": _PyNNDescentBackend,
 }
 
 
-def get_backend(method: str, n_neighbors: int, metric: str, random_state: int = 0, **kwargs: Any) -> _KNNBackend:
+def get_backend(knn_method: str, n_neighbors: int, metric: str, random_state: int = 0, **kwargs: Any) -> _KNNBackend:
     """Factory to get a configured KNN backend."""
     try:
-        backend_cls = _BACKENDS[method]
+        backend_cls = _BACKENDS[knn_method]
     except KeyError:
-        raise ValueError(f"Unknown method: {method}. Supported methods: {list(_BACKENDS)}") from KeyError
+        raise ValueError(f"Unknown method: {knn_method}. Supported methods: {list(_BACKENDS)}") from KeyError
     return backend_cls(n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)

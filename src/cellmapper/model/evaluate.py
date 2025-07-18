@@ -16,6 +16,7 @@ from sklearn.metrics import (
     recall_score,
 )
 
+from cellmapper._docs import d
 from cellmapper.logging import logger
 
 
@@ -233,10 +234,11 @@ class EvaluationMixin:
         if save:
             plt.savefig(save, bbox_inches="tight")
 
+    @d.dedent
     def evaluate_expression_transfer(
         self,
         layer_key: str = "X",
-        method: Literal["pearson", "spearman", "js", "rmse"] = "pearson",
+        comparison_method: Literal["pearson", "spearman", "js", "rmse"] = "pearson",
         groupby: str | None = None,
         test_var_key: str | None = None,
     ) -> None:
@@ -247,10 +249,8 @@ class EvaluationMixin:
 
         Parameters
         ----------
-        layer_key
-            Key in `self.query.layers` to use as the original expression. Use "X" to use `self.query.X`.
-        method
-            Method to quantify agreement. Supported: "pearson", "spearman", "js", "rmse".
+        %(layer_key)s
+        %(comparison_method)s
         groupby
             Column in self.query.obs to group query cells by (e.g., cell type, batch). If None, computes a single score for all query cells.
         test_var_key
@@ -271,16 +271,16 @@ class EvaluationMixin:
         imputed_x, original_x, shared_genes = self._get_aligned_expression_arrays(layer_key)
 
         # Select metric function
-        if method == "pearson":
+        if comparison_method == "pearson":
             metric_func = lambda a, b: pearsonr(a, b)[0]
-        elif method == "spearman":
+        elif comparison_method == "spearman":
             metric_func = lambda a, b: spearmanr(a, b)[0]
-        elif method in ("js", "jensen-shannon"):
+        elif comparison_method in ("js", "jensen-shannon"):
             metric_func = _jensen_shannon_divergence
-        elif method == "rmse":
+        elif comparison_method == "rmse":
             metric_func = _rmse_zscore
         else:
-            raise NotImplementedError(f"Method '{method}' is not implemented.")
+            raise NotImplementedError(f"Method '{comparison_method}' is not implemented.")
 
         # Helper to compute metrics for a given mask of cells
         def compute_metrics(mask):
@@ -296,7 +296,7 @@ class EvaluationMixin:
         self._store_expression_metric(
             shared_genes,
             overall_metrics,
-            method,
+            comparison_method,
             test_var_key,
         )
 
@@ -314,21 +314,22 @@ class EvaluationMixin:
             for group in groups:
                 mask = group_labels == group
                 metrics_df.loc[shared_genes, group] = compute_metrics(mask.values)
-            self.query.varm[f"metric_{method}"] = metrics_df
+            self.query.varm[f"metric_{comparison_method}"] = metrics_df
 
             logger.info(
                 "Metrics per group defined in `query.obs['%s']` computed and stored in `query.varm['%s']`",
                 groupby,
-                f"metric_{method}",
+                f"metric_{comparison_method}",
             )
 
+    @d.dedent
     def _get_aligned_expression_arrays(self, layer_key: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
         """
         Extract and align imputed and original expression arrays for shared genes between query_imputed and query.
 
         Parameters
         ----------
-        layer_key : Key in self.query.layers to use as the original expression. Use "X" to use self.query.X.
+        %(layer_key)s
 
         Returns
         -------
@@ -356,7 +357,7 @@ class EvaluationMixin:
         self,
         shared_genes: list[str],
         values: np.ndarray,
-        method: str,
+        comparison_method: str,
         test_var_key: str | None = None,
     ) -> None:
         """
@@ -368,21 +369,20 @@ class EvaluationMixin:
             List of shared gene names.
         values
             Array of per-gene metric values (e.g., correlation, JSD) or 2D array (genes x groups).
-        method
-            Name of the method/metric (for logging and summary dict).
+        %(comparison_method)s
         test_var_key
             Optional key in self.query.var where True marks test genes. If provided, average metrics are computed only over test genes.
         """
         # Store overall metric in .var
-        self.query.var[f"metric_{method}"] = np.nan
-        self.query.var.loc[shared_genes, f"metric_{method}"] = values
+        self.query.var[f"metric_{comparison_method}"] = np.nan
+        self.query.var.loc[shared_genes, f"metric_{comparison_method}"] = values
 
         # Create a mask for valid (non-nan) values
         valid_mask = ~np.isnan(values)
 
         # Create a mask for valid test genes - by default, all non-nan values are valid
-        self.query.var[f"_is_valid_test_gene_{method}"] = False
-        self.query.var.loc[shared_genes, f"_is_valid_test_gene_{method}"] = valid_mask
+        self.query.var[f"_is_valid_test_gene_{comparison_method}"] = False
+        self.query.var.loc[shared_genes, f"_is_valid_test_gene_{comparison_method}"] = valid_mask
 
         # If test_var_key provided, intersect with test gene mask
         n_test_genes = np.sum(valid_mask)
@@ -393,23 +393,25 @@ class EvaluationMixin:
             valid_test_mask.loc[shared_genes] = valid_mask
 
             # Combine the masks
-            self.query.var[f"_is_valid_test_gene_{method}"] = (
-                self.query.var[f"_is_valid_test_gene_{method}"] & test_mask
+            self.query.var[f"_is_valid_test_gene_{comparison_method}"] = (
+                self.query.var[f"_is_valid_test_gene_{comparison_method}"] & test_mask
             )
 
-            n_test_genes = self.query.var[f"_is_valid_test_gene_{method}"].sum()
+            n_test_genes = self.query.var[f"_is_valid_test_gene_{comparison_method}"].sum()
             if n_test_genes == 0:
                 raise ValueError(f"No valid test genes found using '{test_var_key}'")
 
         # Get valid values using the combined mask
-        valid_values = self.query.var.loc[self.query.var[f"_is_valid_test_gene_{method}"], f"metric_{method}"]
+        valid_values = self.query.var.loc[
+            self.query.var[f"_is_valid_test_gene_{comparison_method}"], f"metric_{comparison_method}"
+        ]
 
         # Compute average metric
         avg_value = float(np.mean(valid_values))
 
         # Store metrics
         self.expression_transfer_metrics = {
-            "method": method,
+            "comparison_method": comparison_method,
             "average": avg_value,
             "n_shared_genes": len(shared_genes),
             "n_test_genes": n_test_genes,
@@ -417,7 +419,7 @@ class EvaluationMixin:
 
         logger.info(
             "Expression transfer evaluation (%s): average value = %.4f (n_shared_genes=%d, n_test_genes=%d)",
-            method,
+            comparison_method,
             avg_value,
             len(shared_genes),
             n_test_genes,
