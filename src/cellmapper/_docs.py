@@ -84,7 +84,7 @@ use_rep
     Data representation based on which to find nearest neighbors. If None, a fallback representation will be
     computed automatically. """
 
-_knn_distance_metric = """\
+_knn_dist_metric = """\
 knn_dist_metric
     Distance metric to use for nearest neighbors. See the knn algorithms documentation for details. """
 
@@ -102,5 +102,5 @@ d = DocstringProcessor(
     layer_key=_layer_key,
     n_neighbors=_n_neighbors,
     use_rep=_use_rep,
-    knn_distance_metric=_knn_distance_metric,
+    knn_dist_metric=_knn_dist_metric,
 )
