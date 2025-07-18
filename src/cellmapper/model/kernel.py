@@ -110,7 +110,7 @@ class Kernel:
         self,
         n_neighbors: int = 30,
         knn_method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
-        metric: str = "euclidean",
+        knn_dist_metric: str = "euclidean",
         random_state: int = 0,
         only_yx: bool = False,
         **kwargs,
@@ -123,8 +123,7 @@ class Kernel:
          n_neighbors
             Number of nearest neighbors.
         %(knn_method)s
-        metric
-            Distance metric to use for nearest neighbors.
+        %(knn_dist_metric)s
         random_state
             Random state for reproducibility.
         %(only_yx)s
@@ -178,7 +177,9 @@ class Kernel:
 
         # use strategy pattern to reduce duplication
         logger.info("Using %s to compute %d neighbors.", knn_method, n_neighbors)
-        backend_x = get_backend(knn_method, n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)
+        backend_x = get_backend(
+            knn_method, n_neighbors=n_neighbors, metric=knn_dist_metric, random_state=random_state, **kwargs
+        )
         backend_x.fit(self.xrep)
 
         if only_yx:
@@ -186,7 +187,9 @@ class Kernel:
             self.yx = Neighbors(distances=dists, indices=idx, n_targets=self.xrep.shape[0])
             return
 
-        backend_y = get_backend(knn_method, n_neighbors=n_neighbors, metric=metric, random_state=random_state, **kwargs)
+        backend_y = get_backend(
+            knn_method, n_neighbors=n_neighbors, metric=knn_dist_metric, random_state=random_state, **kwargs
+        )
         backend_y.fit(self.yrep)
 
         x_d, x_i = backend_x.query(self.xrep, k=n_neighbors)
@@ -341,6 +344,7 @@ class Kernel:
         else:
             raise ValueError(f"Unknown symmetrization method: {method}. Use 'max' or 'mean'.")
 
+    @d.dedent
     def get_adjacency_matrices(self, self_edges: bool = True) -> tuple[csr_matrix, csr_matrix, csr_matrix, csr_matrix]:
         """
         Compute unweighted adjacency matrices for all k-NN graphs.

@@ -6,6 +6,7 @@ import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 from umap.umap_ import fuzzy_simplicial_set
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 
@@ -150,6 +151,7 @@ class Neighbors:
         # Create sparse matrix with distances as values
         return self._create_sparse_matrix_from_arrays(distances, indices, valid_mask, dtype=dtype)
 
+    @d.dedent
     def knn_graph_connectivities(
         self,
         kernel: Literal["gauss", "scarches", "random", "inverse_distance", "equal", "umap"] = "gauss",
@@ -187,6 +189,7 @@ class Neighbors:
 
         return conn_matrix
 
+    @d.dedent
     def _compute_kernel_values(
         self,
         kernel: Literal["gauss", "scarches", "random", "inverse_distance", "equal"],
@@ -258,6 +261,7 @@ class Neighbors:
         # Create and return sparse matrix
         return self._create_sparse_matrix_from_arrays(connectivities, indices, valid_mask, dtype=dtype)
 
+    @d.dedent
     def _compute_umap_kernel(self, self_edges: bool, **kwargs) -> csr_matrix:
         """
         Compute UMAP fuzzy simplicial set connectivities following scanpy implementation.
@@ -310,6 +314,7 @@ class Neighbors:
         # Return as CSR matrix
         return connectivities_sparse.tocsr()
 
+    @d.dedent
     def boolean_adjacency(self, dtype=np.float64, self_edges: bool = False) -> csr_matrix:
         """
         Construct a boolean adjacency matrix from neighbor indices.
@@ -354,6 +359,7 @@ class Neighbors:
             self.indices = self.indices[:, 1:]
             self.distances = self.distances[:, 1:]
 
+    @d.dedent
     def _get_distances_and_indices(self, self_edges: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Get distances and indices with optional self-edge handling, plus valid entries mask.
 

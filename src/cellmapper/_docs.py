@@ -61,6 +61,33 @@ kernel_method
     - "equal": All neighbors are equally weighted (1/n_neighbors).
     - "umap": UMAP fuzzy simplicial set connectivities. Only available for self-mapping with true k-NN graphs."""
 
+_comparison_method = """\
+comparison_method
+    Method to use for comparing the mapping results. Options include:
+
+    - "pearson": Pearson correlation coefficient.
+    - "spearman": Spearman rank correlation coefficient.
+    - "js": Jenson-Shanon divergence.
+    - "rmse": Root Mean Square Error."""
+
+_layer_key = """\
+layer_key
+    Key in `self.query.layers` to use as the original expression. Use "X" to use `self.query.X`."""
+
+
+_n_neighbors = """\
+n_neighbors
+    Number of nearest neighbors. This parameter controls the sparsity of the connectivity matrix. """
+
+_use_rep = """\
+use_rep
+    Data representation based on which to find nearest neighbors. If None, a fallback representation will be
+    computed automatically. """
+
+_knn_distance_metric = """\
+knn_dist_metric
+    Distance metric to use for nearest neighbors. See the knn algorithms documentation for details. """
+
 
 d = DocstringProcessor(
     t=_t,
@@ -70,5 +97,10 @@ d = DocstringProcessor(
     self_edges=_self_edges,
     knn_method=_knn_method,
     only_yx=_only_yx,
-    mapping_method=_kernel_method,
+    kernel_method=_kernel_method,
+    comparison_method=_comparison_method,
+    layer_key=_layer_key,
+    n_neighbors=_n_neighbors,
+    use_rep=_use_rep,
+    knn_distance_metric=_knn_distance_metric,
 )

@@ -6,8 +6,8 @@ class PackageConstants:
     SKLEARN_WARNING_CUTOFF: int = 50000
 
     # Default mapping methods
-    DEFAULT_SELF_MAPPING_METHOD: str = "umap"
-    DEFAULT_CROSS_MAPPING_METHOD: str = "gauss"
+    DEFAULT_SELF_MAPPING_KERNEL_METHOD: str = "umap"
+    DEFAULT_CROSS_MAPPING_KERNEL_METHOD: str = "gauss"
 
     # Kernel method categories
     JACCARD_BASED_KERNELS = {"jaccard", "hnoca"}

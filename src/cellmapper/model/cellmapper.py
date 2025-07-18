@@ -110,7 +110,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         use_rep: str | None = None,
         n_comps: int | None = None,
         knn_method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
-        metric: str = "euclidean",
+        knn_dist_metric: str = "euclidean",
         random_state: int = 0,
         only_yx: bool = False,
         neighbors_kwargs: dict[str, Any] | None = None,
@@ -128,18 +128,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         Parameters
         ----------
-        n_neighbors
-            Number of nearest neighbors.
-        use_rep
-            Data representation based on which to find nearest neighbors. If None,
-            a fallback representation will be computed automatically.
+        %(n_neighbors)s
+        %(use_rep)s
         n_comps
             Number of components to use. If a pre-computed representation is provided via `use_rep`,
             we will use the number of components from that representation. Otherwiese, if `use_rep=None`,
             we will compute the given number of components using the fallback representation method.
         %(knn_method)s
-        metric
-            Distance metric to use for nearest neighbors.
+        %(knn_dist_metric)s
         random_state
             Random seed for reproducibility. Only used by "pynndescent" method.
         %(only_yx)s
@@ -221,7 +217,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self.knn.compute_neighbors(
             n_neighbors=n_neighbors,
             knn_method=knn_method,
-            metric=metric,
+            knn_dist_metric=knn_dist_metric,
             only_yx=self.only_yx,
             random_state=random_state,
             **(neighbors_kwargs or {}),
@@ -279,9 +275,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         # Default mapping method if not provided
         if kernel_method is None:
             kernel_method = (
-                PackageConstants.DEFAULT_SELF_MAPPING_METHOD
+                PackageConstants.DEFAULT_SELF_MAPPING_KERNEL_METHOD
                 if self._is_self_mapping
-                else PackageConstants.DEFAULT_CROSS_MAPPING_METHOD  # type: ignore[assignment]
+                else PackageConstants.DEFAULT_CROSS_MAPPING_KERNEL_METHOD  # type: ignore[assignment]
             )
         # Set defaults for symmetrize
         if symmetrize is None:
@@ -505,7 +501,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         n_neighbors: int = 30,
         use_rep: str | None = None,
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
-        metric: str = "euclidean",
+        knn_dist_metric: str = "euclidean",
         only_yx: bool = False,
         kernel_method: Literal[
             "jaccard",
@@ -535,13 +531,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Key in ``reference.layers`` to be mapped. Use "X" to map ``reference.X``.
         %(t)s
         %(diffusion_method)s
-        n_neighbors
-            Number of nearest neighbors.
-        use_rep
-            Data representation based on which to find nearest neighbors.
+        %(n_neighbors)s
+        %(use_rep)s
         %(knn_method)s
-        metric
-            Distance metric to use for nearest neighbors.
+        %(knn_dist_metric)s
         %(only_yx)s
         %(kernel_method)s
         %(symmetrize)s
@@ -549,7 +542,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         %(prediction_postfix)s
         """
         self.compute_neighbors(
-            n_neighbors=n_neighbors, use_rep=use_rep, knn_method=knn_method, metric=metric, only_yx=only_yx
+            n_neighbors=n_neighbors,
+            use_rep=use_rep,
+            knn_method=knn_method,
+            knn_dist_metric=knn_dist_metric,
+            only_yx=only_yx,
         )
         self.compute_mapping_matrix(kernel_method=kernel_method, symmetrize=symmetrize, self_edges=self_edges)
         if obs_keys is not None:
