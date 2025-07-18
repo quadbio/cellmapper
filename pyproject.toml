@@ -57,6 +57,7 @@ optional-dependencies.doc = [
 ]
 optional-dependencies.test = [
   "coverage",
+  "faiss-cpu",
   "pytest",
   "squidpy>=1.6",
 ]

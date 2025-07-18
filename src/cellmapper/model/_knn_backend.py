@@ -50,7 +50,7 @@ class _SklearnBackend(_KNNBackend):
         return distances, indices
 
 
-class _FaissBackend(_KNNBackend):
+class _FaissCpuBackend(_KNNBackend):
     def __init__(
         self,
         n_neighbors: int,
@@ -58,7 +58,32 @@ class _FaissBackend(_KNNBackend):
         random_state: int = 0,
         **kwargs: Any,
     ):
-        check_deps("faiss")
+        check_deps("faiss-cpu")
+        import faiss
+
+        self.faiss = faiss
+        self._index = None
+
+    def fit(self, data: np.ndarray) -> None:
+        dims = data.shape[1]
+        index = self.faiss.IndexFlatL2(dims)
+        index.add(data.astype(np.float32))
+        self._index = index
+
+    def query(self, points: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+        distances, indices = self._index.search(points.astype(np.float32), k)
+        return distances, indices
+
+
+class _FaissGpuBackend(_KNNBackend):
+    def __init__(
+        self,
+        n_neighbors: int,
+        metric: str,
+        random_state: int = 0,
+        **kwargs: Any,
+    ):
+        check_deps("faiss-gpu")
         import faiss
 
         self.faiss = faiss
@@ -148,7 +173,8 @@ class _PyNNDescentBackend(_KNNBackend):
 
 _BACKENDS = {
     "sklearn": _SklearnBackend,
-    "faiss": _FaissBackend,
+    "faiss-cpu": _FaissCpuBackend,
+    "faiss-gpu": _FaissGpuBackend,
     "rapids": _RapidsBackend,
     "pynndescent": _PyNNDescentBackend,
 }

@@ -37,6 +37,60 @@ class TestKernel:
         conn_pynn = neigh_pynn.yx.knn_graph_connectivities()
         assert np.allclose(conn_skl.toarray(), conn_pynn.toarray(), atol=1e-6)
 
+    @pytest.mark.parametrize("only_yx", [False, True])
+    def test_kernel_sklearn_vs_faiss(self, small_data, only_yx):
+        pytest.importorskip("faiss")
+        x, y = small_data
+        n_neighbors = 3
+        # sklearn
+        neigh_skl = Kernel(x, y)
+        neigh_skl.compute_neighbors(n_neighbors=n_neighbors, knn_method="sklearn", only_yx=only_yx)
+        # faiss-cpu
+        neigh_faiss = Kernel(x, y)
+        neigh_faiss.compute_neighbors(n_neighbors=n_neighbors, knn_method="faiss-cpu", only_yx=only_yx)
+        if only_yx:
+            with pytest.raises(ValueError):
+                neigh_skl.get_adjacency_matrices()
+            with pytest.raises(ValueError):
+                neigh_faiss.get_adjacency_matrices()
+        else:
+            assert_adjacency_equal(neigh_skl, neigh_faiss)
+        # Always compare connectivities (yx)
+        conn_skl = neigh_skl.yx.knn_graph_connectivities()
+        conn_faiss = neigh_faiss.yx.knn_graph_connectivities()
+        assert np.allclose(conn_skl.toarray(), conn_faiss.toarray(), atol=1e-6)
+
+    def test_kernel_faiss_basic_functionality(self, small_data):
+        """Test basic faiss functionality with different data sizes."""
+        pytest.importorskip("faiss")
+        x, y = small_data
+        n_neighbors = 2
+
+        # Test faiss-cpu backend can be initialized and used
+        neigh = Kernel(x, y)
+        neigh.compute_neighbors(n_neighbors=n_neighbors, knn_method="faiss-cpu")
+
+        # Check that neighbors were computed
+        assert neigh.xx is not None
+        assert neigh.yx is not None
+
+        # Verify neighbor count
+        assert neigh.xx.n_neighbors == n_neighbors
+        assert neigh.yx.n_neighbors == n_neighbors
+
+        # Check that connectivities can be computed
+        conn_xx = neigh.xx.knn_graph_connectivities()
+        conn_yx = neigh.yx.knn_graph_connectivities()
+
+        assert conn_xx.shape == (x.shape[0], x.shape[0])
+        assert conn_yx.shape == (y.shape[0], x.shape[0])
+
+        # Verify that distances are non-negative
+        dist_xx = neigh.xx.knn_graph_distances
+        dist_yx = neigh.yx.knn_graph_distances
+        assert np.all(dist_xx.data >= 0)
+        assert np.all(dist_yx.data >= 0)
+
     def test_kernel_repr(self, small_data):
         x, y = small_data
         neigh = Kernel(x, y)

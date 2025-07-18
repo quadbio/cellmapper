@@ -109,7 +109,7 @@ class Kernel:
     def compute_neighbors(
         self,
         n_neighbors: int = 30,
-        knn_method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
+        knn_method: Literal["sklearn", "pynndescent", "rapids", "faiss-cpu", "faiss-gpu"] = "sklearn",
         knn_dist_metric: str = "euclidean",
         random_state: int = 0,
         only_yx: bool = False,

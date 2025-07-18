@@ -109,7 +109,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         n_neighbors: int = 30,
         use_rep: str | None = None,
         n_comps: int | None = None,
-        knn_method: Literal["sklearn", "pynndescent", "rapids", "faiss"] = "sklearn",
+        knn_method: Literal["sklearn", "pynndescent", "rapids", "faiss-cpu", "faiss-gpu"] = "sklearn",
         knn_dist_metric: str = "euclidean",
         random_state: int = 0,
         only_yx: bool = False,
