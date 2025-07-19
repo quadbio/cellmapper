@@ -42,7 +42,7 @@ class EmbeddingMixin:
             X_query=joint.obsm["X_pca"][joint.obs["batch"] == "query"],
             X_ref=joint.obsm["X_pca"][joint.obs["batch"] == "reference"],
             key_added=key_added,
-            method="fast_cca",
+            method="joint_pca",
             n_comps=n_comps,
             n_common_genes=joint.n_vars,
         )
@@ -208,10 +208,6 @@ class EmbeddingMixin:
         """
         self.query.obsm[key_added] = X_query
         self.reference.obsm[key_added] = X_ref
-        logger.info(
-            "Joint embedding stored as '%s' in both reference.obsm and query.obsm.",
-            key_added,
-        )
 
         params = {
             "n_comps": n_comps,
