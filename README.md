@@ -18,7 +18,7 @@
 
 k-NN-based mapping of cells across representations to transfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets. Using [faiss][] to compute k-NN graphs, CellMapper takes about 30 seconds to transfer cell type labels from 1.5M cells to 1.5M cells on a single RTX 4090 with 60 GB CPU memory.
 
-Inspired by scanpy's [ingest][] and the [HNOCA-tools][] packages. Check out the [docs][] to learn more, in particular our [tutorials][].
+Inspired by previous tools, including scanpy's [ingest][] and the [HNOCA-tools][] packages. Check out the [docs][] to learn more, in particular our [tutorials][].
 
 ## Key use cases
 
