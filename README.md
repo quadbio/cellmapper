@@ -16,7 +16,7 @@
 [badge-downloads]: https://static.pepy.tech/badge/cellmapper
 [badge-zenodo]: https://zenodo.org/badge/973714072.svg
 
-k-NN-based mapping of cells across representations to tranfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets. Using [faiss][] to compute k-NN graphs, CellMapper takes about 30 seconds to transfer cell type labels from 1.5M cells to 1.5M cells on a single RTX 4090 with 60 GB CPU memory.
+k-NN-based mapping of cells across representations to transfer labels, embeddings and expression values. Works for millions of cells, on CPU and GPU, across molecular modalities, between spatial and non-spatial data, for arbitrary query and reference datasets. Using [faiss][] to compute k-NN graphs, CellMapper takes about 30 seconds to transfer cell type labels from 1.5M cells to 1.5M cells on a single RTX 4090 with 60 GB CPU memory.
 
 Inspired by scanpy's [ingest][] and the [HNOCA-tools][] packages. Check out the [docs][] to learn more, in particular our [tutorials][].
 
@@ -51,7 +51,7 @@ There are two alternative options to install ``cellmapper``:
 
 ## Getting started
 
-This package assumes that you have ``query`` and ``reference`` AnnData objects, with a joint embedding computed and stored in ``.obsm``. We explicilty do not compute this joint embedding, but there are plenty of method you can use to get such joint embeddings, e.g. [GimVI][] or [ENVI][] for spatial mapping, [GLUE][], [MIDAS][] and [MOFA+][] for modality translation, and [scVI][], [scANVI][] and [scArches][] for query-to-reference mapping - this is just a small selection!
+This package assumes that you have ``query`` and ``reference`` AnnData objects, with a joint embedding computed and stored in ``.obsm``. While we implement some baseline approaches to compute joint embeddings (PCA and a fast reimplementation of CCA), we typically expect you to provide a pre-computed joint embedding from some task-specific representation learning tools, e.g. [GimVI][] or [ENVI][] for spatial mapping, [GLUE][], [MIDAS][] and [MOFA+][] for modality translation, and [scVI][], [scANVI][] and [scArches][] for query-to-reference mapping - this is just a small selection!
 
 With a joint embedding in ``.obsm["X_joint"]`` at hand, the simplest way to use ``CellMapper`` is as follows:
 ```Python
@@ -64,7 +64,7 @@ cmap = CellMapper(query, reference).map(
 
 This will transfer data from the reference to the query dataset, including celltype labels stored in ``reference.obs``, a UMAP embedding stored in ``reference.obsm``, and expression values stored in ``reference.X``.
 
-There are many ways to customize this, e.g. use different ways to compute k-NN graphs and to turn them into mapping matrices, and we implement a few methods to evaluate whether your k-NN transfer was sucessful. The tool also implements a `self-mapping` mode (only a query object, no reference), which is useful for spatial contextualization. Check out the [docs][] to learn more.
+There are many ways to customize this, e.g. use different ways to compute k-NN graphs and to turn them into mapping matrices, and we implement a few methods to evaluate whether your k-NN transfer was sucessful. The tool also implements a `self-mapping` mode (only a query object, no reference), which is useful for spatial contextualization and data denoising. Check out the [docs][] to learn more.
 
 ## Release notes
 
