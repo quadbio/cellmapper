@@ -541,14 +541,17 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         %(self_edges)s
         %(prediction_postfix)s
         """
-        self.compute_neighbors(
-            n_neighbors=n_neighbors,
-            use_rep=use_rep,
-            knn_method=knn_method,
-            knn_dist_metric=knn_dist_metric,
-            only_yx=only_yx,
-        )
-        self.compute_mapping_matrix(kernel_method=kernel_method, symmetrize=symmetrize, self_edges=self_edges)
+        if self.knn is None:
+            self.compute_neighbors(
+                n_neighbors=n_neighbors,
+                use_rep=use_rep,
+                knn_method=knn_method,
+                knn_dist_metric=knn_dist_metric,
+                only_yx=only_yx,
+            )
+        if self._mapping_operator is None:
+            self.compute_mapping_matrix(kernel_method=kernel_method, symmetrize=symmetrize, self_edges=self_edges)
+
         if obs_keys is not None:
             # Handle both single key and list of keys for backward compatibility
             if isinstance(obs_keys, str):
