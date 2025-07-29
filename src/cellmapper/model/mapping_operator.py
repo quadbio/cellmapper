@@ -94,7 +94,7 @@ class MappingOperator:
                 is_self_mapping = kernel_obj._is_self_mapping
 
             kernel_matrix = actual_matrix
-        else:
+        elif isinstance(kernel_matrix, csr_matrix | coo_matrix | csc_matrix | np.ndarray):
             # This is a raw matrix
             actual_matrix = kernel_matrix
 
@@ -103,6 +103,8 @@ class MappingOperator:
                 n_rows, n_cols = actual_matrix.shape
                 is_self_mapping = n_rows == n_cols
                 logger.info("Inferred is_self_mapping=%s from matrix shape %s", is_self_mapping, actual_matrix.shape)
+        else:
+            raise ValueError(f"Unknown kernel_matrix type: {type(kernel_matrix)}")
 
         self.is_self_mapping = is_self_mapping
         self.eigen_solver = eigen_solver
