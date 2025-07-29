@@ -270,8 +270,10 @@ class Kernel:
             n_reference_cells = self.xrep.shape[0]
             if (
                 n_batches is None
-                and (n_query_cells > PackageConstants.JACCARD_BATCH_WARNING_CELLS)
-                or (n_reference_cells > PackageConstants.JACCARD_BATCH_WARNING_CELLS)
+                and (
+                    (n_query_cells > PackageConstants.JACCARD_BATCH_WARNING_CELLS)
+                    or (n_reference_cells > PackageConstants.JACCARD_BATCH_WARNING_CELLS)
+                )
                 and n_neighbors > PackageConstants.JACCARD_BATCH_WARNING_NEIGHBORS
             ):
                 logger.warning(
