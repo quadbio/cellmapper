@@ -258,9 +258,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Eigendecomposition method for spectral approach:
             - "partial": Uses sparse eigendecomposition, faster (default)
             - "complete": Uses complete eigendecomposition, exact for testing
-        n_batches
-            Number of batches to split Jaccard/HNOCA computation into for memory efficiency.
-            Only applies to Jaccard and HNOCA methods. If None, computation is done in a single batch.
+        %(n_batches)s
 
         Returns
         -------

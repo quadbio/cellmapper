@@ -233,9 +233,7 @@ class Kernel:
             - "max": Take element-wise maximum between matrix and transpose (preserves strongest connections)
             - "mean": Take element-wise average between matrix and transpose (smooths connections)
         %(self_edges)s
-        n_batches
-            Number of batches to use for Jaccard/HNOCA computation. If None (default),
-            compute in a single batch. Use batch processing to reduce memory usage for large datasets.
+        %(n_batches)s
         **kwargs
             Additional keyword arguments for kernel computation.
 

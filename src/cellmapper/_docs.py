@@ -98,6 +98,11 @@ subset_categories
     will be mapped, and others will be ignored. For numerical data, this parameter is ignored
     with a warning. Can be a single category string or a list of category strings."""
 
+_n_batches = """\
+n_batches
+    Number of batches to use for Jaccard-based mapping matrix computation. If None (default),
+    compute in a single batch. Use batch processing to reduce memory usage for large datasets."""
+
 
 d = DocstringProcessor(
     t=_t,
@@ -114,4 +119,5 @@ d = DocstringProcessor(
     use_rep=_use_rep,
     knn_dist_metric=_knn_dist_metric,
     subset_categories=_subset_categories,
+    n_batches=_n_batches,
 )

@@ -10,6 +10,7 @@ from scipy.sparse import csr_matrix, issparse, vstack
 from scipy.sparse.linalg import LinearOperator, svds
 from sklearn.utils.extmath import randomized_svd
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 
@@ -399,6 +400,7 @@ def apply_jaccard_transformation(kernel_matrix: csr_matrix, kernel_method: str, 
         raise ValueError(f"Unknown kernel method: {kernel_method}. Expected 'jaccard' or 'hnoca'.")
 
 
+@d.dedent
 def compute_jaccard_kernel_matrix(
     xx: csr_matrix,
     yy: csr_matrix,
@@ -419,8 +421,7 @@ def compute_jaccard_kernel_matrix(
         Kernel method to use: "jaccard" or "hnoca"
     n_neighbors
         Number of neighbors for normalization
-    n_batches
-        Number of batches for memory-efficient computation. If None, use standard computation.
+    %(n_batches)s
 
     Returns
     -------
@@ -443,6 +444,7 @@ def compute_jaccard_kernel_matrix(
         return _compute_jaccard_kernel_batched(xx, yy, xy, yx, kernel_method, n_neighbors, n_batches)
 
 
+@d.dedent
 def _compute_jaccard_kernel_batched(
     xx: csr_matrix,
     yy: csr_matrix,
@@ -463,8 +465,7 @@ def _compute_jaccard_kernel_batched(
         Kernel method to use: "jaccard" or "hnoca"
     n_neighbors
         Number of neighbors for normalization
-    n_batches
-        Number of batches to split the computation into
+    %(n_batches)s
 
     Returns
     -------
