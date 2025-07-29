@@ -91,6 +91,13 @@ _knn_dist_metric = """\
 knn_dist_metric
     Distance metric to use for nearest neighbors. See the knn algorithms documentation for details. """
 
+_subset_categories = """\
+subset_categories
+    For categorical data, optionally specify a subset of categories to include in the mapping.
+    If None (default), all categories are included. If specified, only the listed categories
+    will be mapped, and others will be ignored. For numerical data, this parameter is ignored
+    with a warning. Can be a single category string or a list of category strings."""
+
 
 d = DocstringProcessor(
     t=_t,
@@ -106,4 +113,5 @@ d = DocstringProcessor(
     n_neighbors=_n_neighbors,
     use_rep=_use_rep,
     knn_dist_metric=_knn_dist_metric,
+    subset_categories=_subset_categories,
 )
