@@ -517,6 +517,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
         prediction_postfix: str = "pred",
+        subset_categories: None | list[str] | str = None,
     ) -> "CellMapper":
         """
         Map data from reference to query datasets.
@@ -540,6 +541,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         %(symmetrize)s
         %(self_edges)s
         %(prediction_postfix)s
+        %(subset_categories)s
         """
         if self.knn is None:
             self.compute_neighbors(
@@ -553,27 +555,23 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self.compute_mapping_matrix(kernel_method=kernel_method, symmetrize=symmetrize, self_edges=self_edges)
 
         if obs_keys is not None:
-            # Handle both single key and list of keys for backward compatibility
-            if isinstance(obs_keys, str):
+            # Normalize to list for consistent handling
+            obs_keys_list = [obs_keys] if isinstance(obs_keys, str) else obs_keys
+            for obs_key in obs_keys_list:
                 self.map_obs(
-                    key=obs_keys, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
+                    key=obs_key,
+                    t=t,
+                    diffusion_method=diffusion_method,
+                    prediction_postfix=prediction_postfix,
+                    subset_categories=subset_categories,
                 )
-            else:
-                for obs_key in obs_keys:
-                    self.map_obs(
-                        key=obs_key, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
-                    )
         if obsm_keys is not None:
-            # Handle both single key and list of keys for backward compatibility
-            if isinstance(obsm_keys, str):
+            # Normalize to list for consistent handling
+            obsm_keys_list = [obsm_keys] if isinstance(obsm_keys, str) else obsm_keys
+            for obsm_key in obsm_keys_list:
                 self.map_obsm(
-                    key=obsm_keys, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
+                    key=obsm_key, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
                 )
-            else:
-                for obsm_key in obsm_keys:
-                    self.map_obsm(
-                        key=obsm_key, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
-                    )
         if layer_key is not None:
             self.map_layers(key=layer_key, t=t, diffusion_method=diffusion_method)
         if obs_keys is None and obsm_keys is None and layer_key is None:
@@ -650,6 +648,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         prediction_postfix: str = "pred",
         confidence_postfix: str = "conf",
         return_probabilities: bool = False,
+        subset_categories: None | list[str] | str = None,
     ) -> np.ndarray | csr_matrix | None:
         """
         Map observation data from reference dataset to query dataset.
@@ -672,6 +671,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         return_probabilities
             If True, return the probability matrix for categorical data.
             Only applicable for categorical data. The matrix is never densified.
+        %(subset_categories)s
 
         Returns
         -------
@@ -705,6 +705,43 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             or pd.api.types.is_string_dtype(reference_data)
         )
 
+        # Handle subset_categories parameter and warnings
+        if subset_categories is not None:
+            if not is_categorical:
+                logger.warning(
+                    "subset_categories parameter specified for numerical data in key '%s'. This parameter will be ignored for numerical data.",
+                    key,
+                )
+                subset_categories = None
+            else:
+                # Convert single string to list for consistent handling
+                if isinstance(subset_categories, str):
+                    subset_categories = [subset_categories]
+
+                # Check if specified categories exist in the data
+                available_categories = set(
+                    reference_data.cat.categories if hasattr(reference_data, "cat") else reference_data.unique()
+                )
+                invalid_categories = set(subset_categories) - available_categories
+
+                if invalid_categories:
+                    logger.warning(
+                        "Some specified categories for key '%s' do not exist in the data and will be ignored: %s. Available categories: %s",
+                        key,
+                        list(invalid_categories),
+                        list(available_categories),
+                    )
+                    # Filter out invalid categories
+                    subset_categories = [cat for cat in subset_categories if cat in available_categories]
+
+                    # If no valid categories remain, set to None to use all
+                    if not subset_categories:
+                        logger.warning(
+                            "No valid categories remaining for key '%s' after filtering. Using all available categories.",
+                            key,
+                        )
+                        subset_categories = None
+
         # Log the operation being performed
         data_type = "categorical" if is_categorical else "numerical"
         if t is None:
@@ -720,7 +757,13 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         if is_categorical:
             return self._map_obs_categorical(
-                key, prediction_postfix, confidence_postfix, t, diffusion_method, return_probabilities
+                key,
+                prediction_postfix,
+                confidence_postfix,
+                t,
+                diffusion_method,
+                return_probabilities,
+                subset_categories,
             )
         else:
             if return_probabilities:
@@ -736,12 +779,35 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         t: int | None,
         diffusion_method: Literal["iterative", "spectral"],
         return_probabilities: bool = False,
+        subset_categories: None | list[str] = None,
     ) -> np.ndarray | csr_matrix | None:
         """Map categorical observation data using one-hot encoding."""
-        onehot = OneHotEncoder(dtype=np.float32)
-        xtab = onehot.fit_transform(
-            self.reference.obs[[key]],
-        )  # shape = (n_reference_cells x n_categories), sparse csr matrix, float32
+        # Get the reference data
+        reference_data = self.reference.obs[key]
+
+        if subset_categories is not None:
+            # Create a filtered version of reference data for one-hot encoding
+            # Only include rows that have the desired categories
+            mask = reference_data.isin(subset_categories)
+
+            # Create a filtered DataFrame with only the subset categories
+            filtered_reference_data = reference_data.copy()
+            filtered_reference_data[~mask] = pd.NA  # Set non-subset categories to missing
+
+            # Create one-hot encoding only for the subset categories
+            onehot = OneHotEncoder(dtype=np.float32, handle_unknown="ignore")
+            # Create a DataFrame with only subset categories for fitting
+            subset_df = pd.DataFrame({key: pd.Categorical(subset_categories, categories=subset_categories)})
+            onehot.fit(subset_df)
+
+            # Transform the full reference data (missing values will be ignored)
+            xtab = onehot.transform(filtered_reference_data.to_frame())
+        else:
+            # Use the original approach for all categories
+            onehot = OneHotEncoder(dtype=np.float32)
+            xtab = onehot.fit_transform(self.reference.obs[[key]])
+
+        # Apply the mapping
         ytab = self.mapping_operator.apply(
             xtab, t=t, diffusion_method=diffusion_method
         )  # shape = (n_query_cells x n_categories), sparse csr matrix, float32

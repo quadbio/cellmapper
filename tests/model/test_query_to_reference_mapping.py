@@ -307,3 +307,135 @@ class TestQueryToReferenceMapping:
 
         # Verify no confidence scores for numerical data
         assert "dpt_pseudotime_conf" not in cmap.query.obs
+
+    def test_map_obs_subset_categories(self, query_reference_adata):
+        """Test mapping with subset_categories parameter for categorical data."""
+        query, reference = query_reference_adata
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+
+        # Get available leiden categories in reference
+        available_categories = list(reference.obs["leiden"].cat.categories)
+
+        # Test with subset of categories
+        subset_cats = available_categories[:2]  # Take first 2 categories
+        cmap.map_obs(key="leiden", subset_categories=subset_cats)
+
+        # Check that mapping was performed
+        assert "leiden_pred" in cmap.query.obs
+        assert "leiden_conf" in cmap.query.obs
+
+        # Check that predictions only contain subset categories (or might be missing if no assignment)
+        predicted_categories = set(cmap.query.obs["leiden_pred"].dropna().unique())
+        assert predicted_categories.issubset(set(subset_cats)), (
+            f"Predicted categories {predicted_categories} not subset of {subset_cats}"
+        )
+
+    def test_map_obs_subset_categories_single_string(self, query_reference_adata):
+        """Test mapping with subset_categories as single string."""
+        query, reference = query_reference_adata
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+
+        # Get first available category
+        first_category = reference.obs["leiden"].cat.categories[0]
+
+        # Test with single category as string
+        cmap.map_obs(key="leiden", subset_categories=first_category)
+
+        # Check that mapping was performed and only contains the specified category
+        assert "leiden_pred" in cmap.query.obs
+        predicted_categories = set(cmap.query.obs["leiden_pred"].dropna().unique())
+        assert predicted_categories.issubset({first_category}), (
+            f"Predicted categories {predicted_categories} not subset of {first_category}"
+        )
+
+    def test_map_obs_subset_categories_invalid_categories(self, query_reference_adata, caplog):
+        """Test mapping with some invalid categories in subset_categories."""
+        query, reference = query_reference_adata
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+
+        # Mix valid and invalid categories
+        valid_category = reference.obs["leiden"].cat.categories[0]
+        invalid_categories = ["nonexistent1", "nonexistent2"]
+        mixed_categories = [valid_category] + invalid_categories
+
+        # Test with mixed valid/invalid categories - should work without errors
+        cmap.map_obs(key="leiden", subset_categories=mixed_categories)
+
+        # Check that mapping still worked with valid categories
+        assert "leiden_pred" in cmap.query.obs
+        predicted_categories = set(cmap.query.obs["leiden_pred"].dropna().unique())
+        assert predicted_categories.issubset({valid_category})
+
+    def test_map_obs_subset_categories_all_invalid(self, query_reference_adata, caplog):
+        """Test mapping with all invalid categories in subset_categories."""
+        query, reference = query_reference_adata
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+
+        # Use only invalid categories
+        invalid_categories = ["nonexistent1", "nonexistent2"]
+
+        # Test with all invalid categories - should fallback to using all categories
+        cmap.map_obs(key="leiden", subset_categories=invalid_categories)
+
+        # Check that mapping still worked with all categories (fallback)
+        assert "leiden_pred" in cmap.query.obs
+        # Should have predictions from all available categories since it fell back
+        predicted_categories = set(cmap.query.obs["leiden_pred"].dropna().unique())
+        available_categories = set(reference.obs["leiden"].cat.categories)
+        # At least one category should be predicted (could be subset due to k-NN mapping)
+        assert len(predicted_categories) > 0
+        assert predicted_categories.issubset(available_categories)
+
+    def test_map_obs_subset_categories_numerical_warning(self, query_reference_adata, caplog):
+        """Test that subset_categories generates warning for numerical data."""
+        query, reference = query_reference_adata
+
+        # Create CellMapper and compute mapping matrix
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+
+        # Test with numerical data and subset_categories - should work and ignore the parameter
+        cmap.map_obs(key="dpt_pseudotime", subset_categories=["some_category"])
+
+        # Check that mapping still worked normally (parameter was ignored)
+        assert "dpt_pseudotime_pred" in cmap.query.obs
+        # Confidence scores should not be created for numerical data
+        assert "dpt_pseudotime_conf" not in cmap.query.obs
+
+    def test_map_method_with_subset_categories(self, query_reference_adata):
+        """Test that subset_categories parameter works through the high-level map method."""
+        query, reference = query_reference_adata
+
+        # Create CellMapper
+        cmap = CellMapper(query=query, reference=reference)
+
+        # Get available categories
+        available_categories = list(reference.obs["leiden"].cat.categories)
+        subset_cats = available_categories[:2]
+
+        # Test high-level map method with subset_categories
+        cmap.map(
+            obs_keys="leiden", n_neighbors=30, use_rep="X_pca", kernel_method="gauss", subset_categories=subset_cats
+        )
+
+        # Check that mapping was performed with subset
+        assert "leiden_pred" in cmap.query.obs
+        predicted_categories = set(cmap.query.obs["leiden_pred"].dropna().unique())
+        assert predicted_categories.issubset(set(subset_cats))
