@@ -80,7 +80,9 @@ class MappingOperator:
         """
         # Extract matrix and metadata from Kernel object if provided
 
-        if isinstance(kernel_matrix, Kernel):
+        # We check the type name as a string to avoid issues with module reloading
+        # where `isinstance` can fail unexpectedly.
+        if type(kernel_matrix).__name__ == "Kernel" or isinstance(kernel_matrix, Kernel):
             # This is a Kernel object
             kernel_obj = kernel_matrix
             actual_matrix = kernel_obj.kernel_matrix
@@ -93,7 +95,6 @@ class MappingOperator:
             if is_self_mapping is None:
                 is_self_mapping = kernel_obj._is_self_mapping
 
-            kernel_matrix = actual_matrix
         elif isinstance(kernel_matrix, csr_matrix | coo_matrix | csc_matrix | np.ndarray):
             # This is a raw matrix
             actual_matrix = kernel_matrix
