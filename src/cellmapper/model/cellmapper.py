@@ -555,35 +555,23 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             self.compute_mapping_matrix(kernel_method=kernel_method, symmetrize=symmetrize, self_edges=self_edges)
 
         if obs_keys is not None:
-            # Handle both single key and list of keys for backward compatibility
-            if isinstance(obs_keys, str):
+            # Normalize to list for consistent handling
+            obs_keys_list = [obs_keys] if isinstance(obs_keys, str) else obs_keys
+            for obs_key in obs_keys_list:
                 self.map_obs(
-                    key=obs_keys,
+                    key=obs_key,
                     t=t,
                     diffusion_method=diffusion_method,
                     prediction_postfix=prediction_postfix,
                     subset_categories=subset_categories,
                 )
-            else:
-                for obs_key in obs_keys:
-                    self.map_obs(
-                        key=obs_key,
-                        t=t,
-                        diffusion_method=diffusion_method,
-                        prediction_postfix=prediction_postfix,
-                        subset_categories=subset_categories,
-                    )
         if obsm_keys is not None:
-            # Handle both single key and list of keys for backward compatibility
-            if isinstance(obsm_keys, str):
+            # Normalize to list for consistent handling
+            obsm_keys_list = [obsm_keys] if isinstance(obsm_keys, str) else obsm_keys
+            for obsm_key in obsm_keys_list:
                 self.map_obsm(
-                    key=obsm_keys, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
+                    key=obsm_key, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
                 )
-            else:
-                for obsm_key in obsm_keys:
-                    self.map_obsm(
-                        key=obsm_key, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
-                    )
         if layer_key is not None:
             self.map_layers(key=layer_key, t=t, diffusion_method=diffusion_method)
         if obs_keys is None and obsm_keys is None and layer_key is None:
