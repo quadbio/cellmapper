@@ -1,10 +1,12 @@
 """Utility functions for the CellMapper package."""
 
+import gc
+
 import anndata as ad
 import numpy as np
 import pandas as pd
 from anndata import AnnData
-from scipy.sparse import csr_matrix, issparse
+from scipy.sparse import csr_matrix, issparse, vstack
 from scipy.sparse.linalg import LinearOperator, svds
 from sklearn.utils.extmath import randomized_svd
 
@@ -367,3 +369,161 @@ def truncated_svd_cross_covariance(
     vt = vt[idx, :]
 
     return u, s, vt
+
+
+def apply_jaccard_transformation(kernel_matrix: csr_matrix, kernel_method: str, n_neighbors: int) -> None:
+    """
+    Apply Jaccard or HNOCA transformation to a kernel matrix in-place.
+
+    Parameters
+    ----------
+    kernel_matrix
+        Sparse matrix to transform in-place
+    kernel_method
+        Method to use: "jaccard" or "hnoca"
+    n_neighbors
+        Number of neighbors used for normalization
+
+    Notes
+    -----
+    This function modifies the kernel_matrix in-place to save memory.
+    For Jaccard: kernel = intersection / (4*k - intersection)
+    For HNOCA: kernel = (intersection / (2*k - intersection))^2
+    """
+    if kernel_method == "jaccard":
+        kernel_matrix.data /= 4 * n_neighbors - kernel_matrix.data
+    elif kernel_method == "hnoca":
+        kernel_matrix.data /= 2 * n_neighbors - kernel_matrix.data
+        kernel_matrix.data = kernel_matrix.data**2
+    else:
+        raise ValueError(f"Unknown kernel method: {kernel_method}. Expected 'jaccard' or 'hnoca'.")
+
+
+def compute_jaccard_kernel_matrix(
+    xx: csr_matrix,
+    yy: csr_matrix,
+    xy: csr_matrix,
+    yx: csr_matrix,
+    kernel_method: str,
+    n_neighbors: int,
+    n_batches: int | None = None,
+) -> csr_matrix:
+    """
+    Compute Jaccard or HNOCA kernel matrix with optional batch processing.
+
+    Parameters
+    ----------
+    xx, yy, xy, yx
+        Adjacency matrices from neighbor computations
+    kernel_method
+        Kernel method to use: "jaccard" or "hnoca"
+    n_neighbors
+        Number of neighbors for normalization
+    n_batches
+        Number of batches for memory-efficient computation. If None, use standard computation.
+
+    Returns
+    -------
+    csr_matrix
+        Computed kernel matrix
+
+    Notes
+    -----
+    This function implements both standard and batched computation modes.
+    Batched mode reduces memory usage for large datasets by processing
+    the computation in chunks.
+    """
+    if n_batches is None:
+        # Standard computation
+        kernel_matrix = (yx @ xx.T) + (yy @ xy.T)
+        apply_jaccard_transformation(kernel_matrix, kernel_method, n_neighbors)
+        return kernel_matrix
+    else:
+        # Batched computation
+        return _compute_jaccard_kernel_batched(xx, yy, xy, yx, kernel_method, n_neighbors, n_batches)
+
+
+def _compute_jaccard_kernel_batched(
+    xx: csr_matrix,
+    yy: csr_matrix,
+    xy: csr_matrix,
+    yx: csr_matrix,
+    kernel_method: str,
+    n_neighbors: int,
+    n_batches: int,
+) -> csr_matrix:
+    """
+    Compute Jaccard or HNOCA kernel matrix using batch processing.
+
+    Parameters
+    ----------
+    xx, yy, xy, yx
+        Adjacency matrices from neighbor computations
+    kernel_method
+        Kernel method to use: "jaccard" or "hnoca"
+    n_neighbors
+        Number of neighbors for normalization
+    n_batches
+        Number of batches to split the computation into
+
+    Returns
+    -------
+    csr_matrix
+        Computed kernel matrix
+    """
+    # Calculate batch size based on query dataset (yx rows)
+    n_query = yx.shape[0]
+    batch_size = int(np.ceil(n_query / n_batches))
+
+    logger.info(
+        "Computing %s kernel with %s batches (~%s query cells per batch)", kernel_method, n_batches, f"{batch_size:,}"
+    )
+
+    # Pre-allocate list to store batch results
+    batch_results = []
+
+    # Pre-compute xx.T once to avoid repeated transposition
+    xx_T = xx.T
+
+    for batch_idx in range(n_batches):
+        start_idx = batch_idx * batch_size
+        end_idx = min((batch_idx + 1) * batch_size, n_query)
+
+        logger.info("Processing batch %s/%s: cells %s-%s", batch_idx + 1, n_batches, f"{start_idx:,}", f"{end_idx:,}")
+
+        # Extract batch slices - minimize memory footprint
+        yx_batch = yx[start_idx:end_idx]
+        yy_batch = yy[start_idx:end_idx, :]
+
+        # Compute first term: yx_batch @ xx.T
+        term1 = yx_batch @ xx_T
+
+        # Compute second term: yy_batch @ xy.T
+        term2 = yy_batch @ xy.T
+
+        # Combine terms
+        batch_kernel = term1 + term2
+
+        # Apply Jaccard/HNOCA transformation
+        apply_jaccard_transformation(batch_kernel, kernel_method, n_neighbors)
+
+        # Store result in list
+        batch_results.append(batch_kernel)
+
+        # Cleanup batch variables immediately to save memory
+        del yx_batch, yy_batch, term1, term2, batch_kernel
+        gc.collect()
+
+    # Combine batch results using vstack
+    logger.info("Combining batch results...")
+    kernel_matrix = vstack(batch_results, format="csr")
+
+    # Ensure we return a csr_matrix (not csr_array)
+    if not isinstance(kernel_matrix, csr_matrix):
+        kernel_matrix = csr_matrix(kernel_matrix)
+
+    # Final cleanup
+    del batch_results, xx_T
+    gc.collect()
+
+    return kernel_matrix

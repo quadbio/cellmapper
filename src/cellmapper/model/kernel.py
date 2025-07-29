@@ -8,7 +8,7 @@ from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 from cellmapper.model._knn_backend import get_backend
 from cellmapper.model.neighbors import Neighbors
-from cellmapper.utils import extract_neighbors_from_distances
+from cellmapper.utils import compute_jaccard_kernel_matrix, extract_neighbors_from_distances
 
 
 class Kernel:
@@ -218,6 +218,7 @@ class Kernel:
         symmetrize: bool = False,
         symmetrize_method: Literal["max", "mean"] = "max",
         self_edges: bool = False,
+        n_batches: int | None = None,
         **kwargs,
     ) -> None:
         """
@@ -232,6 +233,9 @@ class Kernel:
             - "max": Take element-wise maximum between matrix and transpose (preserves strongest connections)
             - "mean": Take element-wise average between matrix and transpose (smooths connections)
         %(self_edges)s
+        n_batches
+            Number of batches to use for Jaccard/HNOCA computation. If None (default),
+            compute in a single batch. Use batch processing to reduce memory usage for large datasets.
         **kwargs
             Additional keyword arguments for kernel computation.
 
@@ -262,14 +266,21 @@ class Kernel:
             assert self.yx is not None, "yx neighbors must be computed"
             n_neighbors = self.yx.n_neighbors
 
-            # Compute kernel matrix
-            kernel_matrix = (yx @ xx.T) + (yy @ xy.T)
+            # Check if batch processing might be beneficial and warn user
+            assert yx is not None, "yx adjacency matrix must be available"
+            n_query_cells = yx.shape[0]
+            if (
+                n_batches is None
+                and n_query_cells > PackageConstants.JACCARD_BATCH_WARNING_CELLS
+                and n_neighbors > PackageConstants.JACCARD_BATCH_WARNING_NEIGHBORS
+            ):
+                logger.warning(
+                    f"Computing {kernel_method} kernel for {n_query_cells:,} cells with {n_neighbors} neighbors. "
+                    f"Consider using batch processing (n_batches parameter) to reduce memory usage."
+                )
 
-            if kernel_method == "jaccard":
-                kernel_matrix.data /= 4 * n_neighbors - kernel_matrix.data
-            elif kernel_method == "hnoca":
-                kernel_matrix.data /= 2 * n_neighbors - kernel_matrix.data
-                kernel_matrix.data = kernel_matrix.data**2
+            # Compute kernel matrix with optional batching using utility function
+            kernel_matrix = compute_jaccard_kernel_matrix(xx, yy, xy, yx, kernel_method, n_neighbors, n_batches)
 
         elif kernel_method in PackageConstants.CONNECTIVITY_BASED_KERNELS:
             # Validate self-mapping-only kernels
@@ -423,8 +434,9 @@ class Kernel:
         # Kernel matrix info
         if self.kernel_matrix is not None:
             # Calculate sparsity percentage
-            total_elements = self.kernel_matrix.shape[0] * self.kernel_matrix.shape[1]
-            sparsity = self.kernel_matrix.nnz / total_elements
+            kernel_matrix = cast(csr_matrix, self.kernel_matrix)  # for type checker
+            total_elements = kernel_matrix.shape[0] * kernel_matrix.shape[1]
+            sparsity = kernel_matrix.nnz / total_elements
 
             kernel_info = [
                 f"kernel='{self.kernel_method}'",

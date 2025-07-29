@@ -439,3 +439,60 @@ class TestQueryToReferenceMapping:
         assert "leiden_pred" in cmap.query.obs
         predicted_categories = set(cmap.query.obs["leiden_pred"].dropna().unique())
         assert predicted_categories.issubset(set(subset_cats))
+
+
+class TestBatchProcessingCrossMapping:
+    """Test batch processing functionality for cross-mapping mode."""
+
+    def test_jaccard_batch_vs_standard_identical_results(self, query_reference_adata):
+        """Test that batched and standard Jaccard computation give identical results in cross-mapping mode."""
+        query, reference = query_reference_adata
+
+        # Test standard computation
+        cm_standard = CellMapper(query, reference)
+        cm_standard.compute_neighbors(n_neighbors=15, use_rep="X_pca", only_yx=False)
+        cm_standard.compute_mapping_matrix(kernel_method="jaccard", n_batches=None)
+
+        standard_kernel = cm_standard.knn.kernel_matrix.copy()
+
+        # Test batched computation
+        cm_batch = CellMapper(query, reference)
+        cm_batch.compute_neighbors(n_neighbors=15, use_rep="X_pca", only_yx=False)
+        cm_batch.compute_mapping_matrix(kernel_method="jaccard", n_batches=3)
+
+        batch_kernel = cm_batch.knn.kernel_matrix
+
+        # Verify matrices are identical
+        assert standard_kernel.shape == batch_kernel.shape, "Kernel matrix shapes should match"
+        assert standard_kernel.nnz == batch_kernel.nnz, "Number of non-zero elements should match"
+        assert (standard_kernel - batch_kernel).nnz == 0, "Kernel matrices should be identical"
+
+        # Verify mapping results are identical
+        cm_standard.map_obs(key="leiden")
+        cm_batch.map_obs(key="leiden")
+
+        # Check that predictions are identical
+        assert cm_standard.query.obs["leiden_pred"].equals(cm_batch.query.obs["leiden_pred"]), (
+            "Label predictions should be identical between standard and batch computation"
+        )
+
+    @pytest.mark.parametrize(
+        "kernel_method,n_batches", [("jaccard", None), ("jaccard", 2), ("hnoca", None), ("hnoca", 3)]
+    )
+    def test_jaccard_hnoca_batch_parametrized(self, query_reference_adata, kernel_method, n_batches):
+        """Test both Jaccard and HNOCA kernels with different batch configurations."""
+        query, reference = query_reference_adata
+
+        cm = CellMapper(query, reference)
+        cm.compute_neighbors(n_neighbors=12, use_rep="X_pca", only_yx=False)
+        cm.compute_mapping_matrix(kernel_method=kernel_method, n_batches=n_batches)
+
+        # Verify kernel matrix properties
+        expected_shape = (query.n_obs, reference.n_obs)
+        assert cm.knn.kernel_matrix is not None, "Kernel matrix should be computed"
+        assert cm.knn.kernel_matrix.shape == expected_shape, f"Shape should match {expected_shape}"
+        assert cm.knn.kernel_matrix.nnz > 0, "Kernel matrix should have non-zero elements"
+
+        # Verify mapping works
+        cm.map_obs(key="leiden")
+        assert "leiden_pred" in cm.query.obs, "Label predictions should be generated"

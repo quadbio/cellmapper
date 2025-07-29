@@ -18,3 +18,7 @@ class PackageConstants:
 
     # Threshold for recommending spectral method over iterative for matrix powers
     SPECTRAL_METHOD_THRESHOLD: int = 10
+
+    # Batch processing thresholds for Jaccard-based methods
+    JACCARD_BATCH_WARNING_CELLS: int = 100_000  # Warn if >100k cells with Jaccard methods
+    JACCARD_BATCH_WARNING_NEIGHBORS: int = 20  # Warn if >20 neighbors with Jaccard methods

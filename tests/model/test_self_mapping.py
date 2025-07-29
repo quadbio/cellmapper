@@ -502,3 +502,59 @@ class TestCellMapperImputation:
         # Assert high similarity
         assert cell_corrs.mean() > 0.99, f"Cell correlations not high enough: {cell_corrs.mean():.6f}"
         assert gene_corrs.mean() > 0.95, f"Gene correlations not high enough: {gene_corrs.mean():.6f}"
+
+
+class TestBatchProcessingSelfMapping:
+    """Test batch processing functionality for self-mapping mode."""
+
+    def test_jaccard_batch_vs_standard_identical_results(self, adata_pbmc3k):
+        """Test that batched and standard Jaccard computation give identical results in self-mapping mode."""
+        # Use subset for faster testing
+        adata_subset = adata_pbmc3k[:1000].copy()
+
+        # Test standard computation
+        cm_standard = CellMapper(adata_subset)
+        cm_standard.compute_neighbors(n_neighbors=15, use_rep="X_pca", only_yx=False)
+        cm_standard.compute_mapping_matrix(kernel_method="jaccard", n_batches=None)
+
+        standard_kernel = cm_standard.knn.kernel_matrix.copy()
+
+        # Test batched computation
+        cm_batch = CellMapper(adata_subset)
+        cm_batch.compute_neighbors(n_neighbors=15, use_rep="X_pca", only_yx=False)
+        cm_batch.compute_mapping_matrix(kernel_method="jaccard", n_batches=4)
+
+        batch_kernel = cm_batch.knn.kernel_matrix
+
+        # Verify matrices are identical
+        assert standard_kernel.shape == batch_kernel.shape, "Kernel matrix shapes should match"
+        assert standard_kernel.nnz == batch_kernel.nnz, "Number of non-zero elements should match"
+        assert (standard_kernel - batch_kernel).nnz == 0, "Kernel matrices should be identical"
+
+        # Verify mapping results are identical
+        cm_standard.map_obs(key="leiden")
+        cm_batch.map_obs(key="leiden")
+
+        # Check that predictions are identical
+        assert cm_standard.query.obs["leiden_pred"].equals(cm_batch.query.obs["leiden_pred"]), (
+            "Label predictions should be identical between standard and batch computation"
+        )
+
+    @pytest.mark.parametrize("n_batches", [None, 2, 4])
+    def test_hnoca_kernel_batch_variants(self, adata_pbmc3k, n_batches):
+        """Test HNOCA kernel computation with different batch configurations."""
+        # Use subset for faster testing
+        adata_subset = adata_pbmc3k[:800].copy()
+
+        cm = CellMapper(adata_subset)
+        cm.compute_neighbors(n_neighbors=10, use_rep="X_pca", only_yx=False)
+        cm.compute_mapping_matrix(kernel_method="hnoca", n_batches=n_batches)
+
+        # Verify kernel matrix properties
+        assert cm.knn.kernel_matrix is not None, "Kernel matrix should be computed"
+        assert cm.knn.kernel_matrix.shape == (adata_subset.n_obs, adata_subset.n_obs), "Shape should match dataset size"
+        assert cm.knn.kernel_matrix.nnz > 0, "Kernel matrix should have non-zero elements"
+
+        # Verify mapping works
+        cm.map_obs(key="leiden")
+        assert "leiden_pred" in cm.query.obs, "Label predictions should be generated"

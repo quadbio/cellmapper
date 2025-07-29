@@ -241,6 +241,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         self_edges: bool | None = None,
         n_eigenvectors: int = 50,
         eigen_solver: Literal["partial", "complete"] = "partial",
+        n_batches: int | None = None,
     ) -> None:
         """
         Compute the mapping matrix for label transfer.
@@ -257,6 +258,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Eigendecomposition method for spectral approach:
             - "partial": Uses sparse eigendecomposition, faster (default)
             - "complete": Uses complete eigendecomposition, exact for testing
+        n_batches
+            Number of batches to split Jaccard/HNOCA computation into for memory efficiency.
+            Only applies to Jaccard and HNOCA methods. If None, computation is done in a single batch.
 
         Returns
         -------
@@ -292,6 +296,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             kernel_method=kernel_method,
             symmetrize=symmetrize,
             self_edges=self_edges,
+            n_batches=n_batches,
         )
 
         # Validate expected shape before creating mapping operator
