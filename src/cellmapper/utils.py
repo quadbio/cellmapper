@@ -490,7 +490,7 @@ def _compute_jaccard_kernel_batched(
         start_idx = batch_idx * batch_size
         end_idx = min((batch_idx + 1) * batch_size, n_query)
 
-        logger.info("Processing batch %s/%s: cells %s-%s", batch_idx + 1, n_batches, f"{start_idx:,}", f"{end_idx:,}")
+        logger.debug("Processing batch %s/%s: cells %s-%s", batch_idx + 1, n_batches, f"{start_idx:,}", f"{end_idx:,}")
 
         # Extract batch slices - minimize memory footprint
         yx_batch = yx[start_idx:end_idx]

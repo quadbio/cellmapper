@@ -266,14 +266,16 @@ class Kernel:
 
             # Check if batch processing might be beneficial and warn user
             assert yx is not None, "yx adjacency matrix must be available"
-            n_query_cells = yx.shape[0]
+            n_query_cells = self.yrep.shape[0]
+            n_reference_cells = self.xrep.shape[0]
             if (
                 n_batches is None
-                and n_query_cells > PackageConstants.JACCARD_BATCH_WARNING_CELLS
+                and (n_query_cells > PackageConstants.JACCARD_BATCH_WARNING_CELLS)
+                or (n_reference_cells > PackageConstants.JACCARD_BATCH_WARNING_CELLS)
                 and n_neighbors > PackageConstants.JACCARD_BATCH_WARNING_NEIGHBORS
             ):
                 logger.warning(
-                    f"Computing {kernel_method} kernel for {n_query_cells:,} cells with {n_neighbors} neighbors. "
+                    f"Computing {kernel_method} kernel for {n_query_cells:,} x {n_reference_cells:,} cells with {n_neighbors} neighbors. "
                     f"Consider using batch processing (n_batches parameter) to reduce memory usage."
                 )
 
