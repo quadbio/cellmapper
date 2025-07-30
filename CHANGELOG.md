@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.2.2]
+### Added
+- Enabled subsetting categories before mapping .obs values {pr}`46`
+
+### Changed
+- Updated the README a bit {pr}`44`
+- Updated tutorials to work with new parameter names {pr}`43`
+
+### Fices
+- Fixed a small bug where hvg masks would not be propagated correctly to joint pca computation {pr}`48`
+
 ## [v0.2.1]
 ### Changed
 - Move some duplicated docstrings into a central _docs.py file {pr}`41`
