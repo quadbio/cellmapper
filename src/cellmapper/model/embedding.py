@@ -32,7 +32,9 @@ class EmbeddingMixin:
         improved cross-dataset integration.
         """
         # Concatenate with inner join on genes
-        joint = ad.concat([self.reference, self.query], join="inner", label="batch", keys=["reference", "query"])
+        joint = ad.concat(
+            [self.reference, self.query], join="inner", label="batch", keys=["reference", "query"], merge="same"
+        )
 
         # Compute PCA using scanpy
         sc.pp.pca(joint, n_comps=n_comps, **kwargs)
