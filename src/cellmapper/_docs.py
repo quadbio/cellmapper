@@ -98,6 +98,13 @@ subset_categories
     will be mapped, and others will be ignored. For numerical data, this parameter is ignored
     with a warning. Can be a single category string or a list of category strings."""
 
+_target_libsize = """\
+target_libsize
+    Strategy for adjusting library sizes after mapping:
+        - str: Layer key in query AnnData to use for computing target library sizes (e.g., "counts", "X")
+        - np.ndarray: Use the provided array as target library sizes (one per query cell)
+        - None: No library size adjustment."""
+
 
 d = DocstringProcessor(
     t=_t,
@@ -114,4 +121,5 @@ d = DocstringProcessor(
     use_rep=_use_rep,
     knn_dist_metric=_knn_dist_metric,
     subset_categories=_subset_categories,
+    target_libsize=_target_libsize,
 )

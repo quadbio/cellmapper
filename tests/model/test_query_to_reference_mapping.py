@@ -439,3 +439,35 @@ class TestQueryToReferenceMapping:
         assert "leiden_pred" in cmap.query.obs
         predicted_categories = set(cmap.query.obs["leiden_pred"].dropna().unique())
         assert predicted_categories.issubset(set(subset_cats))
+
+    def test_map_layers_with_layer_library_size(self, cmap):
+        """Test library size adjustment using layer key."""
+        # Map layers without library size adjustment first
+        cmap.map_layers(key="counts")
+        original_libsizes = cmap.query_imputed.X.sum(axis=1).A1
+
+        # Get the original query library sizes for comparison
+        query_libsizes = cmap.query.layers["counts"].sum(axis=1).A1
+
+        # Map layers with layer library size adjustment
+        cmap.map_layers(key="counts", target_libsize="counts")
+        adjusted_libsizes = cmap.query_imputed.X.sum(axis=1).A1
+
+        # Check that library sizes now match the original query layer
+        np.testing.assert_allclose(adjusted_libsizes, query_libsizes, rtol=1e-6)
+
+        # Check that they're different from the unadjusted version
+        assert not np.allclose(original_libsizes, adjusted_libsizes, rtol=1e-5)
+
+    def test_map_layers_with_custom_library_size(self, cmap):
+        """Test library size adjustment using custom array."""
+        # Define custom target library sizes
+        n_cells = cmap.query.n_obs
+        custom_libsizes = np.full(n_cells, 5000.0)
+
+        # Map layers with custom library size adjustment
+        cmap.map_layers(key="counts", target_libsize=custom_libsizes)
+        final_libsizes = cmap.query_imputed.X.sum(axis=1).A1
+
+        # Check that library sizes match the custom target
+        np.testing.assert_allclose(final_libsizes, custom_libsizes, rtol=1e-6)

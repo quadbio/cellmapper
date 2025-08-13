@@ -1,8 +1,9 @@
+import anndata as ad
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
 
-from cellmapper.utils import extract_neighbors_from_distances, truncated_svd_cross_covariance
+from cellmapper.utils import adjust_library_size, extract_neighbors_from_distances, truncated_svd_cross_covariance
 
 
 class TestExtractNeighborsFromDistances:
@@ -161,3 +162,74 @@ class TestTruncatedSVDCrossCovariance:
         Y = csr_matrix(np.random.randn(8, 5))
         with pytest.raises(TypeError, match="same type"):
             truncated_svd_cross_covariance(X, Y)
+
+
+class TestAdjustLibrarySize:
+    """Tests for the adjust_library_size function."""
+
+    def test_layer_library_size_adjustment(self):
+        """Test library size adjustment using layer key."""
+        # Create test data
+        np.random.seed(42)
+        n_cells, n_genes = 10, 20
+
+        # Create query_imputed with specific library sizes
+        imputed_X = csr_matrix(np.random.poisson(5, (n_cells, n_genes)))
+        query_imputed = ad.AnnData(X=imputed_X)
+
+        # Create query AnnData with target layer
+        query_counts = csr_matrix(np.random.poisson(10, (n_cells, n_genes)))
+        query_adata = ad.AnnData(X=csr_matrix(np.random.poisson(8, (n_cells, n_genes))))
+        query_adata.layers["counts"] = query_counts
+        target_libsizes = np.asarray(query_counts.sum(axis=1)).flatten()
+
+        # Adjust library size
+        adjust_library_size(
+            query_imputed=query_imputed, target_libsize="counts", query_adata=query_adata, layer_key="counts"
+        )
+
+        # Check that library sizes match the target
+        final_libsizes = np.asarray(query_imputed.X.sum(axis=1)).flatten()
+        np.testing.assert_allclose(final_libsizes, target_libsizes, rtol=1e-6)
+
+    def test_array_library_size_adjustment(self):
+        """Test library size adjustment using array input."""
+        # Create test data
+        np.random.seed(42)
+        n_cells, n_genes = 10, 20
+
+        # Create query_imputed
+        imputed_X = csr_matrix(np.random.poisson(5, (n_cells, n_genes)))
+        query_imputed = ad.AnnData(X=imputed_X)
+
+        # Create a dummy query_adata (not used for array input)
+        query_adata = ad.AnnData(X=csr_matrix(np.random.poisson(5, (n_cells, n_genes))))
+
+        # Define target library sizes as array
+        target_libsizes = np.full(n_cells, 1000.0)
+
+        # Adjust library size
+        adjust_library_size(
+            query_imputed=query_imputed, target_libsize=target_libsizes, query_adata=query_adata, layer_key="counts"
+        )
+
+        # Check that library sizes match the target
+        final_libsizes = np.asarray(query_imputed.X.sum(axis=1)).flatten()
+        np.testing.assert_allclose(final_libsizes, target_libsizes, rtol=1e-6)
+
+    def test_error_cases(self):
+        """Test error handling."""
+        # Create test data
+        n_cells, n_genes = 10, 20
+        imputed_X = csr_matrix(np.random.poisson(5, (n_cells, n_genes)))
+        query_imputed = ad.AnnData(X=imputed_X)
+        query_adata = ad.AnnData(X=csr_matrix(np.random.poisson(5, (n_cells, n_genes))))
+
+        # Test missing layer in query_adata
+        with pytest.raises(ValueError, match="Layer 'nonexistent' not found"):
+            adjust_library_size(query_imputed=query_imputed, target_libsize="nonexistent", query_adata=query_adata)
+
+        # Test mismatched array length
+        wrong_size_array = np.array([1000.0, 2000.0])  # Only 2 elements for 10 cells
+        with pytest.raises(ValueError, match="target_libsize array length"):
+            adjust_library_size(query_imputed=query_imputed, target_libsize=wrong_size_array, query_adata=query_adata)

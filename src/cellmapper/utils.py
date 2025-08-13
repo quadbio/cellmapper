@@ -3,11 +3,13 @@
 import anndata as ad
 import numpy as np
 import pandas as pd
+import scipy.sparse
 from anndata import AnnData
 from scipy.sparse import csr_matrix, issparse
 from scipy.sparse.linalg import LinearOperator, svds
 from sklearn.utils.extmath import randomized_svd
 
+from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
 
@@ -367,3 +369,128 @@ def truncated_svd_cross_covariance(
     vt = vt[idx, :]
 
     return u, s, vt
+
+
+@d.dedent
+def adjust_library_size(
+    query_imputed: AnnData,
+    target_libsize: str | np.ndarray,
+    query_adata: AnnData,
+    layer_key: str = "X",
+) -> None:
+    """
+    Adjust the library size of the imputed query data.
+
+    This function modifies the expression values in query_imputed.X to match
+    target library sizes. The scaling is applied in-place to preserve memory.
+
+    Parameters
+    ----------
+    query_imputed
+        The imputed query AnnData object to adjust. The .X attribute will be modified in-place.
+    %(target_libsize)s
+    query_adata
+        The original query AnnData object, used to extract the target layer when target_libsize is a string.
+    layer_key
+        The layer key used for logging purposes. Defaults to "X".
+
+    Returns
+    -------
+    None
+        The function modifies query_imputed.X in-place.
+
+    Raises
+    ------
+    ValueError
+        If target_libsize is a string but the specified layer is not found, or if array
+        dimensions don't match the number of query cells.
+
+    Notes
+    -----
+    The scaling is performed by computing scaling factors as the ratio of
+    target to current library sizes, then applying matrix multiplication
+    with a diagonal scaling matrix to preserve sparsity when possible.
+
+    Examples
+    --------
+    Adjust library sizes to match a specific layer:
+    >>> adjust_library_size(cmap.query_imputed, target_libsize="counts", query_adata=cmap.query)
+
+    Adjust to custom library sizes:
+    >>> target_sizes = np.array([1000, 2000, 1500, ...])  # one per cell
+    >>> adjust_library_size(cmap.query_imputed, target_libsize=target_sizes, query_adata=cmap.query)
+    """
+    # Get current library sizes from the imputed data
+    current_libsizes = np.asarray(query_imputed.X.sum(axis=1)).flatten()
+
+    # Determine target library sizes based on the parameter
+    if isinstance(target_libsize, str):
+        # Use the specified layer from the query AnnData to compute target library sizes
+        if target_libsize == "X":
+            target_layer = query_adata.X
+        else:
+            if target_libsize not in query_adata.layers:
+                raise ValueError(
+                    f"Layer '{target_libsize}' not found in query AnnData. "
+                    f"Available layers: {list(query_adata.layers.keys())}"
+                )
+            target_layer = query_adata.layers[target_libsize]
+
+        # Compute target library sizes from the specified layer
+        target_libsizes = np.asarray(target_layer.sum(axis=1)).flatten()
+    elif isinstance(target_libsize, np.ndarray):
+        target_libsizes = target_libsize.flatten()
+        # Validate array dimensions
+        if len(target_libsizes) != query_imputed.n_obs:
+            raise ValueError(
+                f"target_libsize array length ({len(target_libsizes)}) must match "
+                f"the number of query cells ({query_imputed.n_obs})"
+            )
+    else:
+        raise ValueError(f"target_libsize must be a string (layer key) or a numpy array. Got: {type(target_libsize)}")
+
+    # Check for zero library sizes to avoid division by zero
+    zero_current = current_libsizes == 0
+    zero_target = target_libsizes == 0
+
+    if np.any(zero_current):
+        logger.warning(
+            "Found %d cells with zero library size in imputed data. These cells will not be scaled.",
+            np.sum(zero_current),
+        )
+
+    if np.any(zero_target):
+        logger.warning(
+            "Found %d cells with zero target library size. These cells will be set to zero.", np.sum(zero_target)
+        )
+
+    # Compute scaling factors, handling zero cases
+    scaling_factors = np.zeros_like(current_libsizes, dtype=np.float64)
+    valid_mask = current_libsizes > 0
+    scaling_factors[valid_mask] = target_libsizes[valid_mask] / current_libsizes[valid_mask]
+
+    # Apply scaling factors - use efficient method based on matrix type
+    if issparse(query_imputed.X):
+        # For sparse matrices, use diagonal matrix multiplication to preserve sparsity
+        scaling_diag = scipy.sparse.diags(scaling_factors, format="csr")
+        scaled_X = scaling_diag @ query_imputed.X
+    else:
+        # For dense matrices, use element-wise multiplication which is more efficient
+        scaled_X = query_imputed.X * scaling_factors[:, None]
+
+    # Update the query_imputed object in-place
+    query_imputed.X = scaled_X
+
+    # Verify the scaling worked (for non-zero target libraries)
+    if not np.any(zero_target):
+        final_libsizes = np.asarray(query_imputed.X.sum(axis=1)).flatten()
+        if not np.allclose(target_libsizes, final_libsizes, rtol=1e-5):
+            max_rel_error = np.max(np.abs(target_libsizes - final_libsizes) / target_libsizes)
+            logger.warning(
+                "Library size adjustment may not be exact due to numerical precision. Max relative error: %.2e",
+                max_rel_error,
+            )
+        else:
+            logger.info("Successfully adjusted library sizes for layer '%s'.", layer_key)
+    else:
+        logger.info("Library size adjustment completed for layer '%s' (some zero targets).", layer_key)

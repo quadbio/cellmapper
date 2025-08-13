@@ -16,7 +16,7 @@ from cellmapper.model.embedding import EmbeddingMixin
 from cellmapper.model.evaluate import EvaluationMixin
 from cellmapper.model.kernel import Kernel
 from cellmapper.model.mapping_operator import MappingOperator
-from cellmapper.utils import create_imputed_anndata, get_n_comps
+from cellmapper.utils import adjust_library_size, create_imputed_anndata, get_n_comps
 
 
 class CellMapper(EvaluationMixin, EmbeddingMixin):
@@ -394,10 +394,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
     @d.dedent
     def map_layers(
-        self, key: str, t: int | None = None, diffusion_method: Literal["iterative", "spectral"] = "iterative"
+        self,
+        key: str,
+        t: int | None = None,
+        diffusion_method: Literal["iterative", "spectral"] = "iterative",
+        target_libsize: str | np.ndarray | None = None,
     ) -> None:
         """
-        Map expression values with optional multi-step diffusion.
+        Map expression values with optional multi-step diffusion and library size adjustment.
 
         Transfers expression values (e.g., .X or entries from .layers) from reference
         dataset to a new imputed query AnnData object using matrix multiplication.
@@ -410,6 +414,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Key in ``reference.layers`` to be transferred. Use "X" to transfer ``reference.X``
         %(t)s
         %(diffusion_method)s
+        %(target_libsize)s
 
         Returns
         -------
@@ -419,6 +424,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         -----
         Creates ``self.query_imputed`` with the transferred data in .X.
         The new AnnData object will have the same cells as the query, but the features (genes) of the reference.
+        If target_libsize is specified, the library sizes will be adjusted after mapping.
         """
         if self._mapping_operator is None:
             raise ValueError("Mapping matrix has not been computed. Call compute_mapping_matrix() first.")
@@ -441,6 +447,15 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         # Create query_imputed using the property setter for consistent behavior
         self.query_imputed = query_layer
+
+        # Adjust library sizes if requested
+        if target_libsize is not None:
+            adjust_library_size(
+                query_imputed=self.query_imputed,
+                target_libsize=target_libsize,
+                query_adata=self.query,
+                layer_key=key,
+            )
 
         # Create base message and conditionally add note about feature spaces for non-self-mapping
         message = f"Expression for layer '{key}' mapped and stored in query_imputed.X."
@@ -498,6 +513,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         layer_key: str | None = None,
         t: int | None = None,
         diffusion_method: Literal["iterative", "spectral"] = "iterative",
+        target_libsize: str | np.ndarray | None = None,
         n_neighbors: int = 30,
         use_rep: str | None = None,
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
@@ -532,6 +548,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Key in ``reference.layers`` to be mapped. Use "X" to map ``reference.X``.
         %(t)s
         %(diffusion_method)s
+        %(target_libsize)s
         %(n_neighbors)s
         %(use_rep)s
         %(knn_method)s
@@ -573,7 +590,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                     key=obsm_key, t=t, diffusion_method=diffusion_method, prediction_postfix=prediction_postfix
                 )
         if layer_key is not None:
-            self.map_layers(key=layer_key, t=t, diffusion_method=diffusion_method)
+            self.map_layers(key=layer_key, t=t, diffusion_method=diffusion_method, target_libsize=target_libsize)
         if obs_keys is None and obsm_keys is None and layer_key is None:
             logger.warning(
                 "Neither ``obs_keys``, ``obsm_keys`` or ``layer_key`` provided. No labels, embeddings or layers were transferred. "
