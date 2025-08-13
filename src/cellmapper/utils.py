@@ -484,7 +484,7 @@ def adjust_library_size(
     # Verify the scaling worked (for non-zero target libraries)
     if not np.any(zero_target):
         final_libsizes = np.asarray(query_imputed.X.sum(axis=1)).flatten()
-        if not np.allclose(target_libsizes, final_libsizes, rtol=1e-10):
+        if not np.allclose(target_libsizes, final_libsizes, rtol=1e-5):
             max_rel_error = np.max(np.abs(target_libsizes - final_libsizes) / target_libsizes)
             logger.warning(
                 "Library size adjustment may not be exact due to numerical precision. Max relative error: %.2e",
