@@ -469,9 +469,14 @@ def adjust_library_size(
     valid_mask = current_libsizes > 0
     scaling_factors[valid_mask] = target_libsizes[valid_mask] / current_libsizes[valid_mask]
 
-    # Apply scaling factors via diagonal matrix multiplication
-    scaling_diag = scipy.sparse.diags(scaling_factors, format="csr")
-    scaled_X = scaling_diag @ query_imputed.X
+    # Apply scaling factors - use efficient method based on matrix type
+    if issparse(query_imputed.X):
+        # For sparse matrices, use diagonal matrix multiplication to preserve sparsity
+        scaling_diag = scipy.sparse.diags(scaling_factors, format="csr")
+        scaled_X = scaling_diag @ query_imputed.X
+    else:
+        # For dense matrices, use element-wise multiplication which is more efficient
+        scaled_X = query_imputed.X * scaling_factors[:, None]
 
     # Update the query_imputed object in-place
     query_imputed.X = scaled_X
