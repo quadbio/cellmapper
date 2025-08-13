@@ -649,7 +649,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         confidence_postfix: str = "conf",
         return_probabilities: bool = False,
         subset_categories: None | list[str] | str = None,
-    ) -> np.ndarray | csr_matrix | None:
+    ) -> pd.DataFrame | None:
         """
         Map observation data from reference dataset to query dataset.
 
@@ -669,15 +669,16 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             Postfix added to create new keys in ``query.obs`` for confidence scores
             (only applicable for categorical data)
         return_probabilities
-            If True, return the probability matrix for categorical data.
-            Only applicable for categorical data. The matrix is never densified.
+            If True, return a sparse pandas DataFrame of probabilities for categorical
+            data (columns are category names). Only applicable for categorical data.
         %(subset_categories)s
 
         Returns
         -------
-        np.ndarray, csr_matrix or None
-            For categorical data with ``return_probabilities=True``: dense or sparse matrix
-            of shape (n_query_cells, n_categories) containing probabilities.
+        pd.DataFrame or None
+            For categorical data with ``return_probabilities=True``: a pandas DataFrame
+            with sparse columns (SparseDtype), shape (n_query_cells, n_categories),
+            indexed by query cell names and with columns as category names.
             For numerical data or when ``return_probabilities=False``: None.
 
         Notes
@@ -780,8 +781,12 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         diffusion_method: Literal["iterative", "spectral"],
         return_probabilities: bool = False,
         subset_categories: None | list[str] = None,
-    ) -> np.ndarray | csr_matrix | None:
-        """Map categorical observation data using one-hot encoding."""
+    ) -> pd.DataFrame | None:
+        """Map categorical observation data using one-hot encoding.
+
+        When return_probabilities=True, returns a pandas sparse DataFrame with
+        category names as columns and query cells as index.
+        """
         # Get the reference data
         reference_data = self.reference.obs[key]
 
@@ -807,20 +812,31 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             onehot = OneHotEncoder(dtype=np.float32)
             xtab = onehot.fit_transform(self.reference.obs[[key]])
 
+        # Ensure CSR format for mapping operator
+        if not isinstance(xtab, csr_matrix):
+            xtab = csr_matrix(xtab)
+
         # Apply the mapping
         ytab = self.mapping_operator.apply(
             xtab, t=t, diffusion_method=diffusion_method
-        )  # shape = (n_query_cells x n_categories), sparse csr matrix, float32
+        )  # shape = (n_query_cells x n_categories)
+
+        # Determine predicted label indices robustly for sparse/dense
+        idx = np.asarray(ytab.argmax(axis=1)).ravel()
+        categories_arr = np.asarray(onehot.categories_[0])
 
         pred = pd.Series(
-            data=np.array(onehot.categories_[0])[ytab.argmax(axis=1).A1 if issparse(ytab) else ytab.argmax(axis=1)],
+            data=categories_arr[idx],
             index=self.query.obs_names,
             dtype=self.reference.obs[key].dtype,
         )
-        conf = pd.Series(
-            ytab.max(axis=1).toarray().ravel(),
-            index=self.query.obs_names,
-        )
+
+        # Confidence as max probability per row
+        if issparse(ytab):
+            conf_vals = np.asarray(ytab.max(axis=1).toarray()).ravel()
+        else:
+            conf_vals = np.max(ytab, axis=1).ravel()
+        conf = pd.Series(conf_vals, index=self.query.obs_names)
 
         self.query.obs[f"{key}_{prediction_postfix}"] = pred
         self.query.obs[f"{key}_{confidence_postfix}"] = conf
@@ -836,9 +852,17 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         logger.info("Categorical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
 
-        # Return probabilities if requested (never densify)
+        # Return probabilities as a sparse pandas DataFrame if requested (never densify)
         if return_probabilities:
-            return ytab
+            categories = categories_arr
+            if isinstance(ytab, csr_matrix):
+                from_sps = ytab
+            elif issparse(ytab):
+                from_sps = ytab.tocsr()  # type: ignore[attr-defined]
+            else:
+                from_sps = csr_matrix(ytab)
+            probs = pd.DataFrame.sparse.from_spmatrix(from_sps, index=self.query.obs_names, columns=categories)
+            return probs
         else:
             return None
 
@@ -851,8 +875,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             reference_values, t=t, diffusion_method=diffusion_method
         )  # shape = (n_query_cells, 1)
 
+        # Ensure dense for Series creation
+        mapped_dense = mapped_values.toarray() if issparse(mapped_values) else mapped_values
+
         pred = pd.Series(
-            data=mapped_values.ravel(),
+            data=np.asarray(mapped_dense).ravel(),
             index=self.query.obs_names,
         )
 
