@@ -431,7 +431,7 @@ class EvaluationMixin:
         key_added: str = "presence_score",
         log: bool = False,
         percentile: tuple[float, float] = (1, 99),
-        minmax: bool = True
+        minmax: bool = True,
     ):
         """
         Estimate raw presence scores for each reference cell based on query-to-reference connectivities.
@@ -521,6 +521,7 @@ def process_presence_scores(
 
     # Min-max normalization
     if minmax:
+
         def minmax_norm(x):
             min_val, max_val = np.min(x), np.max(x)
             return (x - min_val) / (max_val - min_val) if max_val > min_val else np.zeros_like(x)
