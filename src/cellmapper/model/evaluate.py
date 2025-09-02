@@ -484,48 +484,48 @@ class EvaluationMixin:
                 key_added,
             )
 
+    @staticmethod
+    def process_presence_scores(
+        scores: pd.DataFrame,
+        log: bool = False,
+        percentile: tuple[float, float] = (1, 99),
+        minmax: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Post-process presence scores with log1p, percentile clipping, and min-max normalization.
 
-def process_presence_scores(
-    scores: pd.DataFrame,
-    log: bool = False,
-    percentile: tuple[float, float] = (1, 99),
-    minmax: bool = True,
-) -> pd.DataFrame:
-    """
-    Post-process presence scores with log1p, percentile clipping, and min-max normalization.
+        Parameters
+        ----------
+        scores
+            DataFrame of raw presence scores (rows: reference cells, columns: groups or 'all').
+        log
+            Whether to apply log1p transformation to the scores.
+        percentile
+            Tuple of (low, high) percentiles for clipping scores before normalization.
+        minmax
+            Whether to apply min-max normalization to the scores.
 
-    Parameters
-    ----------
-    scores
-        DataFrame of raw presence scores (rows: reference cells, columns: groups or 'all').
-    log
-        Whether to apply log1p transformation to the scores.
-    percentile
-        Tuple of (low, high) percentiles for clipping scores before normalization.
-    minmax
-        Whether to apply min-max normalization to the scores.
+        Returns
+        -------
+        pd.DataFrame
+            Post-processed presence scores, same shape as input.
+        """
+        # Log1p transformation
+        if log:
+            scores = np.log1p(scores)
 
-    Returns
-    -------
-    pd.DataFrame
-        Post-processed presence scores, same shape as input.
-    """
-    # Log1p transformation
-    if log:
-        scores = np.log1p(scores)
+        # Percentile clipping
+        if percentile != (0, 100):
+            low, high = percentile
+            scores = scores.apply(lambda x: np.clip(x, np.percentile(x, low), np.percentile(x, high)), axis=0)
 
-    # Percentile clipping
-    if percentile != (0, 100):
-        low, high = percentile
-        scores = scores.apply(lambda x: np.clip(x, np.percentile(x, low), np.percentile(x, high)), axis=0)
+        # Min-max normalization
+        if minmax:
 
-    # Min-max normalization
-    if minmax:
+            def minmax_norm(x):
+                min_val, max_val = np.min(x), np.max(x)
+                return (x - min_val) / (max_val - min_val) if max_val > min_val else np.zeros_like(x)
 
-        def minmax_norm(x):
-            min_val, max_val = np.min(x), np.max(x)
-            return (x - min_val) / (max_val - min_val) if max_val > min_val else np.zeros_like(x)
+            scores = scores.apply(minmax_norm, axis=0)
 
-        scores = scores.apply(minmax_norm, axis=0)
-
-    return scores
+        return scores
