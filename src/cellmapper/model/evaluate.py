@@ -461,7 +461,7 @@ class EvaluationMixin:
         # Always compute and post-process the overall score (all query cells)
         scores_all = np.array(conn.sum(axis=0)).flatten()
         df_all = pd.DataFrame({"all": scores_all}, index=reference_names)
-        df_all_processed = process_presence_scores(df_all, log=log, percentile=percentile, minmax=minmax)
+        df_all_processed = self.process_presence_scores(df_all, log=log, percentile=percentile, minmax=minmax)
         self.reference.obs[key_added] = df_all_processed["all"]
         logger.info("Presence score across all query cells computed and stored in `reference.obs['%s']`", key_added)
 
@@ -475,7 +475,7 @@ class EvaluationMixin:
                 group_conn = conn[mask.values, :]
                 score_matrix[:, i] = np.array(group_conn.sum(axis=0)).flatten()
             df_groups = pd.DataFrame(score_matrix, index=reference_names, columns=groups)
-            df_groups_processed = process_presence_scores(df_groups, log=log, percentile=percentile, minmax=minmax)
+            df_groups_processed = self.process_presence_scores(df_groups, log=log, percentile=percentile, minmax=minmax)
             self.reference.obsm[key_added] = df_groups_processed
 
             logger.info(
