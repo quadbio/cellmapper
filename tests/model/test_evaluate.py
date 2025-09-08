@@ -19,20 +19,25 @@ class TestEvaluate:
             assert cmap.query.varm[f"metric_{comparison_method}"] is not None
 
     @pytest.mark.parametrize(
-        "log,percentile",
+        "log,percentile,minmax",
         [
-            (False, (0, 100)),
-            (True, (0, 100)),
-            (False, (5, 95)),
-            (True, (1, 99)),
+            (False, (0, 100), True),
+            (True, (0, 100), True),
+            (False, (5, 95), True),
+            (True, (1, 99), True),
+            (False, (0, 100), False),
+            (True, (0, 100), False),
+            (False, (5, 95), False),
+            (True, (1, 99), False),
         ],
     )
-    def test_presence_score_overall(self, cmap, log, percentile):
-        cmap.compute_presence_score(log=log, percentile=percentile)
+    def test_presence_score_overall(self, cmap, log, percentile, minmax):
+        cmap.compute_presence_score(log=log, percentile=percentile, minmax=minmax)
         assert "presence_score" in cmap.reference.obs
         scores = cmap.reference.obs["presence_score"]
         assert isinstance(scores, pd.Series | np.ndarray)
-        assert np.all((scores >= 0) & (scores <= 1))
+        if minmax:
+            assert np.all((scores >= 0) & (scores <= 1))
         assert not np.all(scores == 0)  # Should not be all zeros
 
     @pytest.mark.parametrize("groupby", ["batch", "modality"])

@@ -431,6 +431,7 @@ class EvaluationMixin:
         key_added: str = "presence_score",
         log: bool = False,
         percentile: tuple[float, float] = (1, 99),
+        minmax: bool = True,
     ):
         """
         Estimate raw presence scores for each reference cell based on query-to-reference connectivities.
@@ -448,6 +449,8 @@ class EvaluationMixin:
             Whether to apply log1p transformation to the scores.
         percentile
             Tuple of (low, high) percentiles for clipping scores before normalization.
+        minmax
+            Whether to apply min-max normalization to the scores.
         """
         if self.knn is None or self.knn.yx is None:
             raise ValueError("Neighbors must be computed before estimating presence scores.")
@@ -458,7 +461,7 @@ class EvaluationMixin:
         # Always compute and post-process the overall score (all query cells)
         scores_all = np.array(conn.sum(axis=0)).flatten()
         df_all = pd.DataFrame({"all": scores_all}, index=reference_names)
-        df_all_processed = process_presence_scores(df_all, log=log, percentile=percentile)
+        df_all_processed = self.process_presence_scores(df_all, log=log, percentile=percentile, minmax=minmax)
         self.reference.obs[key_added] = df_all_processed["all"]
         logger.info("Presence score across all query cells computed and stored in `reference.obs['%s']`", key_added)
 
@@ -472,7 +475,7 @@ class EvaluationMixin:
                 group_conn = conn[mask.values, :]
                 score_matrix[:, i] = np.array(group_conn.sum(axis=0)).flatten()
             df_groups = pd.DataFrame(score_matrix, index=reference_names, columns=groups)
-            df_groups_processed = process_presence_scores(df_groups, log=log, percentile=percentile)
+            df_groups_processed = self.process_presence_scores(df_groups, log=log, percentile=percentile, minmax=minmax)
             self.reference.obsm[key_added] = df_groups_processed
 
             logger.info(
@@ -481,43 +484,48 @@ class EvaluationMixin:
                 key_added,
             )
 
+    @staticmethod
+    def process_presence_scores(
+        scores: pd.DataFrame,
+        log: bool = False,
+        percentile: tuple[float, float] = (1, 99),
+        minmax: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Post-process presence scores with log1p, percentile clipping, and min-max normalization.
 
-def process_presence_scores(
-    scores: pd.DataFrame,
-    log: bool = False,
-    percentile: tuple[float, float] = (1, 99),
-) -> pd.DataFrame:
-    """
-    Post-process presence scores with log1p, percentile clipping, and min-max normalization.
+        Parameters
+        ----------
+        scores
+            DataFrame of raw presence scores (rows: reference cells, columns: groups or 'all').
+        log
+            Whether to apply log1p transformation to the scores.
+        percentile
+            Tuple of (low, high) percentiles for clipping scores before normalization.
+        minmax
+            Whether to apply min-max normalization to the scores.
 
-    Parameters
-    ----------
-    scores
-        DataFrame of raw presence scores (rows: reference cells, columns: groups or 'all').
-    log
-        Whether to apply log1p transformation to the scores.
-    percentile
-        Tuple of (low, high) percentiles for clipping scores before normalization.
+        Returns
+        -------
+        pd.DataFrame
+            Post-processed presence scores, same shape as input.
+        """
+        # Log1p transformation
+        if log:
+            scores = np.log1p(scores)
 
-    Returns
-    -------
-    pd.DataFrame
-        Post-processed presence scores, same shape as input.
-    """
-    # Log1p transformation (optional)
-    if log:
-        scores = np.log1p(scores)
+        # Percentile clipping
+        if percentile != (0, 100):
+            low, high = percentile
+            scores = scores.apply(lambda x: np.clip(x, np.percentile(x, low), np.percentile(x, high)), axis=0)
 
-    # Percentile clipping (optional)
-    if percentile != (0, 100):
-        low, high = percentile
-        scores = scores.apply(lambda x: np.clip(x, np.percentile(x, low), np.percentile(x, high)), axis=0)
+        # Min-max normalization
+        if minmax:
 
-    # Min-max normalization (always)
-    def minmax(x):
-        min_val, max_val = np.min(x), np.max(x)
-        return (x - min_val) / (max_val - min_val) if max_val > min_val else np.zeros_like(x)
+            def minmax_norm(x):
+                min_val, max_val = np.min(x), np.max(x)
+                return (x - min_val) / (max_val - min_val) if max_val > min_val else np.zeros_like(x)
 
-    scores = scores.apply(minmax, axis=0)
+            scores = scores.apply(minmax_norm, axis=0)
 
-    return scores
+        return scores
