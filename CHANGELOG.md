@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.2.3]
+
+### Changed
+- Improved returning probabilities (after mapping categorical obs fields) to always return a DataFrame {pr}`49`
+
+### Added
+- Add the possibility to adjust the library size after `.map_layers` {pr}`50`
+- Added the option to turn off post-processing of the presence scores, so that they can be first smoothed and then processed, like in HNOCA-tools {pr}`51`
+
 ## [v0.2.2]
 ### Added
 - Enabled subsetting categories before mapping .obs values {pr}`46`
@@ -18,7 +27,7 @@ and this project adheres to [Semantic Versioning][].
 - Updated the README a bit {pr}`44`
 - Updated tutorials to work with new parameter names {pr}`43`
 
-### Fices
+### Fixed
 - Fixed a small bug where hvg masks would not be propagated correctly to joint pca computation {pr}`48`
 
 ## [v0.2.1]
