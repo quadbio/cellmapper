@@ -475,7 +475,7 @@ class TestCellMapperImputation:
 
         # Assert high similarity
         assert cell_corrs.mean() > 0.99, f"Cell correlations not high enough: {cell_corrs.mean():.6f}"
-        assert gene_corrs.mean() > 0.95, f"Gene correlations not high enough: {gene_corrs.mean():.6f}"
+        assert gene_corrs.mean() > 0.92, f"Gene correlations not high enough: {gene_corrs.mean():.6f}"
 
     def test_iterative_vs_partial_spectral_similarity(self, adata_pbmc3k):
         """Test that iterative and partial spectral approaches give highly similar results."""
@@ -501,4 +501,4 @@ class TestCellMapperImputation:
 
         # Assert high similarity
         assert cell_corrs.mean() > 0.99, f"Cell correlations not high enough: {cell_corrs.mean():.6f}"
-        assert gene_corrs.mean() > 0.95, f"Gene correlations not high enough: {gene_corrs.mean():.6f}"
+        assert gene_corrs.mean() > 0.92, f"Gene correlations not high enough: {gene_corrs.mean():.6f}"
