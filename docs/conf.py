@@ -60,6 +60,7 @@ extensions = [
     "IPython.sphinxext.ipython_console_highlighting",
     "sphinxext.opengraph",
     *[p.stem for p in (HERE / "extensions").glob("*.py")],
+    "sphinx.ext.extlinks",
 ]
 
 autosummary_generate = True
@@ -98,6 +99,13 @@ intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable/", None),
 }
 
+# extlinks config
+extlinks = {
+    "issue": (f"{repository_url}/issues/%s", "#%s"),
+    "pr": (f"{repository_url}/pull/%s", "#%s"),
+    "ghuser": ("https://github.com/%s", "@%s"),
+}
+
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
@@ -120,6 +128,10 @@ html_theme_options = {
     "use_repository_button": True,
     "path_to_docs": "docs/",
     "navigation_with_keys": False,
+    "logo": {
+        "image_light": "_static/images/cellmapper_logo_light.svg",  # Logo for light mode
+        "image_dark": "_static/images/cellmapper_logo_dark.svg",  # Logo for dark mode
+    },
 }
 
 pygments_style = "default"

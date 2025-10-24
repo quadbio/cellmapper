@@ -1,10 +1,9 @@
 [build-system]
 build-backend = "hatchling.build"
-requires = [ "hatchling" ]
+requires = [ "hatch-vcs", "hatchling" ]
 
 [project]
 name = "cellmapper"
-version = "0.0.1"
 description = "k-NN-based mapping of cells across representations"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -14,16 +13,24 @@ maintainers = [
 authors = [
   { name = "Marius Lange" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
 ]
+dynamic = [ "version" ]
 dependencies = [
-  "anndata",
+  "anndata>=0.11",
+  "docrep",
+  "numpy",
+  "packaging",
+  "pandas",
+  "rich",
+  "scanpy>=1.11",
+  "scikit-learn",
+  "scipy",
   # for debug logging (referenced from the issue template)
   "session-info2",
 ]
@@ -49,13 +56,29 @@ optional-dependencies.doc = [
 ]
 optional-dependencies.test = [
   "coverage>=7.10",
+  "faiss-cpu",
   "pytest",
-  "pytest-cov",     # For VS Code’s coverage functionality
+  "pytest-cov",     # For VS Code's coverage functionality
+  "squidpy>=1.6",
 ]
+optional-dependencies.tutorials = [
+  "harmony-pytorch",
+  "igraph",
+  "netgraph",
+  "python-louvain",
+  "scvi-tools>=1.3",
+  "seaborn",
+  "sopa>=2",
+  "squidpy>=1.6",
+]
+
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Documentation = "https://cellmapper.readthedocs.io/"
 urls.Homepage = "https://github.com/quadbio/cellmapper"
 urls.Source = "https://github.com/quadbio/cellmapper"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.envs.default]
 installer = "uv"
@@ -70,7 +93,7 @@ scripts.clean = "git clean -fdX -- {args:docs}"
 # Test the lowest and highest supported Python versions with normal deps
 [[tool.hatch.envs.hatch-test.matrix]]
 deps = [ "stable" ]
-python = [ "3.10", "3.13" ]
+python = [ "3.11", "3.13" ]
 
 # Test the newest supported Python version also with pre-release deps
 [[tool.hatch.envs.hatch-test.matrix]]

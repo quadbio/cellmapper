@@ -235,8 +235,7 @@ This means that local testing via hatch and remote testing on CI tests against t
 
 ### Updating the version number
 
-Before making a release, you need to update the version number in the `pyproject.toml` file.
-Please adhere to [Semantic Versioning][semver], in brief
+This package uses `hatch-vcs` to infer version numbers. Please adhere to [Semantic Versioning][semver], in brief
 
 > Given a version number MAJOR.MINOR.PATCH, increment the:
 >
