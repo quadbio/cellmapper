@@ -463,11 +463,11 @@ class TestCellMapperImputation:
         cmap.compute_mapping_matrix(eigen_solver="complete")
 
         # Get spectral imputation
-        cmap.map_layers("X", t=10, diffusion_method="spectral")
+        cmap.map_layers("X", t=15, diffusion_method="spectral")
         imputed_spectral = cmap.query_imputed.X  # returns dense matrix
 
         # Get iterative imputation
-        cmap.map_layers("X", t=10, diffusion_method="iterative")
+        cmap.map_layers("X", t=15, diffusion_method="iterative")
         imputed_iterative = cmap.query_imputed.X  # returns sparse matrix
 
         # Compare the two imputed gene expression matrices
@@ -486,14 +486,14 @@ class TestCellMapperImputation:
         # Create CellMapper and compute mapping matrix with partial eigendecomposition
         cmap = CellMapper(adata)
         cmap.compute_neighbors(only_yx=True, use_rep="X_pca")
-        cmap.compute_mapping_matrix(eigen_solver="partial", n_eigenvectors=100)
+        cmap.compute_mapping_matrix(eigen_solver="partial", n_eigenvectors=200)
 
         # Get spectral imputation
-        cmap.map_layers("X", t=10, diffusion_method="spectral")
+        cmap.map_layers("X", t=15, diffusion_method="spectral")
         imputed_spectral = cmap.query_imputed.X
 
         # Get iterative imputation
-        cmap.map_layers("X", t=10, diffusion_method="iterative")
+        cmap.map_layers("X", t=15, diffusion_method="iterative")
         imputed_iterative = cmap.query_imputed.X
 
         # Compare the two imputed gene expression matrices
