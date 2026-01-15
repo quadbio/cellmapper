@@ -116,6 +116,7 @@ class _RapidsBackend(_KNNBackend):
         n_neighbors: int,
         metric: str,
         random_state: int = 0,
+        batch_size: int | None = None,
         **kwargs: Any,
     ):
         check_deps("cuml")
@@ -128,6 +129,7 @@ class _RapidsBackend(_KNNBackend):
         self.cp = cp
         self.n_neighbors = n_neighbors
         self.metric = metric
+        self.batch_size = batch_size
         self.kwargs = kwargs
         self._nn = None
 
@@ -141,6 +143,27 @@ class _RapidsBackend(_KNNBackend):
         ).fit(data_gpu)
 
     def query(self, points: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+        n_points = points.shape[0]
+
+        # If batch_size is set and data is large, process in batches
+        if self.batch_size is not None and n_points > self.batch_size:
+            all_distances = []
+            all_indices = []
+
+            for start in range(0, n_points, self.batch_size):
+                end = min(start + self.batch_size, n_points)
+                batch = points[start:end]
+                batch_gpu = self.cp.asarray(batch)
+                dist, idx = self._nn.kneighbors(batch_gpu)
+                all_distances.append(dist)
+                all_indices.append(idx)
+                # Free GPU memory after each batch
+                del batch_gpu
+                self.cp.get_default_memory_pool().free_all_blocks()
+
+            return np.vstack(all_distances), np.vstack(all_indices)
+
+        # Standard path for small data or no batching
         points_gpu = self.cp.asarray(points)
         distances, indices = self._nn.kneighbors(points_gpu)
         return distances, indices

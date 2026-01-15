@@ -522,6 +522,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
         knn_dist_metric: str = "euclidean",
         only_yx: bool = False,
+        neighbors_kwargs: dict[str, Any] | None = None,
         kernel_method: Literal[
             "jaccard",
             "gauss",
@@ -557,6 +558,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         %(knn_method)s
         %(knn_dist_metric)s
         %(only_yx)s
+        neighbors_kwargs
+            Additional keyword arguments to pass to the neighbors computation method.
+            For rapids backend, you can pass ``batch_size`` to process queries in batches
+            to avoid GPU OOM errors (e.g., ``neighbors_kwargs={"batch_size": 50000}``).
         %(kernel_method)s
         %(symmetrize)s
         %(self_edges)s
@@ -570,6 +575,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 knn_method=knn_method,
                 knn_dist_metric=knn_dist_metric,
                 only_yx=only_yx,
+                neighbors_kwargs=neighbors_kwargs,
             )
         if self._mapping_operator is None:
             self.compute_mapping_matrix(kernel_method=kernel_method, symmetrize=symmetrize, self_edges=self_edges)
