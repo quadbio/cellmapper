@@ -2,10 +2,11 @@
 
 import importlib
 import types
+from importlib.metadata import PackageNotFoundError, version
 
 from packaging.version import parse
 
-from . import version
+from .logging import logger
 
 
 class Checker:
@@ -42,8 +43,23 @@ class Checker:
             importlib.import_module(self.name)
         except ModuleNotFoundError as e:
             raise RuntimeError(" ".join(filter(None, [self.vreq_hint, self.install_hint]))) from e
-        v = parse(version(self.package_name))
-        if self.vmin and v < self.vmin:
+
+        # Skip version check if no minimum version is required
+        if not self.vmin:
+            return
+
+        # Try to get version from package metadata (may fail for conda packages)
+        try:
+            v = parse(version(self.package_name))
+        except PackageNotFoundError:
+            logger.debug(
+                "Could not find package metadata for %s. Skipping version check. "
+                "This can happen with conda-installed packages.",
+                self.package_name,
+            )
+            return
+
+        if v < self.vmin:
             raise RuntimeError(
                 " ".join(
                     [
