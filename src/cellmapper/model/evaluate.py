@@ -203,19 +203,30 @@ class EvaluationMixin:
         self.label_transfer_report = pd.DataFrame(report).transpose()
 
     def plot_confusion_matrix(
-        self, label_key: str, figsize=(10, 8), cmap="viridis", save: str | Path | None = None, **kwargs
+        self,
+        label_key: str,
+        subset: np.ndarray | pd.Series | None = None,
+        figsize: tuple[int, int] = (10, 8),
+        cmap: str = "viridis",
+        save: str | Path | None = None,
+        **kwargs,
     ) -> None:
         """
         Plot the confusion matrix as a heatmap using sklearn's ConfusionMatrixDisplay.
 
         Parameters
         ----------
+        label_key
+            Key in .obs storing ground-truth cell type annotations.
+        subset
+            Boolean mask to select a subset of cells for the confusion matrix.
+            Must have the same length as query.obs or be a pandas Series indexed by obs_names.
         figsize
             Size of the figure (width, height). Default is (10, 8).
         cmap
             Colormap to use for the heatmap. Default is "viridis".
-        label_key
-            Key in .obs storing ground-truth cell type annotations.
+        save
+            Path to save the figure. If None, the figure is not saved.
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
         """
@@ -224,7 +235,17 @@ class EvaluationMixin:
 
         # Extract true and predicted labels
         y_true = self.query.obs[label_key].dropna()
-        y_pred = self.query.obs.loc[y_true.index, f"{label_key}_pred"]
+        y_pred = self.query.obs.loc[y_true.index, f"{label_key}{self.prediction_postfix}"]
+
+        # Apply subset filter if provided
+        if subset is not None:
+            if isinstance(subset, pd.Series):
+                subset = subset.loc[y_true.index]
+            else:
+                # Assume boolean array aligned with query.obs, reindex to y_true
+                subset = pd.Series(subset, index=self.query.obs_names).loc[y_true.index]
+            y_true = y_true[subset]
+            y_pred = y_pred[subset]
 
         # Plot confusion matrix using sklearn's ConfusionMatrixDisplay
         _, ax = plt.subplots(1, 1, figsize=figsize)
