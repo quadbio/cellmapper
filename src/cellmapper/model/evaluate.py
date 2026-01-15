@@ -233,9 +233,12 @@ class EvaluationMixin:
         if self.prediction_postfix is None or self.confidence_postfix is None:
             raise ValueError("Label transfer has not been performed. Call map_obs() first.")
 
-        # Extract true and predicted labels
-        y_true = self.query.obs[label_key].dropna()
-        y_pred = self.query.obs.loc[y_true.index, f"{label_key}{self.prediction_postfix}"]
+        # Extract true and predicted labels, dropping NaNs from both
+        y_true = self.query.obs[label_key]
+        y_pred = self.query.obs[f"{label_key}{self.prediction_postfix}"]
+        valid_mask = y_true.notna() & y_pred.notna()
+        y_true = y_true[valid_mask]
+        y_pred = y_pred[valid_mask]
 
         # Apply subset filter if provided
         if subset is not None:
