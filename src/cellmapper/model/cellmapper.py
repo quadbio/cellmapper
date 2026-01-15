@@ -19,11 +19,6 @@ from cellmapper.model.mapping_operator import MappingOperator
 from cellmapper.utils import adjust_library_size, create_imputed_anndata, get_n_comps
 
 
-def _make_key(base: str, postfix: str) -> str:
-    """Create a key by joining base and postfix, omitting underscore if postfix is empty."""
-    return f"{base}_{postfix}" if postfix else base
-
-
 class CellMapper(EvaluationMixin, EmbeddingMixin):
     """Mapping of labels, embeddings, and expression values between reference and query datasets."""
 
@@ -324,7 +319,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         key: str,
         t: int | None = None,
         diffusion_method: Literal["iterative", "spectral"] = "iterative",
-        prediction_postfix: str = "pred",
+        prediction_postfix: str = "_pred",
     ) -> None:
         """
         Map embeddings with optional multi-step diffusion.
@@ -396,7 +391,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             )
 
         # Store the transferred embeddings in query.obsm with descriptive key
-        output_key = _make_key(key, prediction_postfix)
+        output_key = f"{key}{prediction_postfix}"
         self.query.obsm[output_key] = query_data
         logger.info("Embeddings mapped and stored in query.obsm['%s']", output_key)
 
@@ -541,7 +536,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         | None = None,
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
-        prediction_postfix: str = "pred",
+        prediction_postfix: str = "_pred",
         subset_categories: None | list[str] | str = None,
     ) -> "CellMapper":
         """
@@ -676,8 +671,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         key: str,
         t: int | None = None,
         diffusion_method: Literal["iterative", "spectral"] = "iterative",
-        prediction_postfix: str = "pred",
-        confidence_postfix: str = "conf",
+        prediction_postfix: str = "_pred",
+        confidence_postfix: str = "_conf",
         return_probabilities: bool = False,
         subset_categories: None | list[str] | str = None,
     ) -> pd.DataFrame | None:
@@ -869,8 +864,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             conf_vals = np.max(ytab, axis=1).ravel()
         conf = pd.Series(conf_vals, index=self.query.obs_names)
 
-        pred_key = _make_key(key, prediction_postfix)
-        conf_key = _make_key(key, confidence_postfix)
+        pred_key = f"{key}{prediction_postfix}"
+        conf_key = f"{key}{confidence_postfix}"
         self.query.obs[pred_key] = pred
         self.query.obs[conf_key] = conf
 
@@ -914,7 +909,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             index=self.query.obs_names,
         )
 
-        pred_key = _make_key(key, prediction_postfix)
+        pred_key = f"{key}{prediction_postfix}"
         self.query.obs[pred_key] = pred
 
         logger.info("Numerical data mapped and stored in query.obs['%s'].", pred_key)

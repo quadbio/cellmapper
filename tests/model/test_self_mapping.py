@@ -186,7 +186,7 @@ class TestSelfMapping:
             obs_keys=obs_key,
             use_rep="X_pca",
             n_neighbors=1,
-            prediction_postfix="pred",
+            prediction_postfix="_pred",
             # For n_neighbors=1 identity mapping, we need self-edges and no symmetrization
             symmetrize=False,
             self_edges=True,
