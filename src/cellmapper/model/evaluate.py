@@ -250,9 +250,17 @@ class EvaluationMixin:
             y_true = y_true[subset]
             y_pred = y_pred[subset]
 
+        # Get union of categories if categorical, to handle mismatched category sets
+        labels = None
+        if hasattr(y_true, "cat") and hasattr(y_pred, "cat"):
+            all_categories = y_true.cat.categories.union(y_pred.cat.categories)
+            labels = sorted(all_categories)
+
         # Plot confusion matrix using sklearn's ConfusionMatrixDisplay
         _, ax = plt.subplots(1, 1, figsize=figsize)
-        ConfusionMatrixDisplay.from_predictions(y_true, y_pred, cmap=cmap, xticks_rotation="vertical", ax=ax, **kwargs)
+        ConfusionMatrixDisplay.from_predictions(
+            y_true, y_pred, labels=labels, cmap=cmap, xticks_rotation="vertical", ax=ax, **kwargs
+        )
         plt.title("Confusion Matrix")
 
         if save:
