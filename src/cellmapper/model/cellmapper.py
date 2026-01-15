@@ -19,6 +19,11 @@ from cellmapper.model.mapping_operator import MappingOperator
 from cellmapper.utils import adjust_library_size, create_imputed_anndata, get_n_comps
 
 
+def _make_key(base: str, postfix: str) -> str:
+    """Create a key by joining base and postfix, omitting underscore if postfix is empty."""
+    return f"{base}_{postfix}" if postfix else base
+
+
 class CellMapper(EvaluationMixin, EmbeddingMixin):
     """Mapping of labels, embeddings, and expression values between reference and query datasets."""
 
@@ -391,7 +396,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             )
 
         # Store the transferred embeddings in query.obsm with descriptive key
-        output_key = f"{key}_{prediction_postfix}"
+        output_key = _make_key(key, prediction_postfix)
         self.query.obsm[output_key] = query_data
         logger.info("Embeddings mapped and stored in query.obsm['%s']", output_key)
 
@@ -864,19 +869,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             conf_vals = np.max(ytab, axis=1).ravel()
         conf = pd.Series(conf_vals, index=self.query.obs_names)
 
-        self.query.obs[f"{key}_{prediction_postfix}"] = pred
-        self.query.obs[f"{key}_{confidence_postfix}"] = conf
+        pred_key = _make_key(key, prediction_postfix)
+        conf_key = _make_key(key, confidence_postfix)
+        self.query.obs[pred_key] = pred
+        self.query.obs[conf_key] = conf
 
         # Add colors if available
         if f"{key}_colors" in self.reference.uns:
             color_lookup = dict(
                 zip(self.reference.obs[key].cat.categories, self.reference.uns[f"{key}_colors"], strict=True)
             )
-            self.query.uns[f"{key}_{prediction_postfix}_colors"] = [
-                color_lookup.get(cat, "#383838") for cat in pred.cat.categories
-            ]
+            self.query.uns[f"{pred_key}_colors"] = [color_lookup.get(cat, "#383838") for cat in pred.cat.categories]
 
-        logger.info("Categorical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
+        logger.info("Categorical data mapped and stored in query.obs['%s'].", pred_key)
 
         # Return probabilities as a sparse pandas DataFrame if requested (never densify)
         if return_probabilities:
@@ -909,6 +914,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             index=self.query.obs_names,
         )
 
-        self.query.obs[f"{key}_{prediction_postfix}"] = pred
+        pred_key = _make_key(key, prediction_postfix)
+        self.query.obs[pred_key] = pred
 
-        logger.info("Numerical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
+        logger.info("Numerical data mapped and stored in query.obs['%s'].", pred_key)

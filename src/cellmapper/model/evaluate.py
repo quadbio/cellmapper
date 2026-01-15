@@ -20,6 +20,11 @@ from cellmapper._docs import d
 from cellmapper.logging import logger
 
 
+def _make_key(base: str, postfix: str) -> str:
+    """Create a key by joining base and postfix, omitting underscore if postfix is empty."""
+    return f"{base}_{postfix}" if postfix else base
+
+
 def _jensen_shannon_divergence(p: np.ndarray, q: np.ndarray) -> float:
     """Compute the Jensen-Shannon divergence between two expression vectors.
 
@@ -99,8 +104,8 @@ class EvaluationMixin:
         - ``confidence_postfix``: Postfix for confidence column.
         """
         # Verify that the expected columns exist
-        pred_col = f"{label_key}_{prediction_postfix}"
-        conf_col = f"{label_key}_{confidence_postfix}"
+        pred_col = _make_key(label_key, prediction_postfix)
+        conf_col = _make_key(label_key, confidence_postfix)
 
         if pred_col not in self.query.obs.columns:
             raise ValueError(f"Prediction column '{pred_col}' not found in query.obs")
@@ -163,8 +168,8 @@ class EvaluationMixin:
 
         # Extract ground-truth and predicted labels
         y_true = self.query.obs[label_key].dropna()
-        y_pred = self.query.obs.loc[y_true.index, f"{label_key}_{self.prediction_postfix}"]
-        confidence = self.query.obs.loc[y_true.index, f"{label_key}_{self.confidence_postfix}"]
+        y_pred = self.query.obs.loc[y_true.index, _make_key(label_key, pred_postfix)]
+        confidence = self.query.obs.loc[y_true.index, _make_key(label_key, conf_postfix)]
 
         # Apply confidence cutoff
         valid_indices = confidence >= confidence_cutoff
