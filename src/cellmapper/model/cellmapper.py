@@ -209,12 +209,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         xrep = xrep[:, :n_comps]
         yrep = yrep[:, :n_comps]
 
-        self.knn = Kernel(
+        # Create kernel and compute neighbors. Only assign to self.knn after
+        # successful completion to avoid stale state if neighbor computation fails.
+        knn = Kernel(
             np.ascontiguousarray(xrep),
             None if self._is_self_mapping else np.ascontiguousarray(yrep),
             is_self_mapping=self._is_self_mapping,
         )
-        self.knn.compute_neighbors(
+        knn.compute_neighbors(
             n_neighbors=n_neighbors,
             knn_method=knn_method,
             knn_dist_metric=knn_dist_metric,
@@ -222,6 +224,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             random_state=random_state,
             **(neighbors_kwargs or {}),
         )
+        self.knn = knn
 
     @d.dedent
     def compute_mapping_matrix(
