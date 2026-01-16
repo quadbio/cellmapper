@@ -212,6 +212,7 @@ class EvaluationMixin:
         ax: plt.Axes | None = None,
         show_annotation_colors: bool = True,
         annotation_colors_size: float = 0.3,
+        xlabel_position: Literal["bottom", "top"] = "bottom",
         **kwargs,
     ) -> plt.Axes:
         """
@@ -237,6 +238,8 @@ class EvaluationMixin:
             from ``adata.uns[f"{label_key}_colors"]``. Default is True.
         annotation_colors_size
             Size of the annotation color bars as a fraction of the cell size. Default is 0.3.
+        xlabel_position
+            Position of x-axis tick labels. Either "bottom" (default) or "top".
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
 
@@ -284,6 +287,12 @@ class EvaluationMixin:
         )
         ax.set_title("Confusion Matrix")
 
+        # Move x-axis labels to top if requested
+        if xlabel_position == "top":
+            ax.xaxis.tick_top()
+            ax.xaxis.set_label_position("top")
+            ax.set_title("")  # Remove title to avoid overlap
+
         # Add annotation color bars if colors are available
         if show_annotation_colors and labels is not None:
             colors_key = f"{label_key}_colors"
@@ -312,15 +321,28 @@ class EvaluationMixin:
                         transform=ax.get_yaxis_transform(),
                     )
                     ax.add_patch(rect_y)
-                    # Add color bar on top (x-axis, predicted labels)
-                    rect_x = Rectangle(
-                        (i, n_labels),
-                        1,
-                        annotation_colors_size * n_labels,
-                        facecolor=color,
-                        edgecolor="none",
-                        clip_on=False,
-                    )
+                    # Add color bar on x-axis (predicted labels)
+                    # Position depends on whether x-axis is at top or bottom
+                    if xlabel_position == "top":
+                        # Color bar below the matrix
+                        rect_x = Rectangle(
+                            (i, -annotation_colors_size * n_labels),
+                            1,
+                            annotation_colors_size * n_labels,
+                            facecolor=color,
+                            edgecolor="none",
+                            clip_on=False,
+                        )
+                    else:
+                        # Color bar above the matrix
+                        rect_x = Rectangle(
+                            (i, n_labels),
+                            1,
+                            annotation_colors_size * n_labels,
+                            facecolor=color,
+                            edgecolor="none",
+                            clip_on=False,
+                        )
                     ax.add_patch(rect_x)
 
         if save:
