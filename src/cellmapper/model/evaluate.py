@@ -209,8 +209,9 @@ class EvaluationMixin:
         figsize: tuple[int, int] = (10, 8),
         cmap: str = "viridis",
         save: str | Path | None = None,
+        ax: plt.Axes | None = None,
         **kwargs,
-    ) -> None:
+    ) -> plt.Axes:
         """
         Plot the confusion matrix as a heatmap using sklearn's ConfusionMatrixDisplay.
 
@@ -222,13 +223,20 @@ class EvaluationMixin:
             Boolean mask to select a subset of cells for the confusion matrix.
             Must have the same length as query.obs or be a pandas Series indexed by obs_names.
         figsize
-            Size of the figure (width, height). Default is (10, 8).
+            Size of the figure (width, height). Default is (10, 8). Only used if ax is None.
         cmap
             Colormap to use for the heatmap. Default is "viridis".
         save
             Path to save the figure. If None, the figure is not saved.
+        ax
+            Matplotlib axes to plot on. If None, a new figure and axes are created.
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
+
+        Returns
+        -------
+        ax
+            Matplotlib axes with the confusion matrix plot.
         """
         if self.prediction_postfix is None or self.confidence_postfix is None:
             raise ValueError("Label transfer has not been performed. Call map_obs() first.")
@@ -259,15 +267,20 @@ class EvaluationMixin:
             y_true = y_true.astype(str)
             y_pred = y_pred.astype(str)
 
+        # Create figure/axes if not provided
+        if ax is None:
+            _, ax = plt.subplots(1, 1, figsize=figsize)
+
         # Plot confusion matrix using sklearn's ConfusionMatrixDisplay
-        _, ax = plt.subplots(1, 1, figsize=figsize)
         ConfusionMatrixDisplay.from_predictions(
             y_true, y_pred, labels=labels, cmap=cmap, xticks_rotation="vertical", ax=ax, **kwargs
         )
-        plt.title("Confusion Matrix")
+        ax.set_title("Confusion Matrix")
 
         if save:
-            plt.savefig(save, bbox_inches="tight")
+            ax.figure.savefig(save, bbox_inches="tight")
+
+        return ax
 
     @d.dedent
     def evaluate_expression_transfer(
