@@ -211,7 +211,6 @@ class EvaluationMixin:
         save: str | Path | None = None,
         ax: plt.Axes | None = None,
         show_annotation_colors: bool = True,
-        annotation_colors_size: float = 0.3,
         xlabel_position: Literal["bottom", "top"] = "bottom",
         **kwargs,
     ) -> plt.Axes:
@@ -236,8 +235,6 @@ class EvaluationMixin:
         show_annotation_colors
             Whether to show colored bars along axes corresponding to category colors
             from ``adata.uns[f"{label_key}_colors"]``. Default is True.
-        annotation_colors_size
-            Size of the annotation color bars as a fraction of the cell size. Default is 0.3.
         xlabel_position
             Position of x-axis tick labels. Either "bottom" (default) or "top".
         **kwargs
@@ -293,7 +290,7 @@ class EvaluationMixin:
             ax.xaxis.set_label_position("top")
             ax.set_title("")  # Remove title to avoid overlap
             # Rotate labels to point outward (opposite direction from bottom)
-            plt.setp(ax.get_xticklabels(), rotation=90, ha="left", va="center")
+            plt.setp(ax.get_xticklabels(), rotation=90, ha="left", rotation_mode="anchor")
 
         # Add annotation color bars if colors are available
         if show_annotation_colors and labels is not None:
@@ -307,45 +304,35 @@ class EvaluationMixin:
                     break
 
             if colors_dict is not None:
-                from matplotlib.patches import Rectangle
+                from matplotlib.colors import ListedColormap
+                from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+                # Get colors in label order
+                colors_list = [colors_dict.get(label, "gray") for label in labels]
+                cat_cmap = ListedColormap(colors_list)
                 n_labels = len(labels)
-                for i, label in enumerate(labels):
-                    color = colors_dict.get(label, "gray")
-                    # Add color bar on left (y-axis, true labels)
-                    rect_y = Rectangle(
-                        (-annotation_colors_size, i),
-                        annotation_colors_size,
-                        1,
-                        facecolor=color,
-                        edgecolor="none",
-                        clip_on=False,
-                        transform=ax.get_yaxis_transform(),
-                    )
-                    ax.add_patch(rect_y)
-                    # Add color bar on x-axis (predicted labels)
-                    # Position depends on whether x-axis is at top or bottom
-                    if xlabel_position == "top":
-                        # Color bar below the matrix
-                        rect_x = Rectangle(
-                            (i, -annotation_colors_size * n_labels),
-                            1,
-                            annotation_colors_size * n_labels,
-                            facecolor=color,
-                            edgecolor="none",
-                            clip_on=False,
-                        )
-                    else:
-                        # Color bar above the matrix
-                        rect_x = Rectangle(
-                            (i, n_labels),
-                            1,
-                            annotation_colors_size * n_labels,
-                            facecolor=color,
-                            edgecolor="none",
-                            clip_on=False,
-                        )
-                    ax.add_patch(rect_x)
+
+                divider = make_axes_locatable(ax)
+
+                # Add color bar on top (x-axis, predicted labels)
+                col_ax = divider.append_axes("top", size="2%", pad=0.05)
+                col_ax.imshow(
+                    np.arange(n_labels).reshape(1, -1),
+                    cmap=cat_cmap,
+                    aspect="auto",
+                )
+                col_ax.set_xticks([])
+                col_ax.set_yticks([])
+
+                # Add color bar on left (y-axis, true labels)
+                row_ax = divider.append_axes("left", size="2%", pad=0.05)
+                row_ax.imshow(
+                    np.arange(n_labels).reshape(-1, 1),
+                    cmap=cat_cmap,
+                    aspect="auto",
+                )
+                row_ax.set_xticks([])
+                row_ax.set_yticks([])
 
         if save:
             ax.figure.savefig(save, bbox_inches="tight")
