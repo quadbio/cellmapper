@@ -32,3 +32,19 @@ class TestCheck:
         check.CHECKERS["packaging"] = Checker("packaging")
         check_deps("packaging")
         del check.CHECKERS["packaging"]
+
+    def test_checker_missing_metadata_no_vmin(self, mocker):
+        # Should not raise when package is importable but has no metadata and no vmin
+        mocker.patch("importlib.import_module")
+        # No vmin means no version check needed
+        Checker("fake_module").check()
+
+    def test_checker_missing_metadata_with_vmin(self, mocker):
+        # Should not raise when package is importable but has no metadata (conda packages)
+        # even when vmin is specified - we skip version check in this case
+        from importlib.metadata import PackageNotFoundError
+
+        mocker.patch("importlib.import_module")
+        mocker.patch("cellmapper.check.version", side_effect=PackageNotFoundError("fake_module"))
+        # Should succeed even with vmin - version check is skipped for missing metadata
+        Checker("fake_module", vmin="1.0.0").check()
