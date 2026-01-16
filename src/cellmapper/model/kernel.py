@@ -6,7 +6,7 @@ from scipy.sparse import csr_matrix
 from cellmapper._docs import d
 from cellmapper.constants import PackageConstants
 from cellmapper.logging import logger
-from cellmapper.model._knn_backend import get_backend
+from cellmapper.model._knn_backend import _batched_query, get_backend
 from cellmapper.model.neighbors import Neighbors
 from cellmapper.utils import extract_neighbors_from_distances
 
@@ -113,6 +113,7 @@ class Kernel:
         knn_dist_metric: str = "euclidean",
         random_state: int = 0,
         only_yx: bool = False,
+        batch_size: int | None = None,
         **kwargs,
     ):
         """
@@ -127,6 +128,10 @@ class Kernel:
         random_state
             Random state for reproducibility.
         %(only_yx)s
+        batch_size
+            Number of query points to process per batch. If None, all points are
+            processed at once. Use this to avoid out-of-memory errors on large datasets,
+            especially with GPU backends (rapids, faiss-gpu).
         **kwargs
             Additional keyword arguments to pass to the underlying k-NN algorithm.
             These are method-specific and will be passed directly to the algorithm's
@@ -183,7 +188,7 @@ class Kernel:
         backend_x.fit(self.xrep)
 
         if only_yx:
-            dists, idx = backend_x.query(self.yrep, k=n_neighbors)
+            dists, idx = _batched_query(backend_x, self.yrep, k=n_neighbors, batch_size=batch_size)
             self.yx = Neighbors(distances=dists, indices=idx, n_targets=self.xrep.shape[0])
             return
 
@@ -192,10 +197,10 @@ class Kernel:
         )
         backend_y.fit(self.yrep)
 
-        x_d, x_i = backend_x.query(self.xrep, k=n_neighbors)
-        y_d, y_i = backend_y.query(self.yrep, k=n_neighbors)
-        xy_d, xy_i = backend_y.query(self.xrep, k=n_neighbors)
-        yx_d, yx_i = backend_x.query(self.yrep, k=n_neighbors)
+        x_d, x_i = _batched_query(backend_x, self.xrep, k=n_neighbors, batch_size=batch_size)
+        y_d, y_i = _batched_query(backend_y, self.yrep, k=n_neighbors, batch_size=batch_size)
+        xy_d, xy_i = _batched_query(backend_y, self.xrep, k=n_neighbors, batch_size=batch_size)
+        yx_d, yx_i = _batched_query(backend_x, self.yrep, k=n_neighbors, batch_size=batch_size)
 
         self.xx = Neighbors(distances=x_d, indices=x_i, n_targets=None)
         self.yy = Neighbors(distances=y_d, indices=y_i, n_targets=None)

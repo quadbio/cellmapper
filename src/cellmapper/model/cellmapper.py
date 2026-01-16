@@ -209,12 +209,14 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         xrep = xrep[:, :n_comps]
         yrep = yrep[:, :n_comps]
 
-        self.knn = Kernel(
+        # Create kernel and compute neighbors. Only assign to self.knn after
+        # successful completion to avoid stale state if neighbor computation fails.
+        knn = Kernel(
             np.ascontiguousarray(xrep),
             None if self._is_self_mapping else np.ascontiguousarray(yrep),
             is_self_mapping=self._is_self_mapping,
         )
-        self.knn.compute_neighbors(
+        knn.compute_neighbors(
             n_neighbors=n_neighbors,
             knn_method=knn_method,
             knn_dist_metric=knn_dist_metric,
@@ -222,6 +224,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             random_state=random_state,
             **(neighbors_kwargs or {}),
         )
+        self.knn = knn
 
     @d.dedent
     def compute_mapping_matrix(
@@ -316,7 +319,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         key: str,
         t: int | None = None,
         diffusion_method: Literal["iterative", "spectral"] = "iterative",
-        prediction_postfix: str = "pred",
+        prediction_postfix: str = "_pred",
     ) -> None:
         """
         Map embeddings with optional multi-step diffusion.
@@ -388,7 +391,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             )
 
         # Store the transferred embeddings in query.obsm with descriptive key
-        output_key = f"{key}_{prediction_postfix}"
+        output_key = f"{key}{prediction_postfix}"
         self.query.obsm[output_key] = query_data
         logger.info("Embeddings mapped and stored in query.obsm['%s']", output_key)
 
@@ -519,6 +522,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         knn_method: Literal["sklearn", "pynndescent", "rapids"] = "sklearn",
         knn_dist_metric: str = "euclidean",
         only_yx: bool = False,
+        neighbors_kwargs: dict[str, Any] | None = None,
         kernel_method: Literal[
             "jaccard",
             "gauss",
@@ -532,7 +536,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         | None = None,
         symmetrize: bool | None = None,
         self_edges: bool | None = None,
-        prediction_postfix: str = "pred",
+        prediction_postfix: str = "_pred",
         subset_categories: None | list[str] | str = None,
     ) -> "CellMapper":
         """
@@ -554,6 +558,10 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         %(knn_method)s
         %(knn_dist_metric)s
         %(only_yx)s
+        neighbors_kwargs
+            Additional keyword arguments to pass to the neighbors computation method.
+            For rapids backend, you can pass ``batch_size`` to process queries in batches
+            to avoid GPU OOM errors (e.g., ``neighbors_kwargs={"batch_size": 50000}``).
         %(kernel_method)s
         %(symmetrize)s
         %(self_edges)s
@@ -567,6 +575,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
                 knn_method=knn_method,
                 knn_dist_metric=knn_dist_metric,
                 only_yx=only_yx,
+                neighbors_kwargs=neighbors_kwargs,
             )
         if self._mapping_operator is None:
             self.compute_mapping_matrix(kernel_method=kernel_method, symmetrize=symmetrize, self_edges=self_edges)
@@ -662,8 +671,8 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         key: str,
         t: int | None = None,
         diffusion_method: Literal["iterative", "spectral"] = "iterative",
-        prediction_postfix: str = "pred",
-        confidence_postfix: str = "conf",
+        prediction_postfix: str = "_pred",
+        confidence_postfix: str = "_conf",
         return_probabilities: bool = False,
         subset_categories: None | list[str] | str = None,
     ) -> pd.DataFrame | None:
@@ -855,19 +864,19 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             conf_vals = np.max(ytab, axis=1).ravel()
         conf = pd.Series(conf_vals, index=self.query.obs_names)
 
-        self.query.obs[f"{key}_{prediction_postfix}"] = pred
-        self.query.obs[f"{key}_{confidence_postfix}"] = conf
+        pred_key = f"{key}{prediction_postfix}"
+        conf_key = f"{key}{confidence_postfix}"
+        self.query.obs[pred_key] = pred
+        self.query.obs[conf_key] = conf
 
         # Add colors if available
         if f"{key}_colors" in self.reference.uns:
             color_lookup = dict(
                 zip(self.reference.obs[key].cat.categories, self.reference.uns[f"{key}_colors"], strict=True)
             )
-            self.query.uns[f"{key}_{prediction_postfix}_colors"] = [
-                color_lookup.get(cat, "#383838") for cat in pred.cat.categories
-            ]
+            self.query.uns[f"{pred_key}_colors"] = [color_lookup.get(cat, "#383838") for cat in pred.cat.categories]
 
-        logger.info("Categorical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
+        logger.info("Categorical data mapped and stored in query.obs['%s'].", pred_key)
 
         # Return probabilities as a sparse pandas DataFrame if requested (never densify)
         if return_probabilities:
@@ -900,6 +909,7 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             index=self.query.obs_names,
         )
 
-        self.query.obs[f"{key}_{prediction_postfix}"] = pred
+        pred_key = f"{key}{prediction_postfix}"
+        self.query.obs[pred_key] = pred
 
-        logger.info("Numerical data mapped and stored in query.obs['%s'].", f"{key}_{prediction_postfix}")
+        logger.info("Numerical data mapped and stored in query.obs['%s'].", pred_key)

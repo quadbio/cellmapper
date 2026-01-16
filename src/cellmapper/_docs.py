@@ -18,7 +18,7 @@ diffusion_method
 
 _prediction_postfix = """\
 prediction_postfix
-    Postfix to add to mapped variables to identify them as predictions."""
+    Postfix to append to mapped variable names (including any separator, e.g. "_pred"). Use "" for no postfix."""
 
 _symmetrize = """\
 symmetrize

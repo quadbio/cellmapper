@@ -82,7 +82,7 @@ class TestQueryToReferenceMapping:
             obs_keys="leiden",
             use_rep="X_pca",
             n_neighbors=1,
-            prediction_postfix="transfer",
+            prediction_postfix="_transfer",
             # For n_neighbors=1 identity mapping, we need self-edges and no symmetrization
             symmetrize=False,
             self_edges=True,

@@ -110,6 +110,48 @@ class _FaissGpuBackend(_KNNBackend):
         return distances, indices
 
 
+def _batched_query(
+    backend: "_KNNBackend",
+    points: np.ndarray,
+    k: int,
+    batch_size: int | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Query a k-NN backend in batches to avoid memory issues.
+
+    Parameters
+    ----------
+    backend
+        The k-NN backend to query.
+    points
+        Query points.
+    k
+        Number of neighbors to query.
+    batch_size
+        Number of query points per batch. If None, no batching is applied.
+
+    Returns
+    -------
+    Tuple of (distances, indices) arrays.
+    """
+    n_points = points.shape[0]
+
+    if batch_size is None or n_points <= batch_size:
+        return backend.query(points, k)
+
+    all_distances = []
+    all_indices = []
+
+    for start in range(0, n_points, batch_size):
+        end = min(start + batch_size, n_points)
+        batch = points[start:end]
+        dist, idx = backend.query(batch, k)
+        all_distances.append(dist)
+        all_indices.append(idx)
+
+    return np.vstack(all_distances), np.vstack(all_indices)
+
+
 class _RapidsBackend(_KNNBackend):
     def __init__(
         self,
@@ -143,6 +185,9 @@ class _RapidsBackend(_KNNBackend):
     def query(self, points: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
         points_gpu = self.cp.asarray(points)
         distances, indices = self._nn.kneighbors(points_gpu)
+        # Free GPU memory
+        del points_gpu
+        self.cp.get_default_memory_pool().free_all_blocks()
         return distances, indices
 
 

@@ -71,7 +71,7 @@ class EvaluationMixin:
     """Mixin class for evaluation-related methods for CellMapper."""
 
     def register_external_predictions(
-        self, label_key: str, prediction_postfix: str = "pred", confidence_postfix: str = "conf"
+        self, label_key: str, prediction_postfix: str = "_pred", confidence_postfix: str = "_conf"
     ) -> None:
         """
         Register externally computed predictions for evaluation.
@@ -99,8 +99,8 @@ class EvaluationMixin:
         - ``confidence_postfix``: Postfix for confidence column.
         """
         # Verify that the expected columns exist
-        pred_col = f"{label_key}_{prediction_postfix}"
-        conf_col = f"{label_key}_{confidence_postfix}"
+        pred_col = f"{label_key}{prediction_postfix}"
+        conf_col = f"{label_key}{confidence_postfix}"
 
         if pred_col not in self.query.obs.columns:
             raise ValueError(f"Prediction column '{pred_col}' not found in query.obs")
@@ -163,8 +163,8 @@ class EvaluationMixin:
 
         # Extract ground-truth and predicted labels
         y_true = self.query.obs[label_key].dropna()
-        y_pred = self.query.obs.loc[y_true.index, f"{label_key}_{self.prediction_postfix}"]
-        confidence = self.query.obs.loc[y_true.index, f"{label_key}_{self.confidence_postfix}"]
+        y_pred = self.query.obs.loc[y_true.index, f"{label_key}{pred_postfix}"]
+        confidence = self.query.obs.loc[y_true.index, f"{label_key}{conf_postfix}"]
 
         # Apply confidence cutoff
         valid_indices = confidence >= confidence_cutoff
@@ -203,32 +203,67 @@ class EvaluationMixin:
         self.label_transfer_report = pd.DataFrame(report).transpose()
 
     def plot_confusion_matrix(
-        self, label_key: str, figsize=(10, 8), cmap="viridis", save: str | Path | None = None, **kwargs
+        self,
+        label_key: str,
+        subset: np.ndarray | pd.Series | None = None,
+        figsize: tuple[int, int] = (10, 8),
+        cmap: str = "viridis",
+        save: str | Path | None = None,
+        **kwargs,
     ) -> None:
         """
         Plot the confusion matrix as a heatmap using sklearn's ConfusionMatrixDisplay.
 
         Parameters
         ----------
+        label_key
+            Key in .obs storing ground-truth cell type annotations.
+        subset
+            Boolean mask to select a subset of cells for the confusion matrix.
+            Must have the same length as query.obs or be a pandas Series indexed by obs_names.
         figsize
             Size of the figure (width, height). Default is (10, 8).
         cmap
             Colormap to use for the heatmap. Default is "viridis".
-        label_key
-            Key in .obs storing ground-truth cell type annotations.
+        save
+            Path to save the figure. If None, the figure is not saved.
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
         """
         if self.prediction_postfix is None or self.confidence_postfix is None:
             raise ValueError("Label transfer has not been performed. Call map_obs() first.")
 
-        # Extract true and predicted labels
-        y_true = self.query.obs[label_key].dropna()
-        y_pred = self.query.obs.loc[y_true.index, f"{label_key}_pred"]
+        # Extract true and predicted labels, dropping NaNs from both
+        y_true = self.query.obs[label_key]
+        y_pred = self.query.obs[f"{label_key}{self.prediction_postfix}"]
+        valid_mask = y_true.notna() & y_pred.notna()
+        y_true = y_true[valid_mask]
+        y_pred = y_pred[valid_mask]
+
+        # Apply subset filter if provided
+        if subset is not None:
+            if isinstance(subset, pd.Series):
+                subset = subset.loc[y_true.index]
+            else:
+                # Assume boolean array aligned with query.obs, reindex to y_true
+                subset = pd.Series(subset, index=self.query.obs_names).loc[y_true.index]
+            y_true = y_true[subset]
+            y_pred = y_pred[subset]
+
+        # Get union of categories if categorical, to handle mismatched category sets
+        # Also convert to string to avoid sklearn interpreting float categories as continuous
+        labels = None
+        if hasattr(y_true, "cat") and hasattr(y_pred, "cat"):
+            all_categories = y_true.cat.categories.union(y_pred.cat.categories)
+            labels = [str(c) for c in sorted(all_categories)]
+            y_true = y_true.astype(str)
+            y_pred = y_pred.astype(str)
 
         # Plot confusion matrix using sklearn's ConfusionMatrixDisplay
         _, ax = plt.subplots(1, 1, figsize=figsize)
-        ConfusionMatrixDisplay.from_predictions(y_true, y_pred, cmap=cmap, xticks_rotation="vertical", ax=ax, **kwargs)
+        ConfusionMatrixDisplay.from_predictions(
+            y_true, y_pred, labels=labels, cmap=cmap, xticks_rotation="vertical", ax=ax, **kwargs
+        )
         plt.title("Confusion Matrix")
 
         if save:

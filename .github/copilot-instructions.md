@@ -4,6 +4,7 @@
 - Avoid drafting summary documents or endless markdown files. Just summarize in chat what you did, why, and any open questions.
 - Don't update Jupyter notebooks - those are managed manually.
 - When running terminal commands, use `uv run` to execute commands within the project's virtual environment (e.g., `uv run python script.py`).
+- **Testing: ALWAYS use `hatch test`, NEVER `uv run pytest` or standalone pytest.** Hatch manages the test matrix (Python versions, dependencies) that CI uses. See "Testing Strategy" section for details.
 - Rather than making assumptions, ask for clarification when uncertain.
 - **GitHub workflows**: Use GitHub CLI (`gh`) when possible. For GitHub MCP server tools, ensure Docker Desktop is running first (`open -a "Docker Desktop"`).
 
