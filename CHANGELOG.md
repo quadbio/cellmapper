@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.2.5]
+
+### Added
+- Added `batch_size` parameter to `Kernel.compute_neighbors()` for backend-agnostic batching {pr}`60`
+- Added `subset` parameter to `plot_confusion_matrix()` for filtering cells {pr}`60`
+- Added Python 3.14 support {pr}`62`
+
+### Changed
+- Default postfixes now include underscore: `"_pred"` and `"_conf"` instead of `"pred"` and `"conf"` {pr}`60`
+- Switched from MathJax to KaTeX for documentation math rendering {pr}`61`
+- Updated GitHub Actions to latest versions (checkout v5, setup-uv v7) {pr}`61`
+- Updated test matrix to Python 3.11/3.14 {pr}`62`
+
+### Fixed
+- Fixed `PackageNotFoundError` when checking rapids availability in conda environments {pr}`60`
+- Fixed stale k-NN state when `compute_neighbors()` fails {pr}`60`
+- Fixed `plot_confusion_matrix()` handling of NaN values in both y_true and y_pred {pr}`60`
+- Fixed `plot_confusion_matrix()` handling of mismatched category sets {pr}`60`
+- Fixed `plot_confusion_matrix()` handling of float categories {pr}`60`
+- Fixed `importlib.resources.files()` compatibility with Python 3.14 {pr}`62`
+
+## [v0.2.4]
+
+### Changed
+- Deprecated Python 3.10 support {pr}`55`
+- Updated to cookiecutter-scverse template v0.6.0 {pr}`54`
+
 ## [v0.2.3]
 
 ### Changed
