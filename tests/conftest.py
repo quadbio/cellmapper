@@ -1,4 +1,4 @@
-from importlib.resources import files
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -6,6 +6,9 @@ import pytest
 import scanpy as sc
 
 from cellmapper.model.cellmapper import CellMapper
+
+# Get the tests directory path
+TESTS_DIR = Path(__file__).parent
 
 
 @pytest.fixture
@@ -31,7 +34,7 @@ def small_data():
 @pytest.fixture
 def precomputed_leiden():
     """Fixture to load precomputed leiden clustering."""
-    data_path = files("tests.data") / "precomputed_leiden.csv"
+    data_path = TESTS_DIR / "data" / "precomputed_leiden.csv"
     leiden_cl = pd.read_csv(str(data_path), index_col=0)["leiden"]
 
     return leiden_cl
