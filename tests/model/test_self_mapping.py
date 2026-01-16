@@ -109,11 +109,12 @@ class TestUMAPConnectivityValidation:
             assert (nbhs.connectivities - conn_cmap).nnz == 0, "Connectivity matrices should be identical"
         else:
             # For approximate methods, check correlation instead of exact equality
-            # Both matrices should have similar structure and values
+            # pynndescent uses SIMD and produces different results on different platforms
+            # (macOS ARM ~0.99, Linux x86 ~0.97), so we use a relaxed threshold
             sc_dense = nbhs.connectivities.toarray().flatten()
             cm_dense = conn_cmap.toarray().flatten()
             correlation = np.corrcoef(sc_dense, cm_dense)[0, 1]
-            assert correlation > 0.99, f"Connectivity matrices should be highly correlated, got {correlation:.4f}"
+            assert correlation > 0.95, f"Connectivity matrices should be highly correlated, got {correlation:.4f}"
 
         # Validate matrix properties
         assert (conn_cmap - conn_cmap.T).nnz == 0, "CellMapper connectivity matrix should be symmetric"
