@@ -5,10 +5,13 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 # -- Path setup --------------------------------------------------------------
+import shutil
 import sys
 from datetime import datetime
 from importlib.metadata import metadata
 from pathlib import Path
+
+from sphinxcontrib import katex
 
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE / "extensions"))
@@ -19,7 +22,7 @@ sys.path.insert(0, str(HERE / "extensions"))
 # NOTE: If you installed your project in editable mode, this might be stale.
 #       If this is the case, reinstall it to refresh the metadata
 info = metadata("cellmapper")
-project_name = info["Name"]
+project = info["Name"]
 author = info["Author"]
 copyright = f"{datetime.now():%Y}, {author}."
 version = info["Version"]
@@ -37,7 +40,7 @@ needs_sphinx = "4.0"
 html_context = {
     "display_github": True,  # Integrate GitHub
     "github_user": "quadbio",
-    "github_repo": project_name,
+    "github_repo": project,
     "github_version": "main",
     "conf_py_path": "/docs/",
 }
@@ -54,9 +57,9 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinxcontrib.bibtex",
+    "sphinxcontrib.katex",
     "sphinx_autodoc_typehints",
     "sphinx_tabs.tabs",
-    "sphinx.ext.mathjax",
     "IPython.sphinxext.ipython_console_highlighting",
     "sphinxext.opengraph",
     *[p.stem for p in (HERE / "extensions").glob("*.py")],
@@ -121,7 +124,7 @@ html_theme = "sphinx_book_theme"
 html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
 
-html_title = project_name
+html_title = project
 
 html_theme_options = {
     "repository_url": repository_url,
@@ -135,6 +138,7 @@ html_theme_options = {
 }
 
 pygments_style = "default"
+katex_prerender = shutil.which(katex.NODEJS_BINARY) is not None
 
 nitpick_ignore = [
     # If building the documentation fails because of a missing link that is outside your control,
