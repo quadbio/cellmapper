@@ -84,6 +84,7 @@ class TestUMAPConnectivityValidation:
             method="umap",
             metric="euclidean",
             transformer=transformer,
+            random_state=42,  # Fix for reproducibility across platforms
         )
 
         # Store scanpy results
