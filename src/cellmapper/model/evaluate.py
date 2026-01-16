@@ -289,8 +289,8 @@ class EvaluationMixin:
             ax.xaxis.tick_top()
             ax.xaxis.set_label_position("top")
             ax.set_title("")  # Remove title to avoid overlap
-            # Rotate labels to point outward (opposite direction from bottom)
-            plt.setp(ax.get_xticklabels(), rotation=90, ha="left", rotation_mode="anchor")
+            # Rotate labels to point outward, centered on tick
+            plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="bottom")
 
         # Add annotation color bars if colors are available
         if show_annotation_colors and labels is not None:
