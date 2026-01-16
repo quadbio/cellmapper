@@ -212,6 +212,7 @@ class EvaluationMixin:
         ax: plt.Axes | None = None,
         show_annotation_colors: bool = True,
         xlabel_position: Literal["bottom", "top"] = "bottom",
+        show_grid: bool = True,
         **kwargs,
     ) -> plt.Axes:
         """
@@ -237,6 +238,8 @@ class EvaluationMixin:
             from ``adata.uns[f"{label_key}_colors"]``. Default is True.
         xlabel_position
             Position of x-axis tick labels. Either "bottom" (default) or "top".
+        show_grid
+            Whether to show gridlines on the heatmap. Default is True.
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
 
@@ -283,6 +286,10 @@ class EvaluationMixin:
             y_true, y_pred, labels=labels, cmap=cmap, xticks_rotation="vertical", ax=ax, **kwargs
         )
         ax.set_title("Confusion Matrix")
+
+        # Optionally hide gridlines
+        if not show_grid:
+            ax.grid(False)
 
         # Move x-axis labels to top if requested
         if xlabel_position == "top":
