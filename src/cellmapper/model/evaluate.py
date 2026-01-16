@@ -210,6 +210,8 @@ class EvaluationMixin:
         cmap: str = "viridis",
         save: str | Path | None = None,
         ax: plt.Axes | None = None,
+        show_annotation_colors: bool = True,
+        annotation_colors_size: float = 0.3,
         **kwargs,
     ) -> plt.Axes:
         """
@@ -230,6 +232,11 @@ class EvaluationMixin:
             Path to save the figure. If None, the figure is not saved.
         ax
             Matplotlib axes to plot on. If None, a new figure and axes are created.
+        show_annotation_colors
+            Whether to show colored bars along axes corresponding to category colors
+            from ``adata.uns[f"{label_key}_colors"]``. Default is True.
+        annotation_colors_size
+            Size of the annotation color bars as a fraction of the cell size. Default is 0.3.
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
 
@@ -276,6 +283,45 @@ class EvaluationMixin:
             y_true, y_pred, labels=labels, cmap=cmap, xticks_rotation="vertical", ax=ax, **kwargs
         )
         ax.set_title("Confusion Matrix")
+
+        # Add annotation color bars if colors are available
+        if show_annotation_colors and labels is not None:
+            colors_key = f"{label_key}_colors"
+            # Try to get colors from query first, then reference
+            colors_dict = None
+            for adata in [self.query, self.reference]:
+                if adata is not None and colors_key in adata.uns:
+                    categories = adata.obs[label_key].cat.categories
+                    colors_dict = dict(zip(categories.astype(str), adata.uns[colors_key], strict=True))
+                    break
+
+            if colors_dict is not None:
+                from matplotlib.patches import Rectangle
+
+                n_labels = len(labels)
+                for i, label in enumerate(labels):
+                    color = colors_dict.get(label, "gray")
+                    # Add color bar on left (y-axis, true labels)
+                    rect_y = Rectangle(
+                        (-annotation_colors_size, i),
+                        annotation_colors_size,
+                        1,
+                        facecolor=color,
+                        edgecolor="none",
+                        clip_on=False,
+                        transform=ax.get_yaxis_transform(),
+                    )
+                    ax.add_patch(rect_y)
+                    # Add color bar on top (x-axis, predicted labels)
+                    rect_x = Rectangle(
+                        (i, n_labels),
+                        1,
+                        annotation_colors_size * n_labels,
+                        facecolor=color,
+                        edgecolor="none",
+                        clip_on=False,
+                    )
+                    ax.add_patch(rect_x)
 
         if save:
             ax.figure.savefig(save, bbox_inches="tight")
