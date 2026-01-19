@@ -339,8 +339,8 @@ class EvaluationMixin:
                 colors_list = [colors_dict.get(label, "gray") for label in labels]
                 n_labels = len(labels)
 
-                # Color strip thickness as fraction of plot
-                strip_size = 0.03
+                # Color strip thickness in data coordinates (fraction of a cell)
+                strip_size = 0.4
 
                 # Move x-axis labels to top if requested
                 if xlabel_position == "top":
@@ -348,40 +348,38 @@ class EvaluationMixin:
                     ax.xaxis.set_label_position("top")
                     plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="bottom")
 
-                # Draw color strips using rectangles in axes coordinates
+                # Draw color strips using rectangles in data coordinates
+                # Place strips at the edge of the heatmap, inside the plot area
                 for i, color in enumerate(colors_list):
-                    # Left strip (y-axis, true labels)
+                    # Left strip (y-axis, true labels) - placed at x=-0.5 edge
                     rect_left = Rectangle(
-                        (-strip_size, i / n_labels),
+                        (-0.5 - strip_size, i - 0.5),
                         strip_size,
-                        1 / n_labels,
+                        1,
                         facecolor=color,
                         edgecolor="none",
                         clip_on=False,
-                        transform=ax.transAxes,
                     )
                     ax.add_patch(rect_left)
 
                     # Top or bottom strip (x-axis, predicted labels)
                     if xlabel_position == "top":
                         rect_x = Rectangle(
-                            (i / n_labels, 1),
-                            1 / n_labels,
+                            (i - 0.5, n_labels - 0.5),
+                            1,
                             strip_size,
                             facecolor=color,
                             edgecolor="none",
                             clip_on=False,
-                            transform=ax.transAxes,
                         )
                     else:
                         rect_x = Rectangle(
-                            (i / n_labels, -strip_size),
-                            1 / n_labels,
+                            (i - 0.5, -0.5 - strip_size),
+                            1,
                             strip_size,
                             facecolor=color,
                             edgecolor="none",
                             clip_on=False,
-                            transform=ax.transAxes,
                         )
                     ax.add_patch(rect_x)
 
