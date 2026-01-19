@@ -45,7 +45,7 @@ def _get_category_colors(
     colors_key = f"{label_key}_colors"
     colors_dict: dict[str, str] = {}
 
-    if adata is not None and colors_key in adata.uns:
+    if adata is not None and hasattr(adata, "uns") and colors_key in adata.uns:
         full_categories = adata.obs[label_key].cat.categories
         full_colors = adata.uns[colors_key]
         for i, cat in enumerate(full_categories):
