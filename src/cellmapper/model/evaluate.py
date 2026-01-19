@@ -313,8 +313,8 @@ class EvaluationMixin:
         if not show_grid:
             ax.grid(False)
 
-        # Move x-axis labels to top if requested
-        if xlabel_position == "top":
+        # Move x-axis labels to top if requested (only relevant when annotation colors are not shown)
+        if xlabel_position == "top" and not show_annotation_colors:
             ax.xaxis.tick_top()
             ax.xaxis.set_label_position("top")
             ax.set_title("")  # Remove title to avoid overlap
@@ -333,35 +333,39 @@ class EvaluationMixin:
                     break
 
             if colors_dict is not None:
-                from matplotlib.colors import ListedColormap
+                import matplotlib as mpl
+                from matplotlib.colors import BoundaryNorm, ListedColormap
                 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
                 # Get colors in label order
                 colors_list = [colors_dict.get(label, "gray") for label in labels]
                 cat_cmap = ListedColormap(colors_list)
                 n_labels = len(labels)
+                bounds = np.arange(n_labels + 1)
+                norm = BoundaryNorm(bounds, cat_cmap.N)
+                sm = mpl.cm.ScalarMappable(cmap=cat_cmap, norm=norm)
+
+                # Remove tick labels from main heatmap (will be on color bar axes)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.set_xlabel("")
+                ax.set_ylabel("")
 
                 divider = make_axes_locatable(ax)
 
                 # Add color bar on top (x-axis, predicted labels)
-                col_ax = divider.append_axes("top", size="2%", pad=0.05)
-                col_ax.imshow(
-                    np.arange(n_labels).reshape(1, -1),
-                    cmap=cat_cmap,
-                    aspect="auto",
-                )
-                col_ax.set_xticks([])
-                col_ax.set_yticks([])
+                col_ax = divider.append_axes("top", size="2%", pad=0)
+                cb_col = ax.figure.colorbar(sm, cax=col_ax, orientation="horizontal", ticklocation="top")
+                cb_col.set_ticks(np.arange(n_labels) + 0.5)
+                cb_col.ax.set_xticklabels(labels, rotation=90, ha="center", fontsize="small")
+                cb_col.ax.tick_params(length=0)  # hide tick marks
 
                 # Add color bar on left (y-axis, true labels)
-                row_ax = divider.append_axes("left", size="2%", pad=0.05)
-                row_ax.imshow(
-                    np.arange(n_labels).reshape(-1, 1),
-                    cmap=cat_cmap,
-                    aspect="auto",
-                )
-                row_ax.set_xticks([])
-                row_ax.set_yticks([])
+                row_ax = divider.append_axes("left", size="2%", pad=0)
+                cb_row = ax.figure.colorbar(sm, cax=row_ax, orientation="vertical", ticklocation="left")
+                cb_row.set_ticks(np.arange(n_labels) + 0.5)
+                cb_row.ax.set_yticklabels(labels[::-1], fontsize="small")  # reversed to match heatmap
+                cb_row.ax.tick_params(length=0)  # hide tick marks
 
         if save:
             ax.figure.savefig(save, bbox_inches="tight")
