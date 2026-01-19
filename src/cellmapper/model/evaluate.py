@@ -339,10 +339,8 @@ class EvaluationMixin:
                 colors_list = [colors_dict.get(label, "gray") for label in labels]
                 n_labels = len(labels)
 
-                # Color strip thickness and offset in data coordinates (fraction of a cell)
+                # Color strip thickness in data coordinates (fraction of a cell)
                 strip_size = 0.8
-                # Offset to leave room for tick labels (adjust based on label length)
-                label_offset = 1.5
 
                 # Move x-axis labels to top if requested
                 if xlabel_position == "top":
@@ -350,12 +348,17 @@ class EvaluationMixin:
                     ax.xaxis.set_label_position("top")
                     plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="bottom")
 
+                # Pad tick labels outward to make room for color strips
+                # Convert strip_size from data coords to points (approximate)
+                ax.tick_params(axis="y", pad=strip_size * 15)
+                ax.tick_params(axis="x", pad=strip_size * 15)
+
                 # Draw color strips using rectangles in data coordinates
                 # Note: imshow has origin='upper', so y-axis is inverted (y=0 at top)
                 for i, color in enumerate(colors_list):
-                    # Left strip (y-axis, true labels) - offset to leave room for labels
+                    # Left strip (y-axis, true labels) - right at the heatmap edge
                     rect_left = Rectangle(
-                        (-0.5 - label_offset - strip_size, i - 0.5),
+                        (-0.5 - strip_size, i - 0.5),
                         strip_size,
                         1,
                         facecolor=color,
@@ -368,7 +371,7 @@ class EvaluationMixin:
                     # y-axis is inverted: smaller y = visually at top
                     if xlabel_position == "top":
                         rect_x = Rectangle(
-                            (i - 0.5, -0.5 - label_offset - strip_size),
+                            (i - 0.5, -0.5 - strip_size),
                             1,
                             strip_size,
                             facecolor=color,
@@ -377,7 +380,7 @@ class EvaluationMixin:
                         )
                     else:
                         rect_x = Rectangle(
-                            (i - 0.5, n_labels - 0.5 + label_offset),
+                            (i - 0.5, n_labels - 0.5),
                             1,
                             strip_size,
                             facecolor=color,
