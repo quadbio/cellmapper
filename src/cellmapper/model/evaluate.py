@@ -213,6 +213,7 @@ class EvaluationMixin:
         show_annotation_colors: bool = True,
         xlabel_position: Literal["bottom", "top"] = "bottom",
         show_grid: bool = True,
+        min_cells: int | None = None,
         **kwargs,
     ) -> plt.Axes:
         """
@@ -240,6 +241,10 @@ class EvaluationMixin:
             Position of x-axis tick labels. Either "bottom" (default) or "top".
         show_grid
             Whether to show gridlines on the heatmap. Default is True.
+        min_cells
+            Minimum number of cells required for a category to be included in the confusion matrix.
+            Categories with fewer cells in both true and predicted labels are filtered out.
+            If None, all categories are shown.
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
 
@@ -267,6 +272,23 @@ class EvaluationMixin:
                 subset = pd.Series(subset, index=self.query.obs_names).loc[y_true.index]
             y_true = y_true[subset]
             y_pred = y_pred[subset]
+
+        # Filter categories by minimum cell count
+        if min_cells is not None:
+            true_counts = y_true.value_counts()
+            pred_counts = y_pred.value_counts()
+            # Keep categories that have at least min_cells in either true or predicted
+            valid_categories = set(true_counts[true_counts >= min_cells].index) | set(
+                pred_counts[pred_counts >= min_cells].index
+            )
+            mask = y_true.isin(valid_categories) & y_pred.isin(valid_categories)
+            y_true = y_true[mask]
+            y_pred = y_pred[mask]
+            # Update categories if categorical
+            if hasattr(y_true, "cat"):
+                y_true = y_true.cat.remove_unused_categories()
+            if hasattr(y_pred, "cat"):
+                y_pred = y_pred.cat.remove_unused_categories()
 
         # Get union of categories if categorical, to handle mismatched category sets
         # Also convert to string to avoid sklearn interpreting float categories as continuous
