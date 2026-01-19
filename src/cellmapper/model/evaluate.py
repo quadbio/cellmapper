@@ -340,7 +340,7 @@ class EvaluationMixin:
                 n_labels = len(labels)
 
                 # Color strip thickness in data coordinates (fraction of a cell)
-                strip_size = 0.4
+                strip_size = 0.8
 
                 # Move x-axis labels to top if requested
                 if xlabel_position == "top":
@@ -349,7 +349,7 @@ class EvaluationMixin:
                     plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="bottom")
 
                 # Draw color strips using rectangles in data coordinates
-                # Place strips at the edge of the heatmap, inside the plot area
+                # Note: imshow has origin='upper', so y-axis is inverted (y=0 at top)
                 for i, color in enumerate(colors_list):
                     # Left strip (y-axis, true labels) - placed at x=-0.5 edge
                     rect_left = Rectangle(
@@ -363,9 +363,10 @@ class EvaluationMixin:
                     ax.add_patch(rect_left)
 
                     # Top or bottom strip (x-axis, predicted labels)
+                    # y-axis is inverted: smaller y = visually at top
                     if xlabel_position == "top":
                         rect_x = Rectangle(
-                            (i - 0.5, n_labels - 0.5),
+                            (i - 0.5, -0.5 - strip_size),
                             1,
                             strip_size,
                             facecolor=color,
@@ -374,7 +375,7 @@ class EvaluationMixin:
                         )
                     else:
                         rect_x = Rectangle(
-                            (i - 0.5, -0.5 - strip_size),
+                            (i - 0.5, n_labels - 0.5),
                             1,
                             strip_size,
                             facecolor=color,
