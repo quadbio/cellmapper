@@ -333,16 +333,19 @@ class EvaluationMixin:
         # Add annotation color bars if colors are available
         if show_annotation_colors and labels is not None:
             colors_key = f"{label_key}_colors"
-            # Try to get colors from query first, then reference
+            # Try to get colors from reference first (source of labels), then query
             colors_dict = None
-            for adata in [self.query, self.reference]:
+            for adata in [self.reference, self.query]:
                 if adata is not None and colors_key in adata.uns:
                     # Get full categories and colors from adata
+                    # Colors are stored in same order as .cat.categories
                     full_categories = adata.obs[label_key].cat.categories
                     full_colors = adata.uns[colors_key]
-                    # Handle case where colors list might be shorter (only create dict for available pairs)
-                    n_pairs = min(len(full_categories), len(full_colors))
-                    colors_dict = {str(full_categories[i]): full_colors[i] for i in range(n_pairs)}
+                    # Build dict mapping category name -> color
+                    colors_dict = {}
+                    for i, cat in enumerate(full_categories):
+                        if i < len(full_colors):
+                            colors_dict[str(cat)] = full_colors[i]
                     break
 
             if colors_dict is not None:
