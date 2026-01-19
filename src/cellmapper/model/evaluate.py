@@ -588,7 +588,8 @@ class EvaluationMixin:
 
         # Annotation color strips
         if show_annotation_colors:
-            row_colors = _get_category_colors([self.reference, self.query], label_key, list(cm_display.index))
+            # Row colors (true labels) from query, column colors (predicted) from reference
+            row_colors = _get_category_colors([self.query, self.reference], label_key, list(cm_display.index))
             col_colors = _get_category_colors([self.reference, self.query], label_key, list(cm_display.columns))
             _draw_annotation_strips(ax, row_colors, col_colors, xlabel_position)
 
