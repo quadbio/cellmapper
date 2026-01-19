@@ -333,49 +333,57 @@ class EvaluationMixin:
                     break
 
             if colors_dict is not None:
-                import matplotlib as mpl
-                from matplotlib.colors import BoundaryNorm, ListedColormap
-                from mpl_toolkits.axes_grid1 import make_axes_locatable
+                from matplotlib.patches import Rectangle
 
                 # Get colors in label order
                 colors_list = [colors_dict.get(label, "gray") for label in labels]
-                cat_cmap = ListedColormap(colors_list)
                 n_labels = len(labels)
-                bounds = np.arange(n_labels + 1)
-                norm = BoundaryNorm(bounds, cat_cmap.N)
-                sm = mpl.cm.ScalarMappable(cmap=cat_cmap, norm=norm)
 
-                # Remove tick labels from main heatmap (will be on color bar axes)
-                ax.set_xticks([])
-                ax.set_yticks([])
-                ax.set_xlabel("")
-                ax.set_ylabel("")
-                ax.set_title("")  # Remove title when using annotation colors
+                # Color strip thickness as fraction of plot
+                strip_size = 0.03
 
-                divider = make_axes_locatable(ax)
-
-                # Determine x-axis label position
+                # Move x-axis labels to top if requested
                 if xlabel_position == "top":
-                    # Add color bar on top (x-axis, predicted labels)
-                    col_ax = divider.append_axes("top", size="2%", pad=0)
-                    cb_col = ax.figure.colorbar(sm, cax=col_ax, orientation="horizontal", ticklocation="top")
-                    cb_col.set_ticks(np.arange(n_labels) + 0.5)
-                    cb_col.ax.set_xticklabels(labels, rotation=90, ha="center", fontsize="small")
-                    cb_col.ax.tick_params(length=0)
-                else:
-                    # Add color bar on bottom (x-axis, predicted labels)
-                    col_ax = divider.append_axes("bottom", size="2%", pad=0)
-                    cb_col = ax.figure.colorbar(sm, cax=col_ax, orientation="horizontal", ticklocation="bottom")
-                    cb_col.set_ticks(np.arange(n_labels) + 0.5)
-                    cb_col.ax.set_xticklabels(labels, rotation=90, ha="center", va="top", fontsize="small")
-                    cb_col.ax.tick_params(length=0)
+                    ax.xaxis.tick_top()
+                    ax.xaxis.set_label_position("top")
+                    plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="bottom")
 
-                # Add color bar on left (y-axis, true labels)
-                row_ax = divider.append_axes("left", size="2%", pad=0)
-                cb_row = ax.figure.colorbar(sm, cax=row_ax, orientation="vertical", ticklocation="left")
-                cb_row.set_ticks(np.arange(n_labels) + 0.5)
-                cb_row.ax.set_yticklabels(labels[::-1], fontsize="small")  # reversed to match heatmap
-                cb_row.ax.tick_params(length=0)
+                # Draw color strips using rectangles in axes coordinates
+                for i, color in enumerate(colors_list):
+                    # Left strip (y-axis, true labels)
+                    rect_left = Rectangle(
+                        (-strip_size, i / n_labels),
+                        strip_size,
+                        1 / n_labels,
+                        facecolor=color,
+                        edgecolor="none",
+                        clip_on=False,
+                        transform=ax.transAxes,
+                    )
+                    ax.add_patch(rect_left)
+
+                    # Top or bottom strip (x-axis, predicted labels)
+                    if xlabel_position == "top":
+                        rect_x = Rectangle(
+                            (i / n_labels, 1),
+                            1 / n_labels,
+                            strip_size,
+                            facecolor=color,
+                            edgecolor="none",
+                            clip_on=False,
+                            transform=ax.transAxes,
+                        )
+                    else:
+                        rect_x = Rectangle(
+                            (i / n_labels, -strip_size),
+                            1 / n_labels,
+                            strip_size,
+                            facecolor=color,
+                            edgecolor="none",
+                            clip_on=False,
+                            transform=ax.transAxes,
+                        )
+                    ax.add_patch(rect_x)
 
         if save:
             ax.figure.savefig(save, bbox_inches="tight")
