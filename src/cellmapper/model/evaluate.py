@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 def _get_category_colors(
-    adata_list: list["AnnData"],
+    adata: "AnnData | None",
     label_key: str,
     categories: list[str],
 ) -> list[str]:
@@ -31,8 +31,8 @@ def _get_category_colors(
 
     Parameters
     ----------
-    adata_list
-        List of AnnData objects to search for colors (in order of priority).
+    adata
+        AnnData object to get colors from.
     label_key
         Key in .obs storing the categorical annotation.
     categories
@@ -45,17 +45,12 @@ def _get_category_colors(
     colors_key = f"{label_key}_colors"
     colors_dict: dict[str, str] = {}
 
-    # Collect colors from all adatas (first found takes priority)
-    for adata in adata_list:
-        if adata is not None and colors_key in adata.uns:
-            full_categories = adata.obs[label_key].cat.categories
-            full_colors = adata.uns[colors_key]
-            for i, cat in enumerate(full_categories):
-                if i < len(full_colors):
-                    cat_str = str(cat)
-                    # Only add if not already found (first adata takes priority)
-                    if cat_str not in colors_dict:
-                        colors_dict[cat_str] = full_colors[i]
+    if adata is not None and colors_key in adata.uns:
+        full_categories = adata.obs[label_key].cat.categories
+        full_colors = adata.uns[colors_key]
+        for i, cat in enumerate(full_categories):
+            if i < len(full_colors):
+                colors_dict[str(cat)] = full_colors[i]
 
     return [colors_dict.get(str(cat), "gray") for cat in categories]
 
@@ -589,8 +584,8 @@ class EvaluationMixin:
         # Annotation color strips
         if show_annotation_colors:
             # Row colors (true labels) from query, column colors (predicted) from reference
-            row_colors = _get_category_colors([self.query, self.reference], label_key, list(cm_display.index))
-            col_colors = _get_category_colors([self.reference, self.query], label_key, list(cm_display.columns))
+            row_colors = _get_category_colors(self.query, label_key, list(cm_display.index))
+            col_colors = _get_category_colors(self.reference, label_key, list(cm_display.columns))
             _draw_annotation_strips(ax, row_colors, col_colors, xlabel_position)
 
         if save:
