@@ -346,10 +346,6 @@ class EvaluationMixin:
 
                 # Get colors in label order
                 colors_list = [colors_dict.get(label, "gray") for label in labels]
-                n_labels = len(labels)
-
-                # Color strip thickness in data coordinates (fraction of a cell)
-                strip_size = 0.8
 
                 # Move x-axis labels to top if requested
                 if xlabel_position == "top":
@@ -357,44 +353,52 @@ class EvaluationMixin:
                     ax.xaxis.set_label_position("top")
                     plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="bottom")
 
-                # Pad tick labels outward to make room for color strips
-                # Convert strip_size from data coords to points (approximate)
-                ax.tick_params(axis="y", pad=strip_size * 15)
-                ax.tick_params(axis="x", pad=strip_size * 15)
+                # Strip width as fraction of axes (2% like moscot)
+                strip_frac = 0.02
+                # Pad tick labels by fixed amount in points
+                ax.tick_params(axis="y", pad=15)
+                ax.tick_params(axis="x", pad=15)
 
-                # Draw color strips using rectangles in data coordinates
-                # Note: imshow has origin='upper', so y-axis is inverted (y=0 at top)
+                # Use blended transform: x in axes coords (0-1), y in data coords
+                # This makes strip width scale with axes, not data
+                trans_left = ax.get_yaxis_transform()  # x=axes, y=data
+                trans_x = ax.get_xaxis_transform()  # x=data, y=axes
+
                 for i, color in enumerate(colors_list):
-                    # Left strip (y-axis, true labels) - right at the heatmap edge
+                    # Left strip: x in axes coords [-strip_frac, 0], y in data coords
                     rect_left = Rectangle(
-                        (-0.5 - strip_size, i - 0.5),
-                        strip_size,
+                        (-strip_frac, i - 0.5),
+                        strip_frac,
                         1,
                         facecolor=color,
                         edgecolor="none",
                         clip_on=False,
+                        transform=trans_left,
                     )
                     ax.add_patch(rect_left)
 
-                    # Top or bottom strip (x-axis, predicted labels)
-                    # y-axis is inverted: smaller y = visually at top
+                    # Top or bottom strip: x in data coords, y in axes coords
                     if xlabel_position == "top":
+                        # Top strip: y in axes coords [1, 1+strip_frac]
                         rect_x = Rectangle(
-                            (i - 0.5, -0.5 - strip_size),
+                            (i - 0.5, 1),
                             1,
-                            strip_size,
+                            strip_frac,
                             facecolor=color,
                             edgecolor="none",
                             clip_on=False,
+                            transform=trans_x,
                         )
                     else:
+                        # Bottom strip: y in axes coords [-strip_frac, 0]
                         rect_x = Rectangle(
-                            (i - 0.5, n_labels - 0.5),
+                            (i - 0.5, -strip_frac),
                             1,
-                            strip_size,
+                            strip_frac,
                             facecolor=color,
                             edgecolor="none",
                             clip_on=False,
+                            transform=trans_x,
                         )
                     ax.add_patch(rect_x)
 
