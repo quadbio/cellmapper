@@ -214,6 +214,7 @@ class EvaluationMixin:
         xlabel_position: Literal["bottom", "top"] = "bottom",
         show_grid: bool = True,
         min_cells: int | None = None,
+        show_yticklabels: bool = True,
         **kwargs,
     ) -> plt.Axes:
         """
@@ -245,6 +246,9 @@ class EvaluationMixin:
             Minimum number of cells required for a category to be included in the confusion matrix.
             Categories with fewer cells in both true and predicted labels are filtered out.
             If None, all categories are shown.
+        show_yticklabels
+            Whether to show y-axis tick labels. Default is True. Set to False for the right
+            subplot when sharing the y-axis between multiple confusion matrices.
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
 
@@ -312,6 +316,11 @@ class EvaluationMixin:
         # Optionally hide gridlines
         if not show_grid:
             ax.grid(False)
+
+        # Optionally hide y-axis tick labels (for shared y-axis in subplots)
+        if not show_yticklabels:
+            ax.set_yticklabels([])
+            ax.set_ylabel("")
 
         # Move x-axis labels to top if requested (when annotation colors are not shown)
         if xlabel_position == "top" and not show_annotation_colors:
