@@ -213,8 +213,7 @@ class EvaluationMixin:
         show_annotation_colors: bool = True,
         xlabel_position: Literal["bottom", "top"] = "bottom",
         show_grid: bool = True,
-        min_cells_true: int | None = None,
-        min_cells_pred: int | None = None,
+        min_cells: int | None = None,
         **kwargs,
     ) -> plt.Axes:
         """
@@ -242,12 +241,10 @@ class EvaluationMixin:
             Position of x-axis tick labels. Either "bottom" (default) or "top".
         show_grid
             Whether to show gridlines on the heatmap. Default is True.
-        min_cells_true
-            Minimum number of cells required for a category to be included based on true labels (rows).
-            Categories with fewer true cells are filtered out. If None, no filtering is applied.
-        min_cells_pred
-            Minimum number of cells required for a category to be included based on predicted labels (columns).
-            Categories with fewer predicted cells are filtered out. If None, no filtering is applied.
+        min_cells
+            Minimum number of cells required for a category to be included in the confusion matrix.
+            Categories with fewer cells in both true and predicted labels are filtered out.
+            If None, all categories are shown.
         **kwargs
             Additional keyword arguments to pass to ConfusionMatrixDisplay.
 
@@ -276,28 +273,14 @@ class EvaluationMixin:
             y_true = y_true[subset]
             y_pred = y_pred[subset]
 
-        # Filter categories by minimum cell count (separately for true and predicted)
-        valid_true_categories = None
-        valid_pred_categories = None
-
-        if min_cells_true is not None:
+        # Filter categories by minimum cell count
+        if min_cells is not None:
             true_counts = y_true.value_counts()
-            valid_true_categories = set(true_counts[true_counts >= min_cells_true].index)
-
-        if min_cells_pred is not None:
             pred_counts = y_pred.value_counts()
-            valid_pred_categories = set(pred_counts[pred_counts >= min_cells_pred].index)
-
-        # Combine filters: keep cells where both true and pred labels pass their respective filters
-        if valid_true_categories is not None or valid_pred_categories is not None:
-            # Start with all categories valid, then intersect with filters
-            if valid_true_categories is not None and valid_pred_categories is not None:
-                valid_categories = valid_true_categories & valid_pred_categories
-            elif valid_true_categories is not None:
-                valid_categories = valid_true_categories
-            else:
-                valid_categories = valid_pred_categories
-
+            # Keep categories that have at least min_cells in either true or predicted
+            valid_categories = set(true_counts[true_counts >= min_cells].index) | set(
+                pred_counts[pred_counts >= min_cells].index
+            )
             mask = y_true.isin(valid_categories) & y_pred.isin(valid_categories)
             y_true = y_true[mask]
             y_pred = y_pred[mask]
