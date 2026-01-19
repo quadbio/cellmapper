@@ -337,8 +337,12 @@ class EvaluationMixin:
             colors_dict = None
             for adata in [self.query, self.reference]:
                 if adata is not None and colors_key in adata.uns:
-                    categories = adata.obs[label_key].cat.categories
-                    colors_dict = dict(zip(categories.astype(str), adata.uns[colors_key], strict=True))
+                    # Get full categories and colors from adata
+                    full_categories = adata.obs[label_key].cat.categories
+                    full_colors = adata.uns[colors_key]
+                    # Handle case where colors list might be shorter (only create dict for available pairs)
+                    n_pairs = min(len(full_categories), len(full_colors))
+                    colors_dict = {str(full_categories[i]): full_colors[i] for i in range(n_pairs)}
                     break
 
             if colors_dict is not None:
