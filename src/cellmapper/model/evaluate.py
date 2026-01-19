@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,7 +8,6 @@ from scipy.sparse import issparse
 from scipy.spatial.distance import jensenshannon
 from scipy.stats import pearsonr, spearmanr
 from sklearn.metrics import (
-    ConfusionMatrixDisplay,
     accuracy_score,
     classification_report,
     f1_score,
@@ -18,6 +17,181 @@ from sklearn.metrics import (
 
 from cellmapper._docs import d
 from cellmapper.logging import logger
+
+if TYPE_CHECKING:
+    from anndata import AnnData
+
+
+def _get_category_colors(
+    adata_list: list["AnnData"],
+    label_key: str,
+    categories: list[str],
+) -> list[str]:
+    """Get colors for categories from adata.uns, falling back to gray.
+
+    Parameters
+    ----------
+    adata_list
+        List of AnnData objects to search for colors (in order of priority).
+    label_key
+        Key in .obs storing the categorical annotation.
+    categories
+        List of category names to get colors for.
+
+    Returns
+    -------
+    List of colors corresponding to each category.
+    """
+    colors_key = f"{label_key}_colors"
+    colors_dict: dict[str, str] = {}
+
+    for adata in adata_list:
+        if adata is not None and colors_key in adata.uns:
+            full_categories = adata.obs[label_key].cat.categories
+            full_colors = adata.uns[colors_key]
+            for i, cat in enumerate(full_categories):
+                if i < len(full_colors):
+                    colors_dict[str(cat)] = full_colors[i]
+            break
+
+    return [colors_dict.get(str(cat), "gray") for cat in categories]
+
+
+def _get_text_color(background_color: str | tuple, threshold: float = 0.5) -> str:
+    """Get contrasting text color (black or white) for a background color.
+
+    Parameters
+    ----------
+    background_color
+        Background color as hex string, named color, or RGB tuple.
+    threshold
+        Luminance threshold for switching between black and white.
+
+    Returns
+    -------
+    "black" or "white" depending on background luminance.
+    """
+    import matplotlib.colors as mcolors
+
+    try:
+        rgb = mcolors.to_rgb(background_color)
+        # Perceived luminance formula
+        luminance = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+        return "white" if luminance < threshold else "black"
+    except ValueError:
+        return "black"
+
+
+def _draw_annotation_strips(
+    ax: plt.Axes,
+    row_colors: list[str],
+    col_colors: list[str],
+    xlabel_position: Literal["bottom", "top"] = "bottom",
+    strip_frac: float = 0.02,
+) -> None:
+    """Draw colored annotation strips along heatmap axes.
+
+    Parameters
+    ----------
+    ax
+        Matplotlib axes containing the heatmap.
+    row_colors
+        Colors for each row (y-axis).
+    col_colors
+        Colors for each column (x-axis).
+    xlabel_position
+        Position of x-axis labels ("bottom" or "top").
+    strip_frac
+        Width of strips as fraction of axes size.
+    """
+    from matplotlib.patches import Rectangle
+
+    # Pad tick labels to make room for strips
+    ax.tick_params(axis="y", pad=15)
+    ax.tick_params(axis="x", pad=15)
+
+    # Use blended transforms for strips
+    trans_left = ax.get_yaxis_transform()  # x=axes, y=data
+    trans_x = ax.get_xaxis_transform()  # x=data, y=axes
+
+    # Draw row strips (left side)
+    for i, color in enumerate(row_colors):
+        rect = Rectangle(
+            (-strip_frac, i - 0.5),
+            strip_frac,
+            1,
+            facecolor=color,
+            edgecolor="none",
+            clip_on=False,
+            transform=trans_left,
+        )
+        ax.add_patch(rect)
+
+    # Draw column strips (top or bottom)
+    y_start = 1 if xlabel_position == "top" else -strip_frac
+    for i, color in enumerate(col_colors):
+        rect = Rectangle(
+            (i - 0.5, y_start),
+            1,
+            strip_frac,
+            facecolor=color,
+            edgecolor="none",
+            clip_on=False,
+            transform=trans_x,
+        )
+        ax.add_patch(rect)
+
+
+def _annotate_heatmap(
+    ax: plt.Axes,
+    data: np.ndarray,
+    cmap: str,
+    vmin: float,
+    vmax: float,
+    fmt: str = ".2f",
+    fontsize: float = 8,
+) -> None:
+    """Add value annotations to heatmap cells with contrast-aware text colors.
+
+    Parameters
+    ----------
+    ax
+        Matplotlib axes containing the heatmap.
+    data
+        2D array of values to annotate.
+    cmap
+        Colormap name used for the heatmap.
+    vmin
+        Minimum value for normalization.
+    vmax
+        Maximum value for normalization.
+    fmt
+        Format string for values.
+    fontsize
+        Font size for annotations.
+    """
+    import matplotlib.colors as mcolors
+
+    colormap = plt.get_cmap(cmap)
+    norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            val = data[i, j]
+            if np.isnan(val):
+                continue
+            # Get background color and choose contrasting text
+            bg_color = colormap(norm(val))
+            text_color = _get_text_color(bg_color)
+            ax.text(
+                j,
+                i,
+                f"{val:{fmt}}",
+                ha="center",
+                va="center",
+                color=text_color,
+                fontsize=fontsize,
+            )
 
 
 def _jensen_shannon_divergence(p: np.ndarray, q: np.ndarray) -> float:
@@ -213,12 +387,20 @@ class EvaluationMixin:
         show_annotation_colors: bool = True,
         xlabel_position: Literal["bottom", "top"] = "bottom",
         show_grid: bool = True,
-        min_cells: int | None = None,
+        min_cells_true: int | None = None,
+        min_cells_pred: int | None = None,
         show_yticklabels: bool = True,
-        **kwargs,
+        show_xticklabels: bool = True,
+        normalize: Literal["true", "pred", "all"] | None = None,
+        include_values: bool = True,
+        values_format: str = ".2f",
+        values_fontsize: float = 8,
+        colorbar: bool = True,
+        vmin: float | None = None,
+        vmax: float | None = None,
+        title: str | None = "Confusion Matrix",
     ) -> plt.Axes:
-        """
-        Plot the confusion matrix as a heatmap using sklearn's ConfusionMatrixDisplay.
+        """Plot a confusion matrix heatmap comparing true vs predicted labels.
 
         Parameters
         ----------
@@ -228,186 +410,184 @@ class EvaluationMixin:
             Boolean mask to select a subset of cells for the confusion matrix.
             Must have the same length as query.obs or be a pandas Series indexed by obs_names.
         figsize
-            Size of the figure (width, height). Default is (10, 8). Only used if ax is None.
+            Size of the figure (width, height). Only used if ax is None.
         cmap
-            Colormap to use for the heatmap. Default is "viridis".
+            Colormap to use for the heatmap.
         save
             Path to save the figure. If None, the figure is not saved.
         ax
             Matplotlib axes to plot on. If None, a new figure and axes are created.
         show_annotation_colors
             Whether to show colored bars along axes corresponding to category colors
-            from ``adata.uns[f"{label_key}_colors"]``. Default is True.
+            from ``adata.uns[f"{label_key}_colors"]``.
         xlabel_position
-            Position of x-axis tick labels. Either "bottom" (default) or "top".
+            Position of x-axis tick labels ("bottom" or "top").
         show_grid
-            Whether to show gridlines on the heatmap. Default is True.
-        min_cells
-            Minimum number of cells required for a category to be included in the confusion matrix.
-            Categories with fewer cells in both true and predicted labels are filtered out.
-            If None, all categories are shown.
+            Whether to show gridlines on the heatmap.
+        min_cells_true
+            Minimum number of cells required for a true category to be included.
+            If None, all true categories are shown.
+        min_cells_pred
+            Minimum number of cells required for a predicted category to be included.
+            If None, all predicted categories are shown.
         show_yticklabels
-            Whether to show y-axis tick labels. Default is True. Set to False for the right
-            subplot when sharing the y-axis between multiple confusion matrices.
-        **kwargs
-            Additional keyword arguments to pass to ConfusionMatrixDisplay.
+            Whether to show y-axis tick labels.
+        show_xticklabels
+            Whether to show x-axis tick labels.
+        normalize
+            Normalization mode: "true" (row), "pred" (column), "all" (total), or None.
+        include_values
+            Whether to annotate cells with their values.
+        values_format
+            Format string for cell values (e.g., ".2f", ".0f", ".1%").
+        values_fontsize
+            Font size for cell value annotations.
+        colorbar
+            Whether to show a colorbar.
+        vmin
+            Minimum value for colormap normalization.
+        vmax
+            Maximum value for colormap normalization.
+        title
+            Title for the plot. Set to None to hide.
 
         Returns
         -------
-        ax
-            Matplotlib axes with the confusion matrix plot.
+        Matplotlib axes with the confusion matrix plot.
         """
         if self.prediction_postfix is None or self.confidence_postfix is None:
             raise ValueError("Label transfer has not been performed. Call map_obs() first.")
 
-        # Extract true and predicted labels, dropping NaNs from both
-        y_true = self.query.obs[label_key]
-        y_pred = self.query.obs[f"{label_key}{self.prediction_postfix}"]
+        # Extract true and predicted labels
+        y_true = self.query.obs[label_key].copy()
+        y_pred = self.query.obs[f"{label_key}{self.prediction_postfix}"].copy()
+
+        # Drop NaNs
         valid_mask = y_true.notna() & y_pred.notna()
         y_true = y_true[valid_mask]
         y_pred = y_pred[valid_mask]
 
-        # Apply subset filter if provided
+        # Apply subset filter
         if subset is not None:
             if isinstance(subset, pd.Series):
                 subset = subset.loc[y_true.index]
             else:
-                # Assume boolean array aligned with query.obs, reindex to y_true
                 subset = pd.Series(subset, index=self.query.obs_names).loc[y_true.index]
             y_true = y_true[subset]
             y_pred = y_pred[subset]
 
-        # Filter categories by minimum cell count
-        if min_cells is not None:
-            true_counts = y_true.value_counts()
-            pred_counts = y_pred.value_counts()
-            # Keep categories that have at least min_cells in either true or predicted
-            valid_categories = set(true_counts[true_counts >= min_cells].index) | set(
-                pred_counts[pred_counts >= min_cells].index
-            )
-            mask = y_true.isin(valid_categories) & y_pred.isin(valid_categories)
-            y_true = y_true[mask]
-            y_pred = y_pred[mask]
-            # Update categories if categorical
-            if hasattr(y_true, "cat"):
-                y_true = y_true.cat.remove_unused_categories()
-            if hasattr(y_pred, "cat"):
-                y_pred = y_pred.cat.remove_unused_categories()
+        # Convert to string for consistent handling
+        y_true = y_true.astype(str)
+        y_pred = y_pred.astype(str)
 
-        # Get union of categories if categorical, to handle mismatched category sets
-        # Also convert to string to avoid sklearn interpreting float categories as continuous
-        labels = None
-        if hasattr(y_true, "cat") and hasattr(y_pred, "cat"):
-            all_categories = y_true.cat.categories.union(y_pred.cat.categories)
-            labels = [str(c) for c in sorted(all_categories)]
-            y_true = y_true.astype(str)
-            y_pred = y_pred.astype(str)
+        # Create confusion matrix as DataFrame
+        cm = pd.crosstab(y_true, y_pred, dropna=False)
+        cm.index.name = "True"
+        cm.columns.name = "Predicted"
+
+        # Filter rows (true categories) by min_cells
+        if min_cells_true is not None:
+            row_counts = cm.sum(axis=1)
+            cm = cm.loc[row_counts >= min_cells_true]
+
+        # Filter columns (predicted categories) by min_cells
+        if min_cells_pred is not None:
+            col_counts = cm.sum(axis=0)
+            cm = cm.loc[:, col_counts >= min_cells_pred]
+
+        # Sort both axes alphabetically
+        cm = cm.sort_index(axis=0).sort_index(axis=1)
+
+        # Normalize if requested
+        cm_display = cm.copy().astype(float)
+        if normalize == "true":
+            cm_display = cm_display.div(cm_display.sum(axis=1), axis=0)
+        elif normalize == "pred":
+            cm_display = cm_display.div(cm_display.sum(axis=0), axis=1)
+        elif normalize == "all":
+            cm_display = cm_display / cm_display.values.sum()
+
+        # Handle NaN from division by zero
+        cm_display = cm_display.fillna(0)
+
+        # Set vmin/vmax defaults
+        if vmin is None:
+            vmin = 0 if normalize else cm_display.values.min()
+        if vmax is None:
+            vmax = 1 if normalize else cm_display.values.max()
 
         # Create figure/axes if not provided
         if ax is None:
             _, ax = plt.subplots(1, 1, figsize=figsize)
 
-        # Plot confusion matrix using sklearn's ConfusionMatrixDisplay
-        ConfusionMatrixDisplay.from_predictions(
-            y_true, y_pred, labels=labels, cmap=cmap, xticks_rotation="vertical", ax=ax, **kwargs
-        )
-        ax.set_title("Confusion Matrix")
+        # Plot heatmap
+        im = ax.imshow(cm_display.values, cmap=cmap, aspect="auto", vmin=vmin, vmax=vmax)
 
-        # Optionally hide gridlines
-        if not show_grid:
-            ax.grid(False)
+        # Set ticks
+        ax.set_xticks(np.arange(len(cm_display.columns)))
+        ax.set_yticks(np.arange(len(cm_display.index)))
 
-        # Optionally hide y-axis tick labels (for shared y-axis in subplots)
-        if not show_yticklabels:
+        # Set tick labels
+        if show_xticklabels:
+            ax.set_xticklabels(cm_display.columns, rotation=90)
+        else:
+            ax.set_xticklabels([])
+
+        if show_yticklabels:
+            ax.set_yticklabels(cm_display.index)
+        else:
             ax.set_yticklabels([])
-            ax.set_ylabel("")
 
-        # Move x-axis labels to top if requested (when annotation colors are not shown)
-        if xlabel_position == "top" and not show_annotation_colors:
+        # Position x-axis labels
+        if xlabel_position == "top":
             ax.xaxis.tick_top()
             ax.xaxis.set_label_position("top")
-            ax.set_title("")  # Remove title to avoid overlap
-            # Rotate labels to point outward, centered on tick
-            plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="bottom")
+            if show_xticklabels:
+                plt.setp(ax.get_xticklabels(), ha="center", va="bottom")
 
-        # Add annotation color bars if colors are available
-        if show_annotation_colors and labels is not None:
-            colors_key = f"{label_key}_colors"
-            # Try to get colors from reference first (source of labels), then query
-            colors_dict = None
-            for adata in [self.reference, self.query]:
-                if adata is not None and colors_key in adata.uns:
-                    # Get full categories and colors from adata
-                    # Colors are stored in same order as .cat.categories
-                    full_categories = adata.obs[label_key].cat.categories
-                    full_colors = adata.uns[colors_key]
-                    # Build dict mapping category name -> color
-                    colors_dict = {}
-                    for i, cat in enumerate(full_categories):
-                        if i < len(full_colors):
-                            colors_dict[str(cat)] = full_colors[i]
-                    break
+        # Axis labels
+        if show_yticklabels:
+            ax.set_ylabel("True label")
+        if show_xticklabels:
+            ax.set_xlabel("Predicted label")
 
-            if colors_dict is not None:
-                from matplotlib.patches import Rectangle
+        # Title
+        if title:
+            if xlabel_position == "top":
+                ax.set_title(title, pad=20)
+            else:
+                ax.set_title(title)
 
-                # Get colors in label order
-                colors_list = [colors_dict.get(label, "gray") for label in labels]
+        # Grid
+        if not show_grid:
+            ax.grid(False)
+        else:
+            ax.set_xticks(np.arange(-0.5, len(cm_display.columns), 1), minor=True)
+            ax.set_yticks(np.arange(-0.5, len(cm_display.index), 1), minor=True)
+            ax.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
+            ax.tick_params(which="minor", size=0)
 
-                # Move x-axis labels to top if requested
-                if xlabel_position == "top":
-                    ax.xaxis.tick_top()
-                    ax.xaxis.set_label_position("top")
-                    plt.setp(ax.get_xticklabels(), rotation=90, ha="center", va="bottom")
+        # Annotate values
+        if include_values:
+            _annotate_heatmap(
+                ax,
+                cm_display.values,
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
+                fmt=values_format,
+                fontsize=values_fontsize,
+            )
 
-                # Strip width as fraction of axes (2% like moscot)
-                strip_frac = 0.02
-                # Pad tick labels by fixed amount in points
-                ax.tick_params(axis="y", pad=15)
-                ax.tick_params(axis="x", pad=15)
+        # Colorbar
+        if colorbar:
+            ax.figure.colorbar(im, ax=ax, shrink=0.6)
 
-                # Use blended transform: x in axes coords (0-1), y in data coords
-                # This makes strip width scale with axes, not data
-                trans_left = ax.get_yaxis_transform()  # x=axes, y=data
-                trans_x = ax.get_xaxis_transform()  # x=data, y=axes
-
-                for i, color in enumerate(colors_list):
-                    # Left strip: x in axes coords [-strip_frac, 0], y in data coords
-                    rect_left = Rectangle(
-                        (-strip_frac, i - 0.5),
-                        strip_frac,
-                        1,
-                        facecolor=color,
-                        edgecolor="none",
-                        clip_on=False,
-                        transform=trans_left,
-                    )
-                    ax.add_patch(rect_left)
-
-                    # Top or bottom strip: x in data coords, y in axes coords
-                    if xlabel_position == "top":
-                        # Top strip: y in axes coords [1, 1+strip_frac]
-                        rect_x = Rectangle(
-                            (i - 0.5, 1),
-                            1,
-                            strip_frac,
-                            facecolor=color,
-                            edgecolor="none",
-                            clip_on=False,
-                            transform=trans_x,
-                        )
-                    else:
-                        # Bottom strip: y in axes coords [-strip_frac, 0]
-                        rect_x = Rectangle(
-                            (i - 0.5, -strip_frac),
-                            1,
-                            strip_frac,
-                            facecolor=color,
-                            edgecolor="none",
-                            clip_on=False,
-                            transform=trans_x,
-                        )
-                    ax.add_patch(rect_x)
+        # Annotation color strips
+        if show_annotation_colors:
+            row_colors = _get_category_colors([self.reference, self.query], label_key, list(cm_display.index))
+            col_colors = _get_category_colors([self.reference, self.query], label_key, list(cm_display.columns))
+            _draw_annotation_strips(ax, row_colors, col_colors, xlabel_position)
 
         if save:
             ax.figure.savefig(save, bbox_inches="tight")
