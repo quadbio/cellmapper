@@ -45,14 +45,17 @@ def _get_category_colors(
     colors_key = f"{label_key}_colors"
     colors_dict: dict[str, str] = {}
 
+    # Collect colors from all adatas (first found takes priority)
     for adata in adata_list:
         if adata is not None and colors_key in adata.uns:
             full_categories = adata.obs[label_key].cat.categories
             full_colors = adata.uns[colors_key]
             for i, cat in enumerate(full_categories):
                 if i < len(full_colors):
-                    colors_dict[str(cat)] = full_colors[i]
-            break
+                    cat_str = str(cat)
+                    # Only add if not already found (first adata takes priority)
+                    if cat_str not in colors_dict:
+                        colors_dict[cat_str] = full_colors[i]
 
     return [colors_dict.get(str(cat), "gray") for cat in categories]
 
