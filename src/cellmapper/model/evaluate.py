@@ -32,7 +32,7 @@ def _get_category_colors(
     Parameters
     ----------
     adata
-        AnnData object to get colors from.
+        AnnData object to get colors from (must be AnnData, not a list).
     label_key
         Key in .obs storing the categorical annotation.
     categories
@@ -41,11 +41,20 @@ def _get_category_colors(
     Returns
     -------
     List of colors corresponding to each category.
+
+    Raises
+    ------
+    TypeError
+        If adata is not None and not an AnnData object.
     """
+    if adata is not None and not hasattr(adata, "uns"):
+        msg = f"Expected AnnData object, got {type(adata).__name__}."
+        raise TypeError(msg)
+
     colors_key = f"{label_key}_colors"
     colors_dict: dict[str, str] = {}
 
-    if adata is not None and hasattr(adata, "uns") and colors_key in adata.uns:
+    if adata is not None and colors_key in adata.uns:
         full_categories = adata.obs[label_key].cat.categories
         full_colors = adata.uns[colors_key]
         for i, cat in enumerate(full_categories):
