@@ -379,7 +379,7 @@ class EvaluationMixin:
 
     def plot_confusion_matrix(
         self,
-        label_key: str,
+        pred_key: str,
         *,
         true_key: str | None = None,
         subset: np.ndarray | pd.Series | None = None,
@@ -407,11 +407,11 @@ class EvaluationMixin:
 
         Parameters
         ----------
-        label_key
-            Key in .obs storing predicted labels (from map_obs). The column
-            ``f"{label_key}{prediction_postfix}"`` is used as the x-axis (predicted).
+        pred_key
+            Key in .obs identifying the mapped labels (from map_obs). The column
+            ``f"{pred_key}{prediction_postfix}"`` is used as the x-axis (predicted).
         true_key
-            Key in .obs to use for the y-axis (true labels). If None, uses ``label_key``.
+            Key in .obs to use for the y-axis (true labels). If None, uses ``pred_key``.
             This allows comparing arbitrary columns, e.g., source_time vs mapped_time.
         subset
             Boolean mask to select a subset of cells for the confusion matrix.
@@ -466,9 +466,9 @@ class EvaluationMixin:
             raise ValueError("Label transfer has not been performed. Call map_obs() first.")
 
         # Extract true and predicted labels
-        true_col = true_key if true_key is not None else label_key
+        true_col = true_key if true_key is not None else pred_key
         y_true = self.query.obs[true_col].copy()
-        y_pred = self.query.obs[f"{label_key}{self.prediction_postfix}"].copy()
+        y_pred = self.query.obs[f"{pred_key}{self.prediction_postfix}"].copy()
 
         # Drop NaNs
         valid_mask = y_true.notna() & y_pred.notna()
@@ -594,8 +594,8 @@ class EvaluationMixin:
         # Annotation color strips
         if show_annotation_colors:
             # Row colors (true labels) from query, column colors (predicted) from reference
-            row_colors = _get_category_colors(self.query, label_key, list(cm_display.index))
-            col_colors = _get_category_colors(self.reference, label_key, list(cm_display.columns))
+            row_colors = _get_category_colors(self.query, true_col, list(cm_display.index))
+            col_colors = _get_category_colors(self.reference, pred_key, list(cm_display.columns))
             _draw_annotation_strips(ax, row_colors, col_colors, xlabel_position)
 
         if save:
