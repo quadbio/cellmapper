@@ -40,9 +40,9 @@ table below — everything else is delegated.
 
 - **Self-mapping mode** activates when `reference is None` **or** `reference is query` (object identity). See `CellMapper.__init__` in `src/cellmapper/model/cellmapper.py`.
 - **Reference is read-only.** `.map()` never mutates the reference AnnData. `query` is mutated in place for `map_obs` / `map_obsm`. Expression transfer produces a separate `query_imputed` AnnData object, not a view.
-- **Output key naming** follows `{key}{prediction_postfix}` and `{key}{confidence_postfix}` in `query.obs` / `query.obsm`. Postfixes are user-controllable via `.map()` kwargs.
+- **Output key naming** follows `{key}{prediction_postfix}` and `{key}{confidence_postfix}` in `query.obs` / `query.obsm`. Postfixes are user-controllable on the per-method entrypoints (`map_obs`, `map_obsm`); `.map()` also exposes `prediction_postfix`.
 - **`.map()` auto-chains** `compute_neighbors` → `compute_mapping_matrix` → `map_obs/obsm/layers` based on missing state. Callers that use these methods directly must respect that ordering.
-- **Mapping matrix is row-stochastic CSR** (`scipy.sparse.csr_matrix`, float32). Rows are normalized to sum to 1; zero-neighbor rows are left as-is. See `MappingOperator._validate_and_normalize_mapping_matrix`.
+- **Mapping matrix is row-stochastic and float32.** Sparse inputs are stored as `scipy.sparse.csr_matrix`; dense inputs stay dense. Zero-neighbor rows are left as-is. See `MappingOperator._validate_and_normalize_mapping_matrix`.
 - **Matrix powers `t > 1` are self-mapping-only** (`MappingOperator._validate_power` raises otherwise).
 - **Optional k-NN backends fail fast.** `check.check_deps()` is called at backend construction with clear install hints — no silent fallback. Supported backends: `sklearn`, `pynndescent`, `faiss-cpu`, `faiss-gpu`, `rapids`.
 - **Kernel taxonomy lives in `constants.py`** (`JACCARD_BASED_KERNELS`, `CONNECTIVITY_BASED_KERNELS`, `SELF_MAPPING_ONLY_KERNELS`). Kernels in `SELF_MAPPING_ONLY_KERNELS` require a square neighbor matrix.
@@ -53,7 +53,7 @@ table below — everything else is delegated.
 
 ## Development Commands
 
-Python 3.11 and newer.
+Python 3.11 and 3.14 (see the `hatch-test` matrix in `pyproject.toml`).
 
 ```bash
 hatch test                        # run tests (highest Python)
