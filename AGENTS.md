@@ -32,24 +32,24 @@ table below — everything else is delegated.
 | Release notes | `docs/changelog.md` |
 | PR review workflow and risk areas | `REVIEW_GUIDE.md` |
 | Test fixtures | `tests/conftest.py`, `tests/data/` |
-| Kernel taxonomy (which kernels, which are self-mapping-only) | `src/cellmapper/constants.py` |
+| Kernel taxonomy and tunable thresholds (sklearn warning cutoff, spectral threshold) | `src/cellmapper/constants.py` |
 | Optional-dependency gating | `src/cellmapper/check.py` |
 | Method-level behavior (parameters, return shapes) | docstrings in `src/cellmapper/model/` |
 
 ## Critical Invariants
 
-- **Self-mapping mode** activates when `reference is None` **or** `reference is query` (object identity). The second case logs a warning. See `CellMapper.__init__` in `src/cellmapper/model/cellmapper.py`.
+- **Self-mapping mode** activates when `reference is None` **or** `reference is query` (object identity). See `CellMapper.__init__` in `src/cellmapper/model/cellmapper.py`.
 - **Reference is read-only.** `.map()` never mutates the reference AnnData. `query` is mutated in place for `map_obs` / `map_obsm`. Expression transfer produces a separate `query_imputed` AnnData object, not a view.
 - **Output key naming** follows `{key}{prediction_postfix}` and `{key}{confidence_postfix}` in `query.obs` / `query.obsm`. Postfixes are user-controllable via `.map()` kwargs.
 - **`.map()` auto-chains** `compute_neighbors` → `compute_mapping_matrix` → `map_obs/obsm/layers` based on missing state. Callers that use these methods directly must respect that ordering.
-- **Mapping matrix is row-stochastic CSR** (`scipy.sparse.csr_matrix`, float32). Rows are normalized to sum to 1; zero-neighbor rows are left as-is. Changes to this contract affect every downstream transfer.
-- **Matrix powers `t > 1` are self-mapping-only** (`MappingOperator._validate_power` raises otherwise). Iterative mode preserves input sparsity; spectral mode always returns dense. A warning suggests spectral when `t > 10`.
-- **Optional k-NN backends fail fast.** `check.check_deps()` is called at backend construction with clear install hints — no silent fallback. Supported backends: `sklearn`, `pynndescent`, `faiss-cpu`, `faiss-gpu`, `rapids`. `sklearn` warns above 50k cells.
-- **Kernel taxonomy lives in `constants.py`** (`JACCARD_BASED_KERNELS`, `CONNECTIVITY_BASED_KERNELS`, `SELF_MAPPING_ONLY_KERNELS`). The `umap` kernel requires a square neighbor matrix.
+- **Mapping matrix is row-stochastic CSR** (`scipy.sparse.csr_matrix`, float32). Rows are normalized to sum to 1; zero-neighbor rows are left as-is. See `MappingOperator._validate_and_normalize_mapping_matrix`.
+- **Matrix powers `t > 1` are self-mapping-only** (`MappingOperator._validate_power` raises otherwise).
+- **Optional k-NN backends fail fast.** `check.check_deps()` is called at backend construction with clear install hints — no silent fallback. Supported backends: `sklearn`, `pynndescent`, `faiss-cpu`, `faiss-gpu`, `rapids`.
+- **Kernel taxonomy lives in `constants.py`** (`JACCARD_BASED_KERNELS`, `CONNECTIVITY_BASED_KERNELS`, `SELF_MAPPING_ONLY_KERNELS`). Kernels in `SELF_MAPPING_ONLY_KERNELS` require a square neighbor matrix.
 - **`Neighbors` strips self-edges** from storage for square matrices; `n_neighbors` counts non-self neighbors.
 - **`query_imputed` is always assembled via `utils.create_imputed_anndata`**. Setter accepts `AnnData | ndarray | csr_matrix | DataFrame | None`; result has `obs`/`obsm` from query and `var`/`varm` from reference.
 - **Public API surface = `__init__.py` `__all__`**: `CellMapper`, `Kernel`, `Neighbors`, `logger`. `EvaluationMixin` and `EmbeddingMixin` are internal. Do not re-export helpers from the top-level package.
-- **Tests mirror source layout.** `src/cellmapper/X.py` → `tests/test_X.py`; `src/cellmapper/model/X.py` → `tests/model/test_X.py`. Integration paths: `tests/model/test_query_to_reference_mapping.py` and `tests/model/test_self_mapping.py`.
+- **Tests mirror source layout.** `src/cellmapper/X.py` → `tests/test_X.py`; `src/cellmapper/model/X.py` → `tests/model/test_X.py`.
 
 ## Development Commands
 
