@@ -36,6 +36,12 @@ table below — everything else is delegated.
 | Optional-dependency gating | `src/cellmapper/check.py` |
 | Method-level behavior (parameters, return shapes) | docstrings in `src/cellmapper/model/` |
 
+## Review Guidelines
+
+For GitHub PR reviews, use `REVIEW_GUIDE.md` as the canonical review workflow and
+source of review-specific risk areas, testing checks, and documentation-impact checks.
+This file only owns the project invariants and source-of-truth map below.
+
 ## Critical Invariants
 
 - **Self-mapping mode** activates when `reference is None` **or** `reference is query` (object identity). See `CellMapper.__init__` in `src/cellmapper/model/cellmapper.py`.
