@@ -98,6 +98,16 @@ envs.hatch-test.matrix = [
 envs.hatch-test.overrides.matrix.deps.env-vars = [
   { key = "UV_PRERELEASE", value = "allow", if = [ "pre" ] },
 ]
+# With UV_PRERELEASE=allow, uv pulls in numpy 2.5.0rc, which the newest
+# py3.14-compatible numba (0.66.0rc1, pinned to numpy<2.5) does not support.
+# uv then backtracks to an ancient numba (0.63.0b1) that still references the
+# removed `np.row_stack`, so importing cellmapper (via umap -> numba) crashes
+# with `AttributeError: module 'numpy' has no attribute 'row_stack'`.
+# Constrain numpy to <2.5 in the pre-release env so a compatible numba is used.
+# Remove once numba ships a numpy 2.5-compatible (pre-)release for Python 3.14.
+envs.hatch-test.overrides.matrix.deps.dependencies = [
+  { value = "numpy<2.5", if = [ "pre" ] },
+]
 version.source = "vcs"
 
 [tool.ruff]
