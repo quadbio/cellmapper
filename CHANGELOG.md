@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+### Fixed
+- Fixed intermittent `OSError: Can't synchronously read data (filter returned failure during read)` when running the test suite under `pytest -n auto`, caused by xdist workers racing on scanpy's shared `pbmc3k_raw.h5ad` dataset cache. Each worker now uses its own cache directory.
+
 ## [v0.2.5]
 
 ### Added
