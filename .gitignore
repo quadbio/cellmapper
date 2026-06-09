@@ -16,6 +16,7 @@ uv.lock
 
 # Tests and coverage
 /data/
+/tests/data/scanpy_cache/
 /node_modules/
 /.coverage*
 

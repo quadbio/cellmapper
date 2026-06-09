@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,24 @@ from cellmapper.model.cellmapper import CellMapper
 
 # Get the tests directory path
 TESTS_DIR = Path(__file__).parent
+
+
+def pytest_configure(config):
+    """Give each pytest-xdist worker its own scanpy dataset cache directory.
+
+    ``sc.datasets.pbmc3k()`` (used by the ``adata_pbmc3k`` fixture) downloads and
+    reads a single shared cache file (``<datasetdir>/pbmc3k_raw.h5ad``). Under
+    ``pytest -n auto`` multiple worker processes race on that file -- one worker
+    reading it while another is still downloading/writing -- which intermittently
+    surfaces as an HDF5 ``OSError: Can't synchronously read data (filter returned
+    failure during read)``. Pointing each worker at its own cache directory
+    removes the shared-file contention entirely.
+    """
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker_id is not None:
+        cache_dir = TESTS_DIR / "data" / "scanpy_cache" / worker_id
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        sc.settings.datasetdir = cache_dir
 
 
 @pytest.fixture
