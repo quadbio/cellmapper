@@ -273,7 +273,7 @@ class Kernel:
             if kernel_method == "jaccard":
                 kernel_matrix.data /= 4 * n_neighbors - kernel_matrix.data
             elif kernel_method == "hnoca":
-                kernel_matrix.data /= 2 * n_neighbors - kernel_matrix.data
+                kernel_matrix.data /= 4 * n_neighbors - kernel_matrix.data
                 kernel_matrix.data = kernel_matrix.data**2
 
         elif kernel_method in PackageConstants.CONNECTIVITY_BASED_KERNELS:
