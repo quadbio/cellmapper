@@ -61,6 +61,7 @@ optional-dependencies.test = [
   "faiss-cpu",
   "pytest",
   "pytest-cov",     # For VS Code's coverage functionality
+  "pytest-mock",
   "squidpy>=1.6",
 ]
 optional-dependencies.tutorials = [
