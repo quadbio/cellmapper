@@ -66,6 +66,7 @@ optional-dependencies.test = [
   "squidpy>=1.8",
 ]
 optional-dependencies.tutorials = [
+  "cellrank>=2",
   "harmony-pytorch",
   "igraph",
   "netgraph",
@@ -100,6 +101,12 @@ envs.hatch-test.matrix = [
 envs.hatch-test.overrides.matrix.deps.env-vars = [
   { value = "allow", key = "UV_PRERELEASE", if = [ "pre" ] },
 ]
+
+[tool.uv]
+# pygpcca 1.0.4 (pulled in by cellrank, tutorials extra) incorrectly pins
+# jinja2==3.0.3, which conflicts with sphinx (doc extra). Override until a
+# pygpcca release relaxes it. jinja2>=3.1 is known-safe (cellrank does the same).
+override-dependencies = [ "jinja2>=3.1" ]
 
 [tool.ruff]
 line-length = 120
