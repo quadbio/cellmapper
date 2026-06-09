@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning][].
 
 ### Changed
 - Dropped Python 3.11 support; the minimum supported version is now Python 3.12, aligning with `cellrank` (≥2.1 requires Python ≥3.12) and unpinning the `tutorials` extra from the old `cellrank` 2.0.7 {pr}`81`
+- The `gpcca-fast` dependency group now delegates `petsc4py`/`slepc4py` to `cellrank[petsc]>=2.3.1` (mpi4py-free) instead of hardcoding them, keeping only an explicit `slepc` to work around slepc4py's missing runtime metadata {pr}`PRNUM`
 
 ## [v0.2.5]
 
