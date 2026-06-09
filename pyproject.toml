@@ -81,6 +81,25 @@ urls.Documentation = "https://cellmapper.readthedocs.io/"
 urls.Homepage = "https://github.com/quadbio/cellmapper"
 urls.Source = "https://github.com/quadbio/cellmapper"
 
+# Opt-in fast backend for pyGPCCA (pulled in by cellrank's tutorials extra).
+# Without petsc4py/slepc4py, pyGPCCA falls back to method='brandts', which
+# densifies the transition matrix and warns. This is a PEP 735 dependency group
+# (NOT an extra) on purpose: petsc/slepc have no wheels and compile from source,
+# so we keep them out of `uv sync --all-extras` and require an explicit opt-in.
+#
+# The build needs a C compiler only (no Fortran/MPI/system libs) IF you pass
+# PETSC_CONFIGURE_OPTIONS. Do NOT set SLEPC_CONFIGURE_OPTIONS — SLEPc inherits
+# config from the built PETSc. Install (one-time source build, ~4 min, cached):
+#   PETSC_CONFIGURE_OPTIONS="--with-fc=0 --with-mpi=0 --with-debugging=0 --with-shared-libraries=1" \
+#     uv sync --all-extras --group gpcca-fast
+[dependency-groups]
+gpcca-fast = [
+  "petsc",
+  "petsc4py",
+  "slepc",
+  "slepc4py",
+]
+
 [tool.hatch]
 version.source = "vcs"
 envs.default.installer = "uv"
