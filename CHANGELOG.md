@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+### Changed
+- Dropped Python 3.11 support; the minimum supported version is now Python 3.12, aligning with `cellrank` (≥2.1 requires Python ≥3.12) and unpinning the `tutorials` extra from the old `cellrank` 2.0.7 {pr}`81`
+
 ### Fixed
 - Fixed intermittent `OSError: Can't synchronously read data (filter returned failure during read)` when running the test suite under `pytest -n auto`, caused by xdist workers racing on scanpy's shared `pbmc3k_raw.h5ad` dataset cache. Each worker now uses its own cache directory.
 
