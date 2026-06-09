@@ -59,7 +59,7 @@ This file only owns the project invariants and source-of-truth map below.
 
 ## Development Commands
 
-Python 3.11 and 3.14 (see the `hatch-test` matrix in `pyproject.toml`).
+Python 3.12 and 3.14 (see the `hatch-test` matrix in `pyproject.toml`).
 
 ```bash
 hatch test                        # run tests (highest Python)
