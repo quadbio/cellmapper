@@ -80,23 +80,31 @@ urls.Documentation = "https://cellmapper.readthedocs.io/"
 urls.Homepage = "https://github.com/quadbio/cellmapper"
 urls.Source = "https://github.com/quadbio/cellmapper"
 
-# Opt-in fast backend for pyGPCCA (pulled in by cellrank's tutorials extra).
-# Without petsc4py/slepc4py, pyGPCCA falls back to method='brandts', which
-# densifies the transition matrix and warns. This is a PEP 735 dependency group
-# (NOT an extra) on purpose: petsc/slepc have no wheels and compile from source,
-# so we keep them out of `uv sync --all-extras` and require an explicit opt-in.
+# Opt-in fast backend for pyGPCCA (used by cellrank). Without petsc4py/slepc4py,
+# pyGPCCA falls back to method='brandts', which densifies the transition matrix
+# and warns. petsc4py/slepc4py come from cellrank's own `petsc` extra (mpi4py-free
+# since cellrank 2.3.1), so CellRank owns those. This is a PEP 735 dependency
+# group (NOT an extra) on purpose: petsc/slepc have no wheels and compile from
+# source, so we keep them out of `uv sync --all-extras` and require explicit opt-in.
+#
+# `slepc` is listed explicitly because slepc4py's published sdist metadata omits
+# its runtime dep on the `slepc` library package (it's added dynamically at build
+# time), so uv won't install slepc from cellrank[petsc] alone and slepc4py then
+# fails to import with "Library not loaded: libslepc". (petsc4py declares `petsc`
+# correctly, so petsc needs no such workaround.) Drop this once slepc4py — or
+# cellrank's petsc extra — declares slepc.
 #
 # The build needs a C compiler only (no Fortran/MPI/system libs) IF you pass
 # PETSC_CONFIGURE_OPTIONS. Do NOT set SLEPC_CONFIGURE_OPTIONS — SLEPc inherits
 # config from the built PETSc. Install (one-time source build, ~4 min, cached):
 #   PETSC_CONFIGURE_OPTIONS="--with-fc=0 --with-mpi=0 --with-debugging=0 --with-shared-libraries=1" \
 #     uv sync --all-extras --group gpcca-fast
+# NB: a plain `uv sync --all-extras` (without --group gpcca-fast) will UNINSTALL
+# petsc/slepc if present — re-include the group on every refresh to keep them.
 [dependency-groups]
 gpcca-fast = [
-  "petsc",
-  "petsc4py",
-  "slepc",
-  "slepc4py",
+  "cellrank[petsc]>=2.3.1",
+  "slepc>=3.25",
 ]
 
 [tool.hatch]
