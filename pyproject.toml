@@ -94,11 +94,27 @@ urls.Source = "https://github.com/quadbio/cellmapper"
 # correctly, so petsc needs no such workaround.) Drop this once slepc4py — or
 # cellrank's petsc extra — declares slepc.
 #
-# The build needs a C compiler only (no Fortran/MPI/system libs) IF you pass
-# PETSC_CONFIGURE_OPTIONS. Do NOT set SLEPC_CONFIGURE_OPTIONS — SLEPc inherits
-# config from the built PETSc. Install (one-time source build, ~4 min, cached):
-#   PETSC_CONFIGURE_OPTIONS="--with-fc=0 --with-mpi=0 --with-debugging=0 --with-shared-libraries=1" \
-#     uv sync --all-extras --group gpcca-fast
+# petsc4py/slepc4py compute their metadata dynamically at build time. Without help,
+# uv would therefore compile PETSc from source just to *resolve* — breaking every
+# bare `uv sync` / `uv run` / `uv lock`, even when this group is NOT requested. The
+# [[tool.uv.dependency-metadata]] entries under [tool.uv] give uv that metadata
+# statically, so resolution/locking never builds anything; PETSc/SLEPc compile only
+# when the group is actually installed. Keep those entries in sync with this group.
+#
+# INSTALLING the group is the fragile part. The recommended route is pre-built
+# conda-forge binaries (no compiler, no BLAS hunting), e.g. with pixi/mamba:
+#     mamba install -c conda-forge petsc4py slepc4py     # or: pixi add petsc4py slepc4py
+# Building from PyPI source instead needs a C compiler AND a BLAS/LAPACK. The
+# CellRank-documented options alone (--with-fc=0 --with-mpi=0 --with-debugging=0
+# --with-shared-libraries=1) only work on machines that already expose a system
+# BLAS on the linker path; on others PETSc configure fails with "Could not find a
+# functional BLAS". Adding --download-f2cblaslapack=1 gets PETSc to build but then
+# SLEPc fails to link it (`cannot find -lf2cblas`), so for a source build point
+# PETSc at a real shared BLAS instead, e.g.:
+#     PETSC_CONFIGURE_OPTIONS="--with-fc=0 --with-mpi=0 --with-debugging=0 \
+#       --with-shared-libraries=1 --with-blaslapack-dir=$OPENBLAS_ROOT" \
+#       uv sync --all-extras --group gpcca-fast
+# Do NOT set SLEPC_CONFIGURE_OPTIONS — SLEPc inherits config from the built PETSc.
 # NB: a plain `uv sync --all-extras` (without --group gpcca-fast) will UNINSTALL
 # petsc/slepc if present — re-include the group on every refresh to keep them.
 [dependency-groups]
@@ -133,6 +149,19 @@ envs.hatch-test.overrides.matrix.deps.env-vars = [
 # jinja2==3.0.3, which conflicts with sphinx (doc extra). Override until a
 # pygpcca release relaxes it. jinja2>=3.1 is known-safe (cellrank does the same).
 override-dependencies = [ "jinja2>=3.1" ]
+# Static metadata for the gpcca-fast source-only packages so uv can resolve/lock
+# WITHOUT compiling PETSc (see the note above [dependency-groups]). These mirror
+# the deps each package injects dynamically at build time: petsc4py -> petsc,
+# slepc4py -> petsc4py + slepc (slepc4py's own sdist omits slepc). The `petsc`/
+# `slepc` library packages have no Python dependencies. Version omitted -> applies
+# to all versions; petsc & petsc4py (and slepc & slepc4py) are always co-released
+# at matching versions, so uv resolves them in lockstep.
+dependency-metadata = [
+  { name = "petsc", requires-dist = [] },
+  { name = "slepc", requires-dist = [] },
+  { name = "petsc4py", requires-dist = [ "numpy", "petsc" ] },
+  { name = "slepc4py", requires-dist = [ "numpy", "petsc4py", "slepc" ] },
+]
 
 [tool.ruff]
 line-length = 120
