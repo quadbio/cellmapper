@@ -35,7 +35,7 @@ The core idea of `CellMapper` is to separate the method (k-NN graph with some ke
 You need to have 🐍 Python 3.12 or newer installed on your system.
 If you don't have Python installed, we recommend installing [uv][].
 
-There are two alternative options to install ``cellmapper``:
+There are two alternative options to install `cellmapper`:
 
 - 🚀 Install the latest release from [PyPI][]:
 
@@ -51,9 +51,9 @@ There are two alternative options to install ``cellmapper``:
 
 ## 🏁 Getting started
 
-This package assumes that you have ``query`` and ``reference`` AnnData objects, with a joint embedding computed and stored in ``.obsm``. While we implement some baseline approaches to compute joint embeddings (PCA and a fast reimplementation of CCA), we typically expect you to provide a pre-computed joint embedding from some task-specific representation learning tools, e.g. [GimVI][] or [ENVI][] for spatial mapping, [GLUE][], [MIDAS][] and [MOFA+][] for modality translation, and [scVI][], [scANVI][] and [scArches][] for query-to-reference mapping - this is just a small selection!
+This package assumes that you have `query` and `reference` AnnData objects, with a joint embedding computed and stored in `.obsm`. While we implement some baseline approaches to compute joint embeddings (PCA and a fast reimplementation of CCA), we typically expect you to provide a pre-computed joint embedding from some task-specific representation learning tools, e.g. [GimVI][] or [ENVI][] for spatial mapping, [GLUE][], [MIDAS][] and [MOFA+][] for modality translation, and [scVI][], [scANVI][] and [scArches][] for query-to-reference mapping - this is just a small selection!
 
-With a joint embedding in ``.obsm["X_joint"]`` at hand, the simplest way to use ``CellMapper`` is as follows:
+With a joint embedding in `.obsm["X_joint"]` at hand, the simplest way to use `CellMapper` is as follows:
 ```Python
 from cellmapper import CellMapper
 
@@ -62,7 +62,7 @@ cmap = CellMapper(query, reference).map(
     )
 ```
 
-This will transfer data from the reference to the query dataset, including celltype labels stored in ``reference.obs``, a UMAP embedding stored in ``reference.obsm``, and expression values stored in ``reference.X``.
+This will transfer data from the reference to the query dataset, including celltype labels stored in `reference.obs`, a UMAP embedding stored in `reference.obsm`, and expression values stored in `reference.X`.
 
 There are many ways to customize this, e.g. use different ways to compute k-NN graphs and to turn them into mapping matrices, and we implement a few methods to evaluate whether your k-NN transfer was sucessful. The tool also implements a `self-mapping` mode (only a query object, no reference), which is useful for spatial contextualization and data denoising. Check out the 📚 [docs][] to learn more.
 
@@ -75,6 +75,7 @@ See the [changelog][].
 If you found a bug, please use the [issue tracker][].
 
 ## 📖 Citation
+
 Please use our [zenodo][] entry to cite this software.
 
 [uv]: https://github.com/astral-sh/uv
@@ -89,15 +90,12 @@ Please use our [zenodo][] entry to cite this software.
 [pypi]: https://pypi.org/project/cellmapper/
 [downloads]: https://pepy.tech/project/cellmapper
 [zenodo]: https://doi.org/10.5281/zenodo.15683594
-
 [faiss]: https://github.com/facebookresearch/faiss
 [pynndescent]: https://github.com/lmcinnes/pynndescent
 [sklearn]: https://scikit-learn.org/stable/modules/neighbors.html
 [rapids]: https://docs.rapids.ai/api/cuml/stable/api/#nearest-neighbors
-
 [ingest]: https://scanpy.readthedocs.io/en/stable/generated/scanpy.tl.ingest.html
 [HNOCA-tools]: https://devsystemslab.github.io/HNOCA-tools/
-
 [GimVI]: https://docs.scvi-tools.org/en/stable/api/reference/scvi.external.GIMVI.html#
 [ENVI]: https://scenvi.readthedocs.io/en/latest/#
 [GLUE]: https://scglue.readthedocs.io/en/latest/
