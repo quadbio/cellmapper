@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning][].
 - The `gpcca-fast` dependency group now delegates `petsc4py`/`slepc4py` to `cellrank[petsc]>=2.3.1` (mpi4py-free) instead of hardcoding them, keeping only an explicit `slepc` to work around slepc4py's missing runtime metadata {pr}`82`
 
 ### Fixed
+- Compatibility with scanpy 1.13, which removed the private `scanpy.get._get_obs_rep` used by `fast_cca`
 - Fixed intermittent `OSError: Can't synchronously read data (filter returned failure during read)` when running the test suite under `pytest -n auto`, caused by xdist workers racing on scanpy's shared `pbmc3k_raw.h5ad` dataset cache. Each worker now uses its own cache directory.
 
 ## [v0.2.5]
