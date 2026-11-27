@@ -76,7 +76,9 @@ class _FaissCpuBackend(_KNNBackend):
         # Ensure points are float32 and C-contiguous
         points_f32 = np.ascontiguousarray(points.astype(np.float32))
         distances, indices = self._index.search(points_f32, k)
-        return distances, indices
+        # IndexFlatL2 returns squared L2 distances; clamp tiny negative float32
+        # rounding artifacts before taking the square root.
+        return np.sqrt(np.maximum(distances, 0.0)), indices
 
 
 class _FaissGpuBackend(_KNNBackend):
@@ -107,7 +109,9 @@ class _FaissGpuBackend(_KNNBackend):
         # Ensure points are float32 and C-contiguous
         points_f32 = np.ascontiguousarray(points.astype(np.float32))
         distances, indices = self._index.search(points_f32, k)
-        return distances, indices
+        # IndexFlatL2 returns squared L2 distances; clamp tiny negative float32
+        # rounding artifacts before taking the square root.
+        return np.sqrt(np.maximum(distances, 0.0)), indices
 
 
 def _batched_query(
