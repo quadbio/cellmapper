@@ -681,8 +681,11 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
 
         Automatically detects whether the data is categorical or numerical and applies
         the appropriate mapping strategy. For categorical data, uses one-hot encoding
-        followed by matrix multiplication and argmax. For numerical data, uses direct
-        matrix multiplication.
+        followed by matrix multiplication and argmax. Reference cells with a missing or empty
+        label don't vote; the confidence is the winning label's share of all neighbour weight,
+        unlabelled neighbours included, and a query cell without labelled neighbour weight gets
+        a missing prediction with confidence 0. For numerical data, uses direct matrix
+        multiplication.
 
         Parameters
         ----------
@@ -816,27 +819,21 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         # Get the reference data
         reference_data = self.reference.obs[key]
 
+        # Reference cells without a label (missing or empty), or with one outside subset_categories, don't vote:
+        # their one-hot rows are all zero
+        missing = reference_data.isna() | (reference_data.astype(str) == "")
+        pred_key, conf_key = f"{key}{prediction_postfix}", f"{key}{confidence_postfix}"
+        if subset_categories is None and missing.all():
+            logger.warning("No reference cell has a label in '%s'; all predictions are missing.", key)
+            self.query.obs[pred_key] = pd.Series(np.nan, index=self.query.obs_names, dtype=reference_data.dtype)
+            self.query.obs[conf_key] = 0.0
+            return pd.DataFrame(index=self.query.obs_names) if return_probabilities else None
+        onehot = OneHotEncoder(dtype=np.float32, handle_unknown="ignore")
         if subset_categories is not None:
-            # Create a filtered version of reference data for one-hot encoding
-            # Only include rows that have the desired categories
-            mask = reference_data.isin(subset_categories)
-
-            # Create a filtered DataFrame with only the subset categories
-            filtered_reference_data = reference_data.copy()
-            filtered_reference_data[~mask] = pd.NA  # Set non-subset categories to missing
-
-            # Create one-hot encoding only for the subset categories
-            onehot = OneHotEncoder(dtype=np.float32, handle_unknown="ignore")
-            # Create a DataFrame with only subset categories for fitting
-            subset_df = pd.DataFrame({key: pd.Categorical(subset_categories, categories=subset_categories)})
-            onehot.fit(subset_df)
-
-            # Transform the full reference data (missing values will be ignored)
-            xtab = onehot.transform(filtered_reference_data.to_frame())
+            onehot.fit(pd.DataFrame({key: pd.Categorical(subset_categories, categories=subset_categories)}))
         else:
-            # Use the original approach for all categories
-            onehot = OneHotEncoder(dtype=np.float32)
-            xtab = onehot.fit_transform(self.reference.obs[[key]])
+            onehot.fit(reference_data[~missing].to_frame())
+        xtab = onehot.transform(reference_data.where(~missing).to_frame())
 
         # Ensure CSR format for mapping operator
         if not isinstance(xtab, csr_matrix):
@@ -856,6 +853,9 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             index=self.query.obs_names,
             dtype=self.reference.obs[key].dtype,
         )
+        # A query cell without labelled neighbour weight gets no prediction (argmax of a zero row would be 0)
+        votes = np.asarray(ytab.sum(axis=1)).ravel()
+        pred[votes == 0] = np.nan
 
         # Confidence as max probability per row
         if issparse(ytab):
@@ -864,8 +864,6 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             conf_vals = np.max(ytab, axis=1).ravel()
         conf = pd.Series(conf_vals, index=self.query.obs_names)
 
-        pred_key = f"{key}{prediction_postfix}"
-        conf_key = f"{key}{confidence_postfix}"
         self.query.obs[pred_key] = pred
         self.query.obs[conf_key] = conf
 

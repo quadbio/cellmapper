@@ -1,7 +1,6 @@
 import anndata as ad
 import numpy as np
 import scanpy as sc
-from scanpy.get import _check_mask, _get_obs_rep
 from scipy.sparse import csr_matrix, issparse
 
 from cellmapper.logging import logger
@@ -125,11 +124,16 @@ class EmbeddingMixin:
         )
 
         # Potentially subset along the features
-        mask_var = _check_mask(joint, mask_var, "var")
-        joint = joint[:, mask_var] if mask_var is not None else joint
+        if isinstance(mask_var, str):
+            mask_var = joint.var[mask_var].to_numpy(dtype=bool)
+        if mask_var is not None:
+            joint = joint[:, np.asarray(mask_var, dtype=bool)]
 
-        X_query = _get_obs_rep(joint[joint.obs["batch"] == "query"], layer=layer)
-        X_ref = _get_obs_rep(joint[joint.obs["batch"] == "reference"], layer=layer)
+        def rep(batch: str):
+            cells = joint[joint.obs["batch"] == batch]
+            return cells.X if layer is None else cells.layers[layer]
+
+        X_query, X_ref = rep("query"), rep("reference")
 
         n_common_genes = X_query.shape[1]
         logger.info(
