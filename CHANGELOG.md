@@ -10,14 +10,23 @@ and this project adheres to [Semantic Versioning][].
 
 ## [Unreleased]
 
+## [v0.2.7]
+
+### Changed
+- uv resolves and locks the `gpcca-fast` group without compiling PETSc, through static dependency metadata {pr}`86`
+
+### Fixed
+- `map_obs` no longer lets missing or empty reference labels win the vote; a query cell without labelled neighbour weight gets a missing prediction with confidence 0, also with `subset_categories`, where it got the first category {pr}`94`
+- Compatibility with scanpy 1.13, which removed the private `scanpy.get._get_obs_rep` used by `fast_cca` {pr}`94`
+
+## [v0.2.6]
+
 ### Changed
 - Dropped Python 3.11 support; the minimum supported version is now Python 3.12, aligning with `cellrank` (≥2.1 requires Python ≥3.12) and unpinning the `tutorials` extra from the old `cellrank` 2.0.7 {pr}`81`
 - The `gpcca-fast` dependency group now delegates `petsc4py`/`slepc4py` to `cellrank[petsc]>=2.3.1` (mpi4py-free) instead of hardcoding them, keeping only an explicit `slepc` to work around slepc4py's missing runtime metadata {pr}`82`
 
 ### Fixed
-- `map_obs` no longer lets missing or empty reference labels win the vote; a query cell without labelled neighbour weight gets a missing prediction with confidence 0, also with `subset_categories`, where it got the first category {issue}`93`
-- Compatibility with scanpy 1.13, which removed the private `scanpy.get._get_obs_rep` used by `fast_cca`
-- Fixed intermittent `OSError: Can't synchronously read data (filter returned failure during read)` when running the test suite under `pytest -n auto`, caused by xdist workers racing on scanpy's shared `pbmc3k_raw.h5ad` dataset cache. Each worker now uses its own cache directory.
+- Fixed intermittent `OSError: Can't synchronously read data (filter returned failure during read)` when running the test suite under `pytest -n auto`, caused by xdist workers racing on scanpy's shared `pbmc3k_raw.h5ad` dataset cache. Each worker now uses its own cache directory. {pr}`83`
 
 ## [v0.2.5]
 
