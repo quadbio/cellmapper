@@ -29,25 +29,25 @@ Pointers only — see `AGENTS.md` for the actual invariants.
 
 Tests mirror the source tree.
 
-| Changed path | Primary tests |
-|--------------|---------------|
-| `src/cellmapper/model/cellmapper.py` | `tests/model/test_query_to_reference_mapping.py`, `tests/model/test_self_mapping.py` |
-| `src/cellmapper/model/kernel.py` | `tests/model/test_kernel.py` |
-| `src/cellmapper/model/mapping_operator.py` | `tests/model/test_mapping_operator.py` |
-| `src/cellmapper/model/neighbors.py` | `tests/model/test_neighbors.py` |
-| `src/cellmapper/model/embedding.py` | `tests/model/test_embedding.py` |
-| `src/cellmapper/model/evaluate.py` | `tests/model/test_evaluate.py` |
-| `src/cellmapper/model/_knn_backend.py` | `tests/model/test_neighbors.py`, `tests/model/test_kernel.py` |
-| `src/cellmapper/check.py` | `tests/test_check.py` |
-| `src/cellmapper/utils.py` | `tests/test_utils.py` |
-| End-to-end behavioral change | also `tests/test_basic.py` |
-| Fixture changes | `tests/conftest.py`, `tests/data/` |
+| Changed path                               | Primary tests                                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `src/cellmapper/model/cellmapper.py`       | `tests/model/test_query_to_reference_mapping.py`, `tests/model/test_self_mapping.py` |
+| `src/cellmapper/model/kernel.py`           | `tests/model/test_kernel.py`                                                         |
+| `src/cellmapper/model/mapping_operator.py` | `tests/model/test_mapping_operator.py`                                               |
+| `src/cellmapper/model/neighbors.py`        | `tests/model/test_neighbors.py`                                                      |
+| `src/cellmapper/model/embedding.py`        | `tests/model/test_embedding.py`                                                      |
+| `src/cellmapper/model/evaluate.py`         | `tests/model/test_evaluate.py`                                                       |
+| `src/cellmapper/model/_knn_backend.py`     | `tests/model/test_neighbors.py`, `tests/model/test_kernel.py`                        |
+| `src/cellmapper/check.py`                  | `tests/test_check.py`                                                                |
+| `src/cellmapper/utils.py`                  | `tests/test_utils.py`                                                                |
+| End-to-end behavioral change               | also `tests/test_basic.py`                                                           |
+| Fixture changes                            | `tests/conftest.py`, `tests/data/`                                                   |
 
 ## Testing
 
 - **New code** should be covered. Reuse fixtures from `tests/conftest.py`; prefer `pytest.mark.parametrize`; favor few meaningful tests over many redundant ones.
 - **Failing CI** is not to be waved through. Distinguish critical regressions from flakes; escalate critical ones.
-- **Modified tests** — scrutinize *how*. Relaxed tolerances, removed assertions, deleted cases, or loosened matrices are red flags. Require explicit justification in the PR body.
+- **Modified tests** — scrutinize _how_. Relaxed tolerances, removed assertions, deleted cases, or loosened matrices are red flags. Require explicit justification in the PR body.
 
 ## Documentation Impact
 
