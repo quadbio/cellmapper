@@ -68,7 +68,7 @@ There are many ways to customize this, e.g. use different ways to compute k-NN g
 
 ## 📝 Release notes
 
-See the [changelog][].
+See the [release notes][].
 
 ## 📬 Contact
 
@@ -80,7 +80,7 @@ Please use our [zenodo][] entry to cite this software.
 [uv]: https://github.com/astral-sh/uv
 [issue tracker]: https://github.com/quadbio/cellmapper/issues
 [tests]: https://github.com/quadbio/cellmapper/actions/workflows/test.yaml
-[changelog]: https://cellmapper.readthedocs.io/en/latest/changelog.html
+[release notes]: https://github.com/quadbio/cellmapper/releases
 [docs]: https://cellmapper.readthedocs.io/
 [tutorials]: https://cellmapper.readthedocs.io/en/latest/notebooks/tutorials/index.html
 [pypi]: https://pypi.org/project/cellmapper

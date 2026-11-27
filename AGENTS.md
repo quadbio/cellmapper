@@ -29,7 +29,7 @@ table below — everything else is delegated.
 | Public API reference | `docs/api.md` and autosummary under `docs/generated/` |
 | Tutorials (query→reference, spatial mapping, spatial smoothing, data denoising) | `docs/notebooks/tutorials/` |
 | Contributor setup, environments, docs build | `docs/contributing.md` |
-| Release notes | `docs/changelog.md` |
+| Release notes | GitHub Releases (<https://github.com/quadbio/cellmapper/releases>) |
 | PR review workflow and risk areas | `REVIEW_GUIDE.md` |
 | Test fixtures | `tests/conftest.py`, `tests/data/` |
 | Kernel taxonomy and tunable thresholds (sklearn warning cutoff, spectral threshold) | `src/cellmapper/constants.py` |
