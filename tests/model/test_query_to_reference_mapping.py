@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 from scipy.sparse import issparse
 from scipy.stats import pearsonr
@@ -307,6 +308,52 @@ class TestQueryToReferenceMapping:
 
         # Verify no confidence scores for numerical data
         assert "dpt_pseudotime_conf" not in cmap.query.obs
+
+    def test_map_obs_missing_labels_do_not_vote(self, query_reference_adata):
+        """Unlabelled reference cells never win; they lower the confidence instead."""
+        query, reference = query_reference_adata
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+        cmap.map_obs(key="leiden")
+        full_conf = cmap.query.obs["leiden_conf"].copy()
+
+        labels = reference.obs["leiden"].astype(object)
+        labels.iloc[::2] = np.nan  # half the reference unlabelled, as in a sparsely annotated atlas
+        labels.iloc[1::4] = ""
+        reference.obs["sparse_leiden"] = pd.Categorical(labels)
+        cmap.map_obs(key="sparse_leiden")
+
+        pred = cmap.query.obs["sparse_leiden_pred"]
+        assert pred.notna().all()
+        assert set(pred.astype(str)) <= set(reference.obs["leiden"].cat.categories)  # never "" or NaN
+        assert (cmap.query.obs["sparse_leiden_conf"] < full_conf + 1e-6).all()
+
+    def test_map_obs_no_labelled_neighbours(self, query_reference_adata):
+        """A query cell whose neighbours are all unlabelled gets no prediction, not the first category."""
+        query, reference = query_reference_adata
+        kept = reference.obs["leiden"].cat.categories[-1]  # only one cluster stays labelled
+        reference.obs["one_cluster"] = reference.obs["leiden"].where(reference.obs["leiden"] == kept)
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+        cmap.map_obs(key="one_cluster")
+
+        pred, conf = cmap.query.obs["one_cluster_pred"], cmap.query.obs["one_cluster_conf"]
+        assert pred.isna().any() and pred.notna().any()
+        assert (pred.dropna() == kept).all()
+        assert (conf[pred.isna()] == 0).all() and (conf[pred.notna()] > 0).all()
+
+    def test_map_obs_no_labels_at_all(self, query_reference_adata):
+        """A reference column without any label gives missing predictions, not an error."""
+        query, reference = query_reference_adata
+        reference.obs["empty"] = pd.Categorical([np.nan] * reference.n_obs)
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+        probs = cmap.map_obs(key="empty", return_probabilities=True)
+        assert cmap.query.obs["empty_pred"].isna().all() and (cmap.query.obs["empty_conf"] == 0).all()
+        assert probs.shape == (query.n_obs, 0)
 
     def test_map_obs_subset_categories(self, query_reference_adata):
         """Test mapping with subset_categories parameter for categorical data."""
