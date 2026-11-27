@@ -3,7 +3,7 @@ import pytest
 import scanpy as sc
 from scipy.sparse import csr_matrix
 
-from cellmapper.model._knn_backend import _BACKENDS, _FaissCpuBackend, get_backend
+from cellmapper.model._knn_backend import _BACKENDS, _FaissCpuBackend, _FaissGpuBackend, get_backend
 from cellmapper.model.kernel import Kernel
 
 
@@ -51,6 +51,49 @@ class TestKernel:
 
         # Verify it's the right type
         assert isinstance(backend, _FaissCpuBackend)
+
+    @pytest.mark.parametrize("only_yx", [False, True])
+    def test_kernel_sklearn_vs_faiss(self, only_yx):
+        """FAISS CPU backend should match sklearn Euclidean distances and connectivities."""
+        pytest.importorskip("faiss")
+        rng = np.random.default_rng(0)
+        x = rng.normal(size=(20, 4))
+        y = rng.normal(size=(10, 4))
+        n_neighbors = 5
+
+        neigh_skl = Kernel(x, y)
+        neigh_skl.compute_neighbors(n_neighbors=n_neighbors, knn_method="sklearn", only_yx=only_yx)
+
+        neigh_faiss = Kernel(x, y)
+        neigh_faiss.compute_neighbors(n_neighbors=n_neighbors, knn_method="faiss-cpu", only_yx=only_yx)
+
+        attrs = ("yx",) if only_yx else ("xx", "yy", "xy", "yx")
+        for attr in attrs:
+            dist_skl = getattr(neigh_skl, attr).knn_graph_distances.toarray()
+            dist_faiss = getattr(neigh_faiss, attr).knn_graph_distances.toarray()
+            assert np.allclose(dist_skl, dist_faiss, atol=1e-5), f"Distances ({attr}) differ between sklearn and faiss"
+
+            conn_skl = getattr(neigh_skl, attr).knn_graph_connectivities().toarray()
+            conn_faiss = getattr(neigh_faiss, attr).knn_graph_connectivities().toarray()
+            assert np.allclose(conn_skl, conn_faiss, atol=1e-5), (
+                f"Connectivities ({attr}) differ between sklearn and faiss"
+            )
+
+    @pytest.mark.parametrize("backend_cls", [_FaissCpuBackend, _FaissGpuBackend])
+    def test_faiss_query_takes_sqrt_and_clamps_negative(self, mocker, backend_cls):
+        """Both FAISS backends should take sqrt of squared L2 distances and clamp tiny negative values."""
+        backend = object.__new__(backend_cls)
+        fake_index = mocker.MagicMock()
+        fake_index.search.return_value = (
+            np.array([[-1e-7, 4.0, 9.0]], dtype=np.float32),
+            np.array([[0, 1, 2]], dtype=np.int64),
+        )
+        backend._index = fake_index
+
+        distances, indices = backend.query(np.zeros((1, 2), dtype=np.float32), k=3)
+        assert distances.dtype == np.float32
+        assert np.allclose(distances, np.array([[0.0, 2.0, 3.0]], dtype=np.float32))
+        assert np.array_equal(indices, np.array([[0, 1, 2]], dtype=np.int64))
 
     def test_kernel_repr(self, small_data):
         x, y = small_data
