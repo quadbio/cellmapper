@@ -35,36 +35,6 @@ dependencies = [
   # for debug logging (referenced from the issue template)
   "session-info2",
 ]
-optional-dependencies.dev = [
-  "pre-commit",
-  "twine>=4.0.2",
-]
-optional-dependencies.doc = [
-  "docutils>=0.8,!=0.18.*,!=0.19.*,<0.22", # sphinx-tabs incompatible with 0.22, see https://github.com/executablebooks/sphinx-tabs/issues/206
-  "ipykernel",
-  "ipython",
-  "ipywidgets",                            # for tqdm/notebook progress bars in Jupyter
-  "myst-nb>=1.1",
-  "pandas",
-  # Until pybtex >0.24.0 releases: https://bitbucket.org/pybtex-devs/pybtex/issues/169/
-  "setuptools",
-  "sphinx>=8.1",
-  "sphinx-autodoc-typehints",
-  "sphinx-book-theme>=1",
-  "sphinx-copybutton",
-  "sphinx-tabs",
-  "sphinxcontrib-bibtex>=1",
-  "sphinxcontrib-katex",
-  "sphinxext-opengraph",
-]
-optional-dependencies.test = [
-  "coverage>=7.10",
-  "faiss-cpu",
-  "pytest",
-  "pytest-cov",     # For VS Code's coverage functionality
-  "pytest-mock",    # provides the `mocker` fixture used in tests/test_check.py
-  "squidpy>=1.8",
-]
 optional-dependencies.tutorials = [
   "cellrank>=2",
   "harmony-pytorch",
@@ -119,6 +89,36 @@ urls.Source = "https://github.com/quadbio/cellmapper"
 # NB: a plain `uv sync --all-extras` (without --group gpcca-fast) will UNINSTALL
 # petsc/slepc if present — re-include the group on every refresh to keep them.
 [dependency-groups]
+dev = [
+  "prek",
+  "twine>=4.0.2",
+]
+test = [
+  "coverage>=7.10",
+  "faiss-cpu",
+  "pytest",
+  "pytest-cov",     # For VS Code’s coverage functionality
+  "pytest-mock",    # provides the `mocker` fixture used in tests/test_check.py
+  "squidpy>=1.8",
+]
+doc = [
+  "ipykernel",
+  "ipython",
+  "ipywidgets",                  # for tqdm/notebook progress bars in Jupyter
+  "myst-nb>=1.1",
+  "pandas",
+  "scverse-misc[sphinx]>=0.1.2",
+  # Until pybtex >0.24.0 releases: https://bitbucket.org/pybtex-devs/pybtex/issues/169/
+  "setuptools",
+  "sphinx>=8.1",
+  "sphinx-autodoc-typehints",
+  "sphinx-book-theme>=1",
+  "sphinx-copybutton",
+  "sphinx-design",
+  "sphinxcontrib-bibtex>=1",
+  "sphinxcontrib-katex",
+  "sphinxext-opengraph",
+]
 gpcca-fast = [
   "cellrank[petsc]>=2.3.1",
   "slepc>=3.25",
@@ -127,12 +127,11 @@ gpcca-fast = [
 [tool.hatch]
 version.source = "vcs"
 envs.default.installer = "uv"
-envs.default.features = [ "dev" ]
-envs.docs.features = [ "doc" ]
+envs.default.dependency-groups = [ "dev" ]
 envs.docs.scripts.build = "sphinx-build -M html docs docs/_build {args}"
 envs.docs.scripts.clean = "git clean -fdX -- {args:docs}"
 envs.docs.scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
-envs.hatch-test.features = [ "dev", "test" ]
+envs.docs.dependency-groups = [ "doc" ]
 envs.hatch-test.matrix = [
   # Test the lowest and highest supported Python versions with normal deps
   { deps = [ "stable" ], python = [ "3.12", "3.14" ] },
@@ -144,6 +143,7 @@ envs.hatch-test.matrix = [
 envs.hatch-test.overrides.matrix.deps.env-vars = [
   { value = "allow", key = "UV_PRERELEASE", if = [ "pre" ] },
 ]
+envs.hatch-test.dependency-groups = [ "dev", "test" ]
 
 [tool.uv]
 # pygpcca 1.0.4 (pulled in by cellrank, tutorials extra) incorrectly pins
@@ -218,6 +218,7 @@ run.patch = [ "subprocess" ]
 
 [tool.cruft]
 skip = [
+  ".git",
   "tests",
   "src/**/__init__.py",
   "src/**/basic.py",
