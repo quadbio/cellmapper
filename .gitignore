@@ -11,11 +11,21 @@ __pycache__/
 # Distribution / packaging
 /dist/
 
+# Lock files (library, not application)
+uv.lock
+
 # Tests and coverage
 /data/
+/tests/data/scanpy_cache/
 /node_modules/
 /.coverage*
 
 # docs
 /docs/generated/
 /docs/_build/
+.ipynb_checkpoints/
+/docs/notebooks/tutorials/test_adata.ipynb
+
+# datasets and models
+*.h5ad
+*.pt

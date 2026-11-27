@@ -1,10 +1,9 @@
 [build-system]
 build-backend = "hatchling.build"
-requires = [ "hatchling" ]
+requires = [ "hatch-vcs", "hatchling" ]
 
 [project]
 name = "cellmapper"
-version = "0.0.1"
 description = "k-NN-based mapping of cells across representations"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -21,16 +20,73 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
+dynamic = [ "version" ]
 dependencies = [
-  "anndata",
+  "anndata>=0.11",
+  "docrep",
+  "numpy",
+  "packaging",
+  "pandas",
+  "rich",
+  "scanpy>=1.11",
+  "scikit-learn",
+  "scipy",
   # for debug logging (referenced from the issue template)
   "session-info2",
+]
+optional-dependencies.tutorials = [
+  "cellrank>=2",
+  "harmony-pytorch",
+  "igraph",
+  "netgraph",
+  "python-louvain",
+  "scvi-tools>=1.3",
+  "seaborn",
+  "sopa>=2.2",
+  "squidpy>=1.8",
 ]
 # https://docs.pypi.org/project_metadata/#project-urls
 urls.Documentation = "https://cellmapper.readthedocs.io/"
 urls.Homepage = "https://github.com/quadbio/cellmapper"
 urls.Source = "https://github.com/quadbio/cellmapper"
 
+# Opt-in fast backend for pyGPCCA (used by cellrank). Without petsc4py/slepc4py,
+# pyGPCCA falls back to method='brandts', which densifies the transition matrix
+# and warns. petsc4py/slepc4py come from cellrank's own `petsc` extra (mpi4py-free
+# since cellrank 2.3.1), so CellRank owns those. This is a PEP 735 dependency
+# group (NOT an extra) on purpose: petsc/slepc have no wheels and compile from
+# source, so we keep them out of `uv sync --all-extras` and require explicit opt-in.
+#
+# `slepc` is listed explicitly because slepc4py's published sdist metadata omits
+# its runtime dep on the `slepc` library package (it's added dynamically at build
+# time), so uv won't install slepc from cellrank[petsc] alone and slepc4py then
+# fails to import with "Library not loaded: libslepc". (petsc4py declares `petsc`
+# correctly, so petsc needs no such workaround.) Drop this once slepc4py — or
+# cellrank's petsc extra — declares slepc.
+#
+# petsc4py/slepc4py compute their metadata dynamically at build time. Without help,
+# uv would therefore compile PETSc from source just to *resolve* — breaking every
+# bare `uv sync` / `uv run` / `uv lock`, even when this group is NOT requested. The
+# [[tool.uv.dependency-metadata]] entries under [tool.uv] give uv that metadata
+# statically, so resolution/locking never builds anything; PETSc/SLEPc compile only
+# when the group is actually installed. Keep those entries in sync with this group.
+#
+# INSTALLING the group is the fragile part. The recommended route is pre-built
+# conda-forge binaries (no compiler, no BLAS hunting), e.g. with pixi/mamba:
+#     mamba install -c conda-forge petsc4py slepc4py     # or: pixi add petsc4py slepc4py
+# Building from PyPI source instead needs a C compiler AND a BLAS/LAPACK. The
+# CellRank-documented options alone (--with-fc=0 --with-mpi=0 --with-debugging=0
+# --with-shared-libraries=1) only work on machines that already expose a system
+# BLAS on the linker path; on others PETSc configure fails with "Could not find a
+# functional BLAS". Adding --download-f2cblaslapack=1 gets PETSc to build but then
+# SLEPc fails to link it (`cannot find -lf2cblas`), so for a source build point
+# PETSc at a real shared BLAS instead, e.g.:
+#     PETSC_CONFIGURE_OPTIONS="--with-fc=0 --with-mpi=0 --with-debugging=0 \
+#       --with-shared-libraries=1 --with-blaslapack-dir=$OPENBLAS_ROOT" \
+#       uv sync --all-extras --group gpcca-fast
+# Do NOT set SLEPC_CONFIGURE_OPTIONS — SLEPc inherits config from the built PETSc.
+# NB: a plain `uv sync --all-extras` (without --group gpcca-fast) will UNINSTALL
+# petsc/slepc if present — re-include the group on every refresh to keep them.
 [dependency-groups]
 dev = [
   "prek",
@@ -38,15 +94,21 @@ dev = [
 ]
 test = [
   "coverage>=7.10",
+  "faiss-cpu",
   "pytest",
   "pytest-cov",     # For VS Code’s coverage functionality
+  "pytest-mock",    # provides the `mocker` fixture used in tests/test_check.py
+  "squidpy>=1.8",
 ]
 doc = [
   "ipykernel",
   "ipython",
+  "ipywidgets",                  # for tqdm/notebook progress bars in Jupyter
   "myst-nb>=1.1",
   "pandas",
   "scverse-misc[sphinx]>=0.1.2",
+  # Until pybtex >0.24.0 releases: https://bitbucket.org/pybtex-devs/pybtex/issues/169/
+  "setuptools",
   "sphinx>=8.1",
   "sphinx-autodoc-typehints",
   "sphinx-book-theme>=1",
@@ -56,11 +118,16 @@ doc = [
   "sphinxcontrib-katex",
   "sphinxext-opengraph",
 ]
+gpcca-fast = [
+  "cellrank[petsc]>=2.3.1",
+  "slepc>=3.25",
+]
 
 [tool.hatch]
+version.source = "vcs"
 envs.default.installer = "uv"
 envs.default.dependency-groups = [ "dev" ]
-envs.docs.scripts.build = "sphinx-build -M html docs docs/_build -W {args}"
+envs.docs.scripts.build = "sphinx-build -M html docs docs/_build {args}"
 envs.docs.scripts.clean = "git clean -fdX -- {args:docs}"
 envs.docs.scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
 envs.docs.dependency-groups = [ "doc" ]
@@ -76,6 +143,25 @@ envs.hatch-test.overrides.matrix.deps.env-vars = [
   { value = "allow", key = "UV_PRERELEASE", if = [ "pre" ] },
 ]
 envs.hatch-test.dependency-groups = [ "dev", "test" ]
+
+[tool.uv]
+# pygpcca 1.0.4 (pulled in by cellrank, tutorials extra) incorrectly pins
+# jinja2==3.0.3, which conflicts with sphinx (doc extra). Override until a
+# pygpcca release relaxes it. jinja2>=3.1 is known-safe (cellrank does the same).
+override-dependencies = [ "jinja2>=3.1" ]
+# Static metadata for the gpcca-fast source-only packages so uv can resolve/lock
+# WITHOUT compiling PETSc (see the note above [dependency-groups]). These mirror
+# the deps each package injects dynamically at build time: petsc4py -> petsc,
+# slepc4py -> petsc4py + slepc (slepc4py's own sdist omits slepc). The `petsc`/
+# `slepc` library packages have no Python dependencies. Version omitted -> applies
+# to all versions; petsc & petsc4py (and slepc & slepc4py) are always co-released
+# at matching versions, so uv resolves them in lockstep.
+dependency-metadata = [
+  { name = "petsc", requires-dist = [] },
+  { name = "slepc", requires-dist = [] },
+  { name = "petsc4py", requires-dist = [ "numpy", "petsc" ] },
+  { name = "slepc4py", requires-dist = [ "numpy", "petsc4py", "slepc" ] },
+]
 
 [tool.ruff]
 line-length = 120
