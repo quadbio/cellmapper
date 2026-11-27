@@ -344,6 +344,17 @@ class TestQueryToReferenceMapping:
         assert (pred.dropna() == kept).all()
         assert (conf[pred.isna()] == 0).all() and (conf[pred.notna()] > 0).all()
 
+    def test_map_obs_no_labels_at_all(self, query_reference_adata):
+        """A reference column without any label gives missing predictions, not an error."""
+        query, reference = query_reference_adata
+        reference.obs["empty"] = pd.Categorical([np.nan] * reference.n_obs)
+        cmap = CellMapper(query=query, reference=reference)
+        cmap.compute_neighbors(n_neighbors=30, use_rep="X_pca", knn_method="sklearn")
+        cmap.compute_mapping_matrix(kernel_method="gauss")
+        probs = cmap.map_obs(key="empty", return_probabilities=True)
+        assert cmap.query.obs["empty_pred"].isna().all() and (cmap.query.obs["empty_conf"] == 0).all()
+        assert probs.shape == (query.n_obs, 0)
+
     def test_map_obs_subset_categories(self, query_reference_adata):
         """Test mapping with subset_categories parameter for categorical data."""
         query, reference = query_reference_adata

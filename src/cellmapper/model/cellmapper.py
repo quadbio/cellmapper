@@ -822,6 +822,12 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
         # Reference cells without a label (missing or empty), or with one outside subset_categories, don't vote:
         # their one-hot rows are all zero
         missing = reference_data.isna() | (reference_data.astype(str) == "")
+        pred_key, conf_key = f"{key}{prediction_postfix}", f"{key}{confidence_postfix}"
+        if subset_categories is None and missing.all():
+            logger.warning("No reference cell has a label in '%s'; all predictions are missing.", key)
+            self.query.obs[pred_key] = pd.Series(np.nan, index=self.query.obs_names, dtype=reference_data.dtype)
+            self.query.obs[conf_key] = 0.0
+            return pd.DataFrame(index=self.query.obs_names) if return_probabilities else None
         onehot = OneHotEncoder(dtype=np.float32, handle_unknown="ignore")
         if subset_categories is not None:
             onehot.fit(pd.DataFrame({key: pd.Categorical(subset_categories, categories=subset_categories)}))
@@ -858,8 +864,6 @@ class CellMapper(EvaluationMixin, EmbeddingMixin):
             conf_vals = np.max(ytab, axis=1).ravel()
         conf = pd.Series(conf_vals, index=self.query.obs_names)
 
-        pred_key = f"{key}{prediction_postfix}"
-        conf_key = f"{key}{confidence_postfix}"
         self.query.obs[pred_key] = pred
         self.query.obs[conf_key] = conf
 
