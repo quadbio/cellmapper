@@ -12,6 +12,7 @@ RAPIDS cuML.
 ## Trust Order
 
 When sources disagree:
+
 1. PR description and changed code
 2. This file (`AGENTS.md`)
 3. `REVIEW_GUIDE.md`
@@ -23,18 +24,18 @@ table below — everything else is delegated.
 
 ## Where To Find What
 
-| Topic | Source of truth |
-|-------|----------------|
-| User-facing overview, use cases, quickstart | `README.md` |
-| Public API reference | `docs/api.md` and autosummary under `docs/generated/` |
-| Tutorials (query→reference, spatial mapping, spatial smoothing, data denoising) | `docs/notebooks/tutorials/` |
-| Contributor setup, environments, docs build | `docs/contributing.md` |
-| Release notes | GitHub Releases (<https://github.com/quadbio/cellmapper/releases>) |
-| PR review workflow and risk areas | `REVIEW_GUIDE.md` |
-| Test fixtures | `tests/conftest.py`, `tests/data/` |
-| Kernel taxonomy and tunable thresholds (sklearn warning cutoff, spectral threshold) | `src/cellmapper/constants.py` |
-| Optional-dependency gating | `src/cellmapper/check.py` |
-| Method-level behavior (parameters, return shapes) | docstrings in `src/cellmapper/model/` |
+| Topic                                                                               | Source of truth                                                    |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| User-facing overview, use cases, quickstart                                         | `README.md`                                                        |
+| Public API reference                                                                | `docs/api.md` and autosummary under `docs/generated/`              |
+| Tutorials (query→reference, spatial mapping, spatial smoothing, data denoising)     | `docs/notebooks/tutorials/`                                        |
+| Contributor setup, environments, docs build                                         | `docs/contributing.md`                                             |
+| Release notes                                                                       | GitHub Releases (<https://github.com/quadbio/cellmapper/releases>) |
+| PR review workflow and risk areas                                                   | `REVIEW_GUIDE.md`                                                  |
+| Test fixtures                                                                       | `tests/conftest.py`, `tests/data/`                                 |
+| Kernel taxonomy and tunable thresholds (sklearn warning cutoff, spectral threshold) | `src/cellmapper/constants.py`                                      |
+| Optional-dependency gating                                                          | `src/cellmapper/check.py`                                          |
+| Method-level behavior (parameters, return shapes)                                   | docstrings in `src/cellmapper/model/`                              |
 
 ## Review Guidelines
 
